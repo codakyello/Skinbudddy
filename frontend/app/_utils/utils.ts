@@ -1,4 +1,4 @@
-export const URL = "https://skin-buddy-lyart.vercel.app/api/v1";
+export const URL = "https://skinbudddy.vercel.app/api/v1";
 
 export const DEV_URL = "http://localhost:5000/api/v1";
 
