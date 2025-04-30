@@ -1,0 +1,205 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;600&family=Poppins:wght@100;200;300;400;500;600;700;800;900family=DM+Sans:wght@100;200;300;400;500;600;700;800;900&display=swap");
+
+:root {
+  --color-grey-0: #fff;
+  --color-grey-50: #f9fafb;
+  --color-grey-700: #374151;
+  --color-primary: #000;
+  --color-primary-100: #333;
+  --color-primary-200: #555;
+  --color-primary-300: #666;
+  --color-modal-bg: #000000b3;
+  --input-border-color: #e4e4e4;
+  --input-border-color-focus: #000;
+  --input-label-color: #000;
+  --input-label-color-focus: #666;
+  --checkbox-border-color: #333;
+}
+
+html {
+  font-size: 62.5%;
+  scroll-behavior: smooth;
+}
+
+.shadow-sm {
+  box-shadow: 0 0 30px 0 hsla(0, 0%, 43%, 0.2);
+}
+
+.shadow-md {
+  box-shadow: 0 0 30px 0 hsla(0, 0%, 43%, 0.2);
+}
+
+.shadow-lg {
+  box-shadow: 0 0 30px 0 hsla(0, 0%, 43%, 0.2);
+}
+
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;600&family=Poppins:wght@100;200;300;400;500;600;700;800;900&family=DM+Sans:ital,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap");
+
+body {
+  color: var(--color-primary) !important;
+  /* transition: color 0.3s, background-color 0.3s; */
+  line-height: 1.5;
+  font-size: 1.6rem;
+  font-family: "DM Sans", sans-serif;
+}
+
+input:focus-visible {
+  border: 1px solid var(--input-border-color-focus);
+  outline: none;
+}
+
+.container {
+  max-width: 120rem;
+  margin: 0 auto;
+}
+
+.spinner {
+  margin: 4.8rem auto;
+  width: 6.4rem;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+        farthest-side,
+        var(--color-primary) 94%,
+        transparent
+      )
+      top/10px 10px no-repeat,
+    conic-gradient(transparent 30%, var(--color-primary));
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 10px),
+    black 0
+  );
+  animation: rotate 1.5s infinite linear;
+}
+
+.shadow {
+  box-shadow: 0 0 30px 0 rgba(110, 110, 110, 0.2);
+}
+
+@keyframes rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-top {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-bottom {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in-scale {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-left-then-right {
+  0% {
+    transform: translateX(0); /* Start at normal position */
+    opacity: 1;
+  }
+  30% {
+    transform: translateX(-5%); /* Move slightly left */
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateX(100%); /* Move completely to the right */
+    opacity: 0;
+  }
+}
+
+.modal-box {
+  animation-duration: 10s;
+  animation-timing-function: ease-in;
+}
+
+.right-modal {
+  animation: slide-in-right 0.2s ease-in forwards;
+}
+
+.close-modal .right-modal {
+  animation: slide-left-then-right 0.1s ease-in-out forwards;
+}
+
+.cart-reminder-enter {
+  animation: slide-in-right 0.2s ease-in forwards;
+}
+
+.cart-reminder-exit {
+  animation: slide-left-then-right 0.1s ease-in-out forwards;
+}
+
+.modal-bg {
+  transition: all 0.3s ease-in;
+}
+
+.close-modal .modal-bg {
+  transition: all 0.1s ease-in;
+  opacity: 0;
+}
+
+.left-modal {
+  animation-name: slide-in-left;
+}
+
+.top-modal {
+  animation-name: slide-in-top;
+}
+
+.bottom-modal {
+  animation-name: slide-in-bottom;
+}
+
+.center-modal {
+  animation-name: fade-in-scale;
+}
