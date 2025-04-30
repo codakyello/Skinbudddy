@@ -21,7 +21,8 @@ dotenv.config({ path: "./config.env" });
 
 app.use(
   cors({
-    origin: "*",
+    origin: ["http://localhost:3000", "https://skinbudddy-frontend.vercel.app"],
+    credentials: true, // if you're using cookies or sessions
   })
 );
 
