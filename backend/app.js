@@ -16,9 +16,12 @@ const productRoute = require("./routes/productRoutes");
 const announcementRoute = require("./routes/announcementRoutes");
 
 const app = express();
-dotenv.config({ path: "./config.env" });
-
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:3000", "https://skin-buddy.vercel.app"],
+    credentials: true, // if you're using cookies or sessions
+  })
+);
 
 app.use(helmet());
 
