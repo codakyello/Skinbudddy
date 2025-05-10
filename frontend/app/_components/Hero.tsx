@@ -1,9 +1,10 @@
 "use client";
-import { Box, Icon, Image } from "@chakra-ui/react";
+import { Box, Icon } from "@chakra-ui/react";
 import useSticky from "../_hooks/useSticky";
 import { useState, useEffect, useRef } from "react";
 import { FaArrowLeft, FaArrowRight } from "react-icons/fa";
 import useDeviceDetection from "../_hooks/useDeviceDetection";
+import Image from "next/image";
 export default function Hero() {
   const { isSticky } = useSticky(40);
 
