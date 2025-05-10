@@ -43,7 +43,7 @@ export default function ProductCard({ product }: { product: Product }) {
         Vita Naturals
       </p>
 
-      <h2 className="text-[var(--color-primary)] leading-tight text-[1.6rem] mb-[.5rem] ">
+      <h2 className="text-[#000] leading-tight text-[1.6rem] mb-[.5rem] ">
         {product.name}
       </h2>
 

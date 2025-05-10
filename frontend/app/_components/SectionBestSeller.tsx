@@ -16,7 +16,7 @@ export default async function SectionBestSeller() {
 
   return (
     <Box className="my-[10rem] max-w-[120rem] mx-auto px-[2rem] pb-[40rem]">
-      <h1 className="text-[4rem] text-[var(--color-primary)] font-playfair ">
+      <h1 className="text-[4rem] text-[#000] font-playfair ">
         Explore Our Best Seller
       </h1>
 

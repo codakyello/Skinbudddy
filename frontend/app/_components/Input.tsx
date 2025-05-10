@@ -62,7 +62,7 @@ export default function Input({
             hasInputValue
               ? "px-[1.2rem] pt-[2.5rem] pb-[.8rem]"
               : "px-[1.2rem] py-[1.6rem]"
-          }  focus-visible:px-[1.2rem] outline-none focus-visible:pt-[2.5rem] focus-visible:border-[var(--input-border-color-focus)] focus-visible:pb-[.8rem] text-[16px] bg-[var(--color-grey-0)]  text-[var(--color-primary)] 
+          }  focus-visible:px-[1.2rem] outline-none focus-visible:pt-[2.5rem] focus-visible:border-[var(--input-border-color-focus)] focus-visible:pb-[.8rem] text-[16px] bg-[var(--color-grey-0)]  text-[#000]  
           ${
             error
               ? "border border-b-[3px] border-b-[#e10000] focus-visible:border-b-[3px] focus-visible:border-[#e5e7eb] focus-visible:border-b-[#e10000]"
@@ -109,14 +109,14 @@ export default function Input({
               {isPasswordVisible ? (
                 <IoEyeOutline
                   onClick={() => setIsPasswordVisible(false)}
-                  className={`text-[var(--color-primary)] text-[2rem] ${
+                  className={`text-[#000] text-[2rem] ${
                     error ? "text-[#e10000]" : ""
                   } cursor-pointer`}
                 />
               ) : (
                 <IoEyeOffOutline
                   onClick={() => setIsPasswordVisible(true)}
-                  className={`text-[var(--color-primary)] text-[2rem] ${
+                  className={`text-[#000] text-[2rem] ${
                     error ? "text-[#e10000]" : ""
                   } cursor-pointer`}
                 />
@@ -128,7 +128,7 @@ export default function Input({
         {/* Check Icon for validated form field except password */}
         {type !== "password" && !error && hasInputValue && (
           <Box className="absolute top-[50%] translate-y-[-50%] right-5">
-            <GoCheck className="text-[20px] text-[var(--color-primary)]" />
+            <GoCheck className="text-[20px] text-[#000]" />
           </Box>
         )}
       </Box>

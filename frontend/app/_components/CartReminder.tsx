@@ -33,7 +33,7 @@ export default function CartReminder() {
       console.log("closing cart reminder due to route change");
       setIsOpen(false);
     }
-  }, [pathname]);
+  }, [pathname, isOpen]);
 
   console.log(isOpen);
 

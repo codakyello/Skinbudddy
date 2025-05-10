@@ -79,7 +79,7 @@ export default function AuthModal({ onClose }: { onClose?: () => void }) {
         <h2 className="text-black text-[2rem] font-medium">Sign In</h2>
 
         <TfiClose
-          className="text-[var(--color-primary)] cursor-pointer text-[2rem]"
+          className="text-[#000] cursor-pointer text-[2rem]"
           onClick={onClose}
         />
       </Box>
@@ -185,14 +185,18 @@ function SignIn({
           }}
         />
 
-        <Box className="flex justify-between text-[var(--color-primary)] text-[1.4rem] mt-[2rem]">
+        <Box className="flex justify-between text-[#000] text-[1.4rem] mt-[2rem]">
           <Box className="flex items-center gap-[.8rem]">
             <CheckBox name="remember-password" id="my-remember-password" />
 
             <label htmlFor="my-remember-password">Remember me</label>
           </Box>
 
-          <Button className="text-[1.4rem]" onClick={() => {}} type="link">
+          <Button
+            className="text-[1.4rem] text-[#000]"
+            onClick={() => {}}
+            type="link"
+          >
             Forgot your password?
           </Button>
         </Box>
@@ -201,7 +205,7 @@ function SignIn({
           action="submit"
           type="primary"
           disabled={isLoading}
-          className={`mt-[2.4rem] hover:bg-transparent text-white hover:text-[var(--color-primary)] border-[.1px] border-[var(--color-primary)] ${
+          className={`mt-[2.4rem] hover:bg-transparent text-white hover:text-[#000] border-[.1px] border-[#000] ${
             isLoading ? "bg-transparent" : "bg-black"
           }`}
         >
@@ -218,7 +222,7 @@ function SignIn({
         </Button>
       </form>
 
-      <p className="text-[var(--color-primary)] text-[1.4rem] text-center py-[2rem]">
+      <p className="text-[#000] text-[1.4rem] text-center py-[2rem]">
         Or continue with
       </p>
 
@@ -364,10 +368,7 @@ function SignUp({
 
         <Box className="flex items-start gap-[.8rem] mt-[1.5rem]">
           <CheckBox id="my-terms" name="terms" />
-          <label
-            htmlFor="my-terms"
-            className="text-[1.4rem] text-[var(--color-primary)]"
-          >
+          <label htmlFor="my-terms" className="text-[1.4rem] text-[#000]">
             I confirm that I have read and accepted the{" "}
             <span className="underline">terms and conditions</span> of the
             online store including its{" "}
@@ -376,9 +377,9 @@ function SignUp({
         </Box>
 
         <Button
-          className={`w-full mt-[2.8rem] text-white mb-[1.6rem] flex items-center justify-center hover:bg-transparent hover:text-[var(--color-primary)] border-[.1px] border-[var(--color-primary)] ${
+          className={`w-full mt-[2.8rem] text-white mb-[1.6rem] flex items-center justify-center hover:bg-transparent hover:text-[#000] border-[.1px] border-[#000] ${
             isLoading ? "bg-transparent" : "bg-black"
-          }}`}
+          }`}
           type="primary"
           action="submit"
         >
@@ -386,7 +387,7 @@ function SignUp({
         </Button>
       </form>
 
-      <p className="text-[var(--color-primary)] text-[1.4rem] text-center py-[2rem]">
+      <p className="text-[#000] text-[1.4rem] text-center py-[2rem]">
         Or continue with
       </p>
 

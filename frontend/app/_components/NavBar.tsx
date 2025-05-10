@@ -40,7 +40,7 @@ export default function NavBar() {
   return (
     <>
       <nav
-        className={`group h-[8rem] z-[99] px-[4rem] justify-between flex gap-16 items-center transition-all duration-500 hover:bg-white hover:text-[var(--color-primary)] bg-white text-[var(--color-primary)] ${
+        className={`group h-[8rem] z-[99] px-[2rem] justify-between flex gap-16 items-center transition-all duration-500 bg-white text-[#000] ${
           isSticky ? " fixed top-0 left-0 w-full" : "relative"
         }`}
       >
@@ -56,7 +56,7 @@ export default function NavBar() {
           href="/"
           className=" text-[2.8rem] translate-x-[-50%] font-dmSans font-light"
         >
-          Calvin Klien
+          Skinbuddy
         </TransitionLink>
 
         <Box className="flex gap-[1.6rem] items-center text-[2.3rem] ">

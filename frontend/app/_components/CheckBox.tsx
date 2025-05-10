@@ -17,13 +17,9 @@ export default function CheckBox({ name, id }: { name: string; id: string }) {
 
       <label
         htmlFor={id}
-        className="h-[22px] aspect-square border border-[var(--checkbox-border-color)] flex items-center justify-center cursor-pointer"
+        className="h-[22px] aspect-square border border-[#000] flex items-center justify-center cursor-pointer"
       >
-        {isChecked ? (
-          <GoCheck className="text-[20px] text-[var(--color-primary)]" />
-        ) : (
-          ""
-        )}
+        {isChecked ? <GoCheck className="text-[20px] text-[#000]" /> : ""}
       </label>
     </Box>
   );

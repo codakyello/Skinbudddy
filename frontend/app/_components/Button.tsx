@@ -23,15 +23,11 @@ export default function Button({
       className={`${className} 
       ${
         type === "primary"
-          ? "h-[5.5rem]  bg-[var(--color-primary)] py-[1.5rem] px-[2.4rem] "
+          ? " bg-[var(--color-primary)] py-[1.5rem] px-[2.4rem] "
           : ""
       }
-      ${type === "text" ? "h-[5.5rem]  text-[var(--color-primary)]" : ""}
-      ${
-        type === "link"
-          ? "h-[5.5rem]  text-[var(--color-primary-300)] underline"
-          : ""
-      }
+      ${type === "text" ? "  text-[#000]  " : ""}
+      ${type === "link" ? "  underline" : ""}
       ${
         type === "icon"
           ? "rounded-[50%] p-[1.2rem] border border-[#e4e4e4]"
@@ -39,7 +35,7 @@ export default function Button({
       }
       ${
         type === "outline"
-          ? "border-[.1px] border-[var(--color-primary)] text-black py-[1.5rem] px-[2.4rem] hover:bg-black hover:text-white transition-all duration-300"
+          ? "border-[.1px] border-[#000] text-black py-[1.5rem] px-[2.4rem] hover:bg-black hover:text-white transition-all duration-300"
           : ""
       }
        `}
