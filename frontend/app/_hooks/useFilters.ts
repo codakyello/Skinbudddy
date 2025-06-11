@@ -10,13 +10,13 @@ export function useFilters() {
 
   const filters: Record<string, string[]> = {};
 
-  for (const [key, value] of searchParams.entries()) {
+  Array.from(searchParams.entries()).forEach(([key, value]) => {
     if (filters[key]) {
       filters[key].push(value);
     } else {
       filters[key] = [value];
     }
-  }
+  });
 
   // console.log(filters, "Before converting to activeFilters");
 
