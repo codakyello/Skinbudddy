@@ -2,6 +2,7 @@ import ActiveFilters from "@/app/_components/ActiveFilters";
 import Product from "@/app/_components/Product";
 import { api } from "@/convex/_generated/api";
 import { fetchQuery } from "convex/nextjs";
+import { Suspense } from "react";
 
 export default async function Page() {
   let brands;
@@ -16,9 +17,9 @@ export default async function Page() {
   }
 
   return (
-    <>
+    <Suspense fallback={"...loading"}>
       <ActiveFilters />
       <Product brands={brands} />
-    </>
+    </Suspense>
   );
 }
