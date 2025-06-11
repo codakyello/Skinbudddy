@@ -2,7 +2,6 @@
 import { Box } from "@chakra-ui/react";
 import ActiveFilter from "./ActiveFilter";
 import { useNavSticky } from "../_contexts/Sticky";
-import { useSearchParams } from "next/navigation";
 import { useFilters } from "../_hooks/useFilters";
 import { useLoadingTransition } from "../_contexts/FullPageLoader";
 
@@ -38,8 +37,9 @@ export default function ActiveFilters() {
       </Box>
       <Box className="grid grid-cols-[1fr_max-content] gap-[8px] items-center">
         <Box className="flex flex-wrap gap-[8px]">
-          {activeFilters.map((filter) => (
+          {activeFilters.map((filter, i) => (
             <ActiveFilter
+              key={i}
               onRemove={() =>
                 startNavigation(() =>
                   handleRemoveFilter(filter.type, filter.name)

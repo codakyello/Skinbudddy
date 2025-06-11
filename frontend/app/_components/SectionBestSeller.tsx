@@ -68,7 +68,7 @@ export default function SectionBestSeller() {
     >
       {isPending &&
         Array.from({ length: 5 }).map((_, i) => (
-          <Box className="min-w-[32rem]">
+          <Box key={i} className="min-w-[32rem]">
             <ProductCardSkeleton />
           </Box>
         ))}
@@ -76,7 +76,7 @@ export default function SectionBestSeller() {
       {!isPending &&
         !error &&
         bestSellers?.map((product: Product, i: number) => (
-          <Box className="min-w-[32rem]">
+          <Box key={i} className="min-w-[32rem]">
             <ProductCard key={i} product={product} />
           </Box>
         ))}

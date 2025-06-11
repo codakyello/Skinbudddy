@@ -7,8 +7,7 @@ import { Product } from "../_utils/types";
 import { formatNumber, getTagType } from "../_utils/utils";
 import Tag from "./Tag";
 import { CiHeart } from "react-icons/ci";
-import { useAuth, useUser } from "@clerk/nextjs";
-import { mutation } from "@/convex/_generated/server";
+import { useUser } from "@clerk/nextjs";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
@@ -39,13 +38,12 @@ export default function ProductCard({
         });
         toast.success(`Added to cart with ID: ${cartId}`);
         // Optional: Show success message
-      } catch (error: any) {
-        toast.error(`Failed to add to cart: ${error.message}`);
+      } catch (error) {
+        if (error instanceof Error)
+          toast.error(`Failed to add to cart: ${error.message}`);
         // Optional: Show error message
       }
   };
-
-  const { getToken, userId } = useAuth();
 
   const isDiscounted = product.discount;
 

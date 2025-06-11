@@ -9,12 +9,12 @@ export default function CheckBox({
 }: {
   name: string;
   id: string;
-  checked: boolean;
+  checked?: boolean;
 }) {
   const [isChecked, setIsChecked] = useState(false);
 
   useEffect(() => {
-    setIsChecked(checked);
+    if (checked) setIsChecked(checked);
   }, [checked]);
 
   return (

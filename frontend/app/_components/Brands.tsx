@@ -10,5 +10,7 @@ export default function Brands() {
   console.log(brands);
   if (isLoading) return <div>Loading...</div>;
   if (error) toast.error(error.message);
-  return <Box>{brands?.map((brand) => <div>{brand.name}</div>)}</Box>;
+  return (
+    <Box>{brands?.map((brand, i) => <div key={i}>{brand.name}</div>)}</Box>
+  );
 }

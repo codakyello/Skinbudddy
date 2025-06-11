@@ -150,7 +150,7 @@ function AuthProvider({
         dispatch({ type: "authenticating/finished" });
       }
     })();
-  }, [token]);
+  }, [token, authenticateFn]);
 
   useEffect(() => {
     if (user) {

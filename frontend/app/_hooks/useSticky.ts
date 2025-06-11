@@ -12,7 +12,7 @@ export default function useSticky(position: number) {
     };
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [position]);
 
   return { isSticky };
 }

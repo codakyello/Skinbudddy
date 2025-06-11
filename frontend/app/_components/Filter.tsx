@@ -5,16 +5,18 @@ import { useFilters } from "../_hooks/useFilters";
 import { useState } from "react";
 import CheckBox from "./CheckBox";
 import { useLoadingTransition } from "../_contexts/FullPageLoader";
-
-type Brand = {
-  name: string;
-  _id: string;
-  count: number;
-};
+import { Brand } from "../_utils/types";
 
 type Filter = {
   name: string;
   count: number;
+};
+
+type FilterObj = {
+  title: string;
+  type: string;
+  filters: Filter[];
+  showAll: boolean;
 };
 
 let filters = [
@@ -45,7 +47,7 @@ let filters = [
   },
 ];
 
-export default function Filter({ brands }: { brands: Brand[] }) {
+export default function Filter({ brands }: { brands: Brand[] | undefined }) {
   if (brands)
     filters = [
       ...filters,
@@ -71,8 +73,8 @@ export default function Filter({ brands }: { brands: Brand[] }) {
 
   return (
     <Box>
-      {allFilters.map((filter: any) => (
-        <Box className="border-b-[1px] border-[#e4e4e4] py-[20px]">
+      {allFilters.map((filter: FilterObj, i) => (
+        <Box key={i} className="border-b-[1px] border-[#e4e4e4] py-[20px]">
           <Box className="flex justify-between">
             <h3 className="text-[1.4rem] font-medium">{filter.title}</h3>
 

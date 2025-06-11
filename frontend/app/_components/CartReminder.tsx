@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
 import { Box, Button } from "@chakra-ui/react";
 import { useAuth } from "../_contexts/AuthProvider";
@@ -7,12 +7,9 @@ import useCartSummary from "../_hooks/useCartSummary";
 import { useState } from "react";
 import { TfiClose } from "react-icons/tfi";
 import TransitionLink from "./TransitionLink";
-import { usePathname } from "next/navigation";
 export default function CartReminder() {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const pathname = usePathname();
-  const hasMounted = useRef(false);
 
   const { data: cartSummary } = useCartSummary({
     userId: user?._id,
@@ -30,7 +27,7 @@ export default function CartReminder() {
     if (cartSummary?.cartCount > 0) {
       setIsOpen(true);
     }
-  }, [cartSummary]);
+  }, [cartSummary, isOpen]);
 
   // useEffect(() => {
   //   if (!hasMounted.current) {

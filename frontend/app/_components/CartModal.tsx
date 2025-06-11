@@ -1,10 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
 import { Box } from "@chakra-ui/react";
-import { Cart as CartType } from "../_utils/types";
+// import { Cart as CartType } from "../_utils/types";
 import ClipLoader from "react-spinners/ClipLoader";
 import { useNavSticky } from "../_contexts/Sticky";
 import useUserCart from "../_hooks/useUserCart";
 import { useUser } from "@clerk/nextjs";
+import { Cart } from "../_utils/types";
 
 export default function CartModal() {
   const { user } = useUser();
@@ -20,7 +21,7 @@ export default function CartModal() {
           <ClipLoader color="#000" size={50} />
         </Box>
       ) : cart && cart?.length > 0 ? (
-        cart.map((item: any, index: number) => (
+        cart.map((item: Cart, index: number) => (
           <p className="text-black" key={index}>
             {item?.product?.name}
           </p>

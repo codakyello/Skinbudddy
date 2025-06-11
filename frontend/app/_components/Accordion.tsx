@@ -3,7 +3,6 @@ import React, {
   createContext,
   useContext,
   useState,
-  useCallback,
   ReactElement,
   cloneElement,
   ReactNode,
@@ -13,11 +12,11 @@ import React, {
 // import { ChevronDown, ChevronUp } from "lucide-react";
 
 // Types
-interface AccordionState {
-  [accordionId: string]: {
-    [itemId: string]: boolean;
-  };
-}
+// interface AccordionState {
+//   [accordionId: string]: {
+//     [itemId: string]: boolean;
+//   };
+// }
 
 interface AccordionContextValue {
   open: (name: string) => void;
@@ -76,22 +75,22 @@ export const Accordion: React.FC<AccordionProviderProps> = ({ children }) => {
 };
 
 // Accordion Component Props
-interface AccordionProps {
-  id: string;
-  children: React.ReactNode;
-  className?: string;
-  allowMultiple?: boolean;
-}
+// interface AccordionProps {
+//   id: string;
+//   children: React.ReactNode;
+//   className?: string;
+//   allowMultiple?: boolean;
+// }
 
-interface AccordionItemProps {
-  id: string;
-  title: string;
-  children: React.ReactNode;
-  className?: string;
-  headerClassName?: string;
-  contentClassName?: string;
-  disabled?: boolean;
-}
+// interface AccordionItemProps {
+//   id: string;
+//   title: string;
+//   children: React.ReactNode;
+//   className?: string;
+//   headerClassName?: string;
+//   contentClassName?: string;
+//   disabled?: boolean;
+// }
 
 export function AccordionOpen({
   children,

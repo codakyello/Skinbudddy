@@ -19,7 +19,7 @@ export function CreateConvexUser() {
       name: user.fullName || "",
       imageUrl: user.imageUrl,
     });
-  }, [isSignedIn, user]);
+  }, [isSignedIn, user, createUser]);
 
   return null;
 }

@@ -10,8 +10,9 @@ import {
   AccordionOpen,
 } from "./Accordion";
 import useSticky from "../_hooks/useSticky";
+import { Brand } from "../_utils/types";
 
-export default function Product({ brands }: { brands: any }) {
+export default function Product({ brands }: { brands: Brand[] | undefined }) {
   const { isSticky: isNavSticky } = useNavSticky();
   const { isSticky } = useSticky(96);
 

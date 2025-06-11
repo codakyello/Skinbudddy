@@ -8,7 +8,6 @@ import Input from "./Input";
 import Button from "./Button";
 import CheckBox from "./CheckBox";
 import { useState } from "react";
-import { login as loginFn, singUp } from "../_lib/data-service";
 import { toast } from "sonner";
 // import { useQueryClient } from "@tanstack/react-query";
 import SpinnerMini from "./SpinnerMini";
@@ -300,7 +299,7 @@ function SignUp({
   const [isLoading, setIsLoading] = useState(false);
   // const { login } = useAuth();
   const { signUp } = useSignUp();
-  const { setActive } = useClerk();
+  // const { setActive } = useClerk();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

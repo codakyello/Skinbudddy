@@ -11,8 +11,9 @@ import { usePathname } from "next/navigation";
 import { useNavSticky } from "../_contexts/Sticky";
 
 export default function NavBar() {
+  const pathname = usePathname();
+
   function isActive(url: string): boolean {
-    const pathname = usePathname();
     return pathname.toLowerCase() === url.toLowerCase();
   }
 
