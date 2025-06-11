@@ -5,21 +5,9 @@ import { useFilters } from "../_hooks/useFilters";
 import { useState } from "react";
 import CheckBox from "./CheckBox";
 import { useLoadingTransition } from "../_contexts/FullPageLoader";
-import { Brand } from "../_utils/types";
+import { Brand, Filter as FilterType, FilterObj } from "../_utils/types";
 
-type Filter = {
-  name: string;
-  count: number;
-};
-
-type FilterObj = {
-  title: string;
-  type: string;
-  filters: Filter[];
-  showAll: boolean;
-};
-
-let filters = [
+let filters: FilterObj[] = [
   {
     title: "Product Type",
     type: "category",
@@ -90,7 +78,7 @@ export default function Filter({ brands }: { brands: Brand[] | undefined }) {
                   ? filter.filters
                   : filter.filters.slice(0, 6);
 
-                return displayedFilters.map((item: Filter, i: number) => {
+                return displayedFilters.map((item: FilterType, i: number) => {
                   const isActive = activeFilters.some((i) => {
                     return i.name === item.name && i.type === filter.type;
                   });
@@ -138,7 +126,7 @@ export function FilterItem({
 }: {
   handleFilter: () => void;
   type: string;
-  filter: { name: string; count: number };
+  filter: FilterType;
   isActive: boolean;
 }) {
   return (

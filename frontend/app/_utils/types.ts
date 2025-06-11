@@ -6,12 +6,28 @@ type Size = {
   stock?: number;
 };
 
+// type Filter = {
+//   name: string;
+//   count?: number;
+// };
 export type Brand = {
   name: string;
   logoUrl?: string;
   description?: string;
-  count: number;
-  createdAt: number;
+  count?: number;
+  createdAt?: number;
+};
+
+export type Filter = {
+  name: string;
+  count?: number;
+};
+
+export type FilterObj = {
+  title: string;
+  type: string;
+  filters: Filter[];
+  showAll: boolean;
 };
 
 export type Product = {

@@ -26,7 +26,7 @@ export default function NavBar() {
   const { cart } = useUserCart(user?.id);
 
   const totalCartItems =
-    cart?.reduce((acc, item, index) => {
+    cart?.reduce((acc, item) => {
       return acc + item.quantity;
     }, 0) || 0;
 
