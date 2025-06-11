@@ -1,17 +1,30 @@
 import { Box } from "@chakra-ui/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { GoCheck } from "react-icons/go";
 
-export default function CheckBox({ name, id }: { name: string; id: string }) {
+export default function CheckBox({
+  name,
+  id,
+  checked,
+}: {
+  name: string;
+  id: string;
+  checked: boolean;
+}) {
   const [isChecked, setIsChecked] = useState(false);
+
+  useEffect(() => {
+    setIsChecked(checked);
+  }, [checked]);
 
   return (
     <Box>
+      {/* disable internal state behaviour if external state is present */}
       <input
         type="checkbox"
         id={id}
         name={name}
-        onChange={(e) => setIsChecked(e.target.checked)}
+        onChange={(e) => (checked ? setIsChecked(e.target.checked) : "")}
         className="hidden"
       />
 

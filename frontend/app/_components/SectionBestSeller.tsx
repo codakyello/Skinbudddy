@@ -1,34 +1,85 @@
-/* eslint-disable jsx-a11y/alt-text */
-/* eslint-disable @next/next/no-img-element */
-import { Box } from "@chakra-ui/react";
+"use client";
 import ProductCard from "./ProductCard";
 import { Product } from "../_utils/types";
-import { getAllProducts } from "../_lib/actions";
+import Section from "./Section";
+import { Box } from "@chakra-ui/react";
+import useProducts from "../_hooks/useProducts";
+import ProductCardSkeleton from "./ProductCardSkeleton";
+// import { getAllProducts } from "../_lib/actions";
 
-export default async function SectionBestSeller() {
-  const bestSellers = await getAllProducts({
-    sortBy: "best-seller",
-    limit: 8,
-    page: 1,
-  });
+export default function SectionBestSeller() {
+  // const bestSellers = await getAllProducts({
+  //   sortBy: "best-seller",
+  //   limit: 8,
+  //   page: 1,
+  // });
 
-  if (!bestSellers) return null;
+  // const bestSellers = [
+  //   {
+  //     images: ["images/categories--1.png"],
+  //     name: "FaceFacts face wash",
+  //     price: 124400,
+  //     _id: "1",
+  //   },
+  //   {
+  //     images: ["images/categories--2.png"],
+  //     name: "FaceFacts face wash",
+  //     price: 130000,
+  //     _id: "2",
+  //   },
+  //   {
+  //     images: ["images/categories--3.png"],
+  //     name: "FaceFacts face wash",
+  //     price: 140000,
+  //     _id: "3",
+  //   },
+  //   {
+  //     images: ["images/categories--4.png"],
+  //     name: "FaceFacts face wash",
+  //     price: 140000,
+  //     _id: "4",
+  //   },
+  //   {
+  //     images: ["images/categories--3.png"],
+  //     name: "FaceFacts face wash",
+  //     price: 140000,
+  //     _id: "5",
+  //   },
+  //   {
+  //     images: ["images/categories--3.png"],
+  //     name: "FaceFacts face wash",
+  //     price: 140000,
+  //     _id: "6",
+  //   },
+  // ];
+
+  const {
+    products: bestSellers,
+    isPending,
+    error,
+  } = useProducts({ filters: { isBestseller: true }, sort: {} });
+
+  if (!bestSellers && !isPending) return null;
 
   return (
-    <Box className="my-[10rem] max-w-[120rem] mx-auto px-[2rem] pb-[40rem]">
-      <h1 className="text-[4rem] text-[#000] font-playfair ">
-        Explore Our Best Seller
-      </h1>
-
-      <p className=" mb-[3rem] text-[1.2rem]  text-[#999]">
-        Our most-loved products handpicked by beauty enthusiasts like you.
-      </p>
-
-      <Box className="grid grid-cols-[repeat(auto-fill,minmax(25rem,1fr))] gap-x-[1rem] gap-y-[4rem]">
-        {bestSellers.map((product: Product, i: number) => (
-          <ProductCard key={i} product={product} />
+    <Section
+      title="bestsellers"
+      description="Our most loved products handpicked by beauty enthusiasts like you"
+    >
+      {isPending &&
+        Array.from({ length: 5 }).map((_, i) => (
+          <Box className="min-w-[32rem]">
+            <ProductCardSkeleton />
+          </Box>
         ))}
-      </Box>
-    </Box>
+
+      {!isPending &&
+        !error &&
+        bestSellers?.map((product: Product, i: number) => (
+          <Box className="min-w-[32rem]">
+            <ProductCard key={i} product={product} />
+          </Box>
+        ))}
+    </Section>
   );
 }

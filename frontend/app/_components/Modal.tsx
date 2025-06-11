@@ -77,7 +77,7 @@ export function ModalHoverOpen({
   name,
 }: {
   children: ReactElement;
-  openCondition: boolean;
+  openCondition?: boolean;
   name: string;
 }) {
   const { hovering, setHovering, open, close } = useModal();
@@ -140,6 +140,17 @@ export function ModalWindow({
         ${position === "right" ? "items-end justify-end" : ""}`}
     >
       <Box
+        onMouseLeave={() => {
+          if (openType !== "hover") return;
+          setHovering(false);
+          close();
+        }}
+        onMouseEnter={() => {
+          // set a state e.g hovering
+          setHovering(true);
+          console.log("setting hovering true");
+          console.log("hovering true");
+        }}
         className={`modal-box 
         ${position === "center" ? "center-modal" : ""}
         ${position === "top" ? "top-modal" : ""}
@@ -150,15 +161,6 @@ export function ModalWindow({
       >
         {cloneElement(children, {
           onClose: close,
-          onMouseLeave: () => {
-            if (openType !== "hover") return;
-            setHovering(false);
-            close();
-          },
-          onMouseEnter: () => {
-            // set a state e.g hovering
-            setHovering(true);
-          },
         })}
       </Box>
     </Box>

@@ -3,54 +3,83 @@
 "use client";
 import { Box } from "@chakra-ui/react";
 import { Product } from "../_utils/types";
+// import Tag from "./Tag";
+import { formatNumber, getTagType } from "../_utils/utils";
 import Tag from "./Tag";
-import useCustomMutation from "../_hooks/useCustomMutation";
-import { createCartItem } from "../_lib/data-service";
-import { useAuth } from "../_contexts/AuthProvider";
+import { CiHeart } from "react-icons/ci";
+import { useAuth, useUser } from "@clerk/nextjs";
+import { mutation } from "@/convex/_generated/server";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
 
-export default function ProductCard({ product }: { product: Product }) {
-  const { user } = useAuth();
-  const { mutate: addToCart, isPending } = useCustomMutation(createCartItem);
+// import useCustomMutation from "../_hooks/useCustomMutation";
+// import { createCartItem } from "../_lib/data-service";
+// import { useAuth } from "../_contexts/AuthProvider";
+// import { toast } from "sonner";
+
+export default function ProductCard({
+  product,
+}: {
+  product: Product;
+  className?: string;
+}) {
+  // const { user } = useAuth();
+  // const { mutate: addToCart, isPending } = useCustomMutation(createCartItem);
+  const addToCart = useMutation(api.cart.createCart);
+  const { user } = useUser();
+
+  const handleAddToCart = async () => {
+    if (user)
+      try {
+        const cartId = await addToCart({
+          userId: user.id,
+          productId: product._id,
+          quantity: 1,
+        });
+        toast.success(`Added to cart with ID: ${cartId}`);
+        // Optional: Show success message
+      } catch (error: any) {
+        toast.error(`Failed to add to cart: ${error.message}`);
+        // Optional: Show error message
+      }
+  };
+
+  const { getToken, userId } = useAuth();
+
+  const isDiscounted = product.discount;
+
   return (
-    <Box className="relative">
-      <Box className="group relative cursor-pointer w-full aspect-[4.5/5] overflow-hidden">
+    <Box>
+      <Box className="group relative cursor-pointer w-full aspect-[4/5] ">
         <img className="object-cover w-full h-full" src={product.images[0]} />
 
-        <button
-          className="absolute text-[#fff] left-0 w-full transition-all duration-[100ms] bottom-[-50px] group-hover:bottom-[1.5rem] text-[1.2rem] py-[1rem] bg-[var(--color-primary)]"
-          onClick={() => {
-            if (user?._id)
-              addToCart(
-                { userId: user?._id, productId: product._id },
-                {
-                  onSuccess: () => {
-                    toast.success("Product added to cart successfully!");
-                  },
-                  onError: (error) => {
-                    toast.error(error.message);
-                    console.log(error);
-                  },
-                }
-              );
-          }}
-        >
-          {isPending ? "...Adding" : "ADD TO CART"}
+        <Tag type={getTagType(product)} />
+
+        <button className="absolute top-4 right-4" onClick={handleAddToCart}>
+          <CiHeart className="w-[20px] h-[20px]" />
         </button>
       </Box>
 
-      <p className="uppercase text-[1.2rem] font-medium text-[#999] mt-[1rem] mb-[.5rem]">
-        Vita Naturals
-      </p>
-
-      <h2 className="text-[#000] leading-tight text-[1.6rem] mb-[.5rem] ">
+      <h2 className="text-[#222222] font-inter mt-[1.6rem] tracking-[0.25px] leading-tight text-[1.3rem] mb-[.5rem] ">
         {product.name}
       </h2>
 
-      <p className="font-medium">₦{product.price}</p>
+      <Box className="flex gap-[15px] items-center text-[1.4rem]">
+        <p
+          className={` font-dmsans ${isDiscounted && "line-through text-[#888]"}  text-[#222222]`}
+        >
+          {formatNumber.format(product.price)}
+        </p>
 
-      {/* Tag */}
-      <Tag tag="Best seller" />
+        {isDiscounted ? (
+          <p className="text-[var(--color-red)]">
+            {formatNumber.format(product.price - (product.discount || 0))}
+          </p>
+        ) : (
+          ""
+        )}
+      </Box>
     </Box>
   );
 }

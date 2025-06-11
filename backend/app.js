@@ -12,8 +12,10 @@ const helmet = require("helmet");
 // const AppError = require("./utils/appError");
 // const globalErrorHandler = require("./controllers/errorController");
 const userRoute = require("./routes/userRoutes");
+const adminRoute = require("./routes/adminRoutes");
 const productRoute = require("./routes/productRoutes");
 const announcementRoute = require("./routes/announcementRoutes");
+const brandRoute = require("./routes/brandRoutes");
 
 const app = express();
 
@@ -45,8 +47,10 @@ app.use(
 app.use(express.static(`${__dirname}/public`));
 
 app.use("/api/v1/users", userRoute);
+app.use("/api/v1/admins", adminRoute);
 app.use("/api/v1/products", productRoute);
 app.use("/api/v1/announcements", announcementRoute);
+app.use("/api/v1/brands", brandRoute);
 
 app.get("/", (req, res) => {
   res.send("Skin Buddy");

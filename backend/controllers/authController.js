@@ -232,17 +232,39 @@ exports.userSignUp = catchAsync(async (req, res) => {
   }
 
   // Create a new user
-  user = await User.create({ ...req.body, authType: req.body.authType });
+  const newUser = await User.create({
+    ...req.body,
+    authType: req.body.authType,
+  });
 
-  createSendToken(user, res);
+  createSendToken(newUser, res);
 });
 
 exports.adminSignUp = catchAsync(async (req, res) => {
-  await Admin.create(req.body);
+  const { email, password } = req.body;
 
-  res.status(200).json({
-    message: "sign Up successful",
+  // if (!email) throw new AppError("Please provide an email address");
+
+  const admin = await Admin.findOne({ email });
+  if (admin) {
+    if (admin.authType === "credentials") {
+      throw new AppError(
+        "Admin already exists. Please login with your credentials",
+        400
+      );
+    } else {
+      throw new AppError(
+        `Admin already exists. Please sign in using ${admin.authType}`,
+        400
+      );
+    }
+  }
+
+  const newAdmin = await Admin.create({
+    ...req.body,
+    authType: password ? "credentials" : req.body.authType,
   });
+  createSendToken(newAdmin, res);
 });
 
 module.exports.adminSignIn = catchAsync(async function (req, res) {

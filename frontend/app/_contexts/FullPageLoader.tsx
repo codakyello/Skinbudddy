@@ -27,15 +27,19 @@ export function FullPageLoader({ children }: { children: React.ReactNode }) {
   const startNavigation = (cb: () => void) => {
     startTransition(() => {
       cb();
+
+      // Delay showing loader until after a short timeout
       timeoutRef.current = setTimeout(() => {
-        setIsNavigating(true);
-      }, 1000);
+        if (isPending) {
+          setIsNavigating(true);
+        }
+      }, 300); // Show only if transition lasts more than 300ms
     });
   };
 
   useEffect(() => {
     if (!isPending) {
-      console.log("finished transition");
+      // Hide loader and clear timer
       setIsNavigating(false);
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);

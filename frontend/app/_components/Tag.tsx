@@ -1,9 +1,14 @@
 import { Box } from "@chakra-ui/react";
 
-export default function Tag({ tag }: { tag: string }) {
-  return (
-    <Box className="absolute top-[1rem] uppercase right-[1rem] text-[.9rem] px-[.8rem] py-[.2rem] rounded-full border border-[var(--color-primary)]">
-      {tag}
-    </Box>
-  );
+export default function Tag({ type }: { type: string | undefined }) {
+  if (type)
+    return (
+      <Box
+        className={`absolute bg-white text-black bottom-[10px] left-[10px] text-[1.2rem] px-[8px] py-[5px] font-medium font-inter`}
+      >
+        {type === "isNew" && "New"}
+        {type === "isBestseller" && "Bestseller"}
+        {type === "isDiscount" && "Sale!"}
+      </Box>
+    );
 }

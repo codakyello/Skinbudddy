@@ -1,3 +1,5 @@
+import { Product } from "./types";
+
 export const URL = "https://skinbudddy.vercel.app/api/v1";
 
 export const DEV_URL = "http://localhost:5000/api/v1";
@@ -34,4 +36,28 @@ export function validatePassword(
     return "Password must be at least 8 characters";
 
   return null;
+}
+
+export const formatNumber = new Intl.NumberFormat("en-NG", {
+  style: "currency",
+  currency: "NGN",
+  minimumFractionDigits: 0,
+});
+
+export function getOrCreateAnonymousId(): string {
+  const key = "anon_user_id";
+  let id = localStorage.getItem(key);
+
+  if (!id) {
+    id = crypto.randomUUID(); // or use nanoid
+    localStorage.setItem(key, id);
+  }
+
+  return id;
+}
+
+export function getTagType(product: Product) {
+  if (product.discount) return "isDiscount";
+  if (product.isNew) return "isNew";
+  if (product.isBestseller) return "isBestseller";
 }

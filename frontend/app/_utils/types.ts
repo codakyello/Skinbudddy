@@ -1,9 +1,24 @@
+import { Id } from "@/convex/_generated/dataModel";
+
 export type Product = {
-  imageUrl: string | undefined;
-  _id: string;
+  _id: Id<"products">;
   name: string;
+  description: string;
   price: number;
+  stock: number;
+  brandId: string;
   images: string[];
+  promoImage?: string;
+  createdAt: number;
+  isNew?: boolean;
+  isBestseller?: boolean;
+  isTrending?: boolean;
+  discount?: number;
+  sizes?: {
+    size: string;
+    price?: number;
+    stock?: number;
+  }[];
 };
 
 export type Cart = {

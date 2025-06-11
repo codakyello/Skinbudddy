@@ -7,9 +7,9 @@ export default function useSticky(position: number) {
     const handleScroll = () => {
       const offset = window.scrollY;
       console.log(offset);
+
       setIsSticky(offset > position);
     };
-
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);

@@ -1,20 +1,16 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import AuthProvider from "./_contexts/AuthProvider";
-import { authenticate } from "./_lib/data-service";
-import QueryProvider from "./_contexts/QueryProvider";
 import Announcement from "./_components/Announcement";
-import { FullPageLoader } from "./_contexts/FullPageLoader";
 import { Toaster } from "sonner";
-import NavBar from "./_components/NavBar";
-import Modal from "./_components/Modal";
-import CartReminder from "./_components/CartReminder";
+import Providers from "./_contexts/Providers";
+// import SmoothLayout from "./_components/SmoothLayout";
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",
   weight: "100 900",
 });
+
 const geistMono = localFont({
   src: "./fonts/GeistMonoVF.woff",
   variable: "--font-geist-mono",
@@ -37,19 +33,8 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} min-h-screen ${geistMono.variable} antialiased`}
       >
-        <Modal>
-          <QueryProvider>
-            <AuthProvider authenticateFn={authenticate}>
-              <FullPageLoader>
-                <CartReminder />
-                <Announcement />
-                <NavBar />
-                {children}
-              </FullPageLoader>
-            </AuthProvider>
-          </QueryProvider>
-        </Modal>
-
+        <Announcement />
+        <Providers>{children}</Providers>
         <Toaster
           richColors
           closeButton

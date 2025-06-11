@@ -12,9 +12,10 @@ import { login as loginFn, singUp } from "../_lib/data-service";
 import { toast } from "sonner";
 // import { useQueryClient } from "@tanstack/react-query";
 import SpinnerMini from "./SpinnerMini";
-import { useAuth } from "../_contexts/AuthProvider";
 import { validatePassword } from "../_utils/utils";
 import { validateEmail } from "../_utils/utils";
+import { useClerk, useSignIn, useSignUp } from "@clerk/clerk-react";
+import { useAuth } from "@clerk/nextjs";
 
 type FormError = {
   email?: string | null;
@@ -24,7 +25,9 @@ type FormError = {
 export default function AuthModal({ onClose }: { onClose?: () => void }) {
   const [hasAccount, setHasAccount] = useState(true);
 
-  const { authenticated, logout } = useAuth();
+  // const { authenticated, logout } = useAuth();
+
+  const { isSignedIn, signOut } = useAuth();
 
   const handleHasAccount = () => {
     setHasAccount(!hasAccount);
@@ -84,9 +87,9 @@ export default function AuthModal({ onClose }: { onClose?: () => void }) {
         />
       </Box>
 
-      {authenticated ? (
+      {isSignedIn ? (
         <div className="text-black text-[2rem] font-medium">
-          <button onClick={logout}>Logout</button>
+          <button onClick={() => signOut()}>Logout</button>
         </div>
       ) : hasAccount ? (
         <SignIn onClose={onClose} handleHasAccount={handleHasAccount} />
@@ -108,14 +111,20 @@ function SignIn({
     email: "",
     password: "",
   });
+
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+
+  // const { login } = useAuth();
+  const { signIn } = useSignIn();
+  const { setActive } = useClerk();
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
 
+    //frontend validation
     const emailError = validateEmail(email as string);
     const passwordError = validatePassword(password as string, {
       signUp: false,
@@ -123,12 +132,20 @@ function SignIn({
     setErrors({ email: emailError, password: passwordError });
     if (emailError || passwordError) return;
 
-    console.log(email, password);
     try {
       setIsLoading(true);
-      const { user, token } = await loginFn({ email, password });
+      if (!signIn) {
+        toast.error("Sign in is not ready. Please try again.");
+        setIsLoading(false);
+        return;
+      }
+      const result = await signIn.create({
+        identifier: email,
+        password,
+      });
+      await setActive({ session: result.createdSessionId });
       toast.success("Signed in successfully");
-      login(user, token);
+      // login(user, token);
       onClose?.();
     } catch (err) {
       console.error(err);
@@ -281,7 +298,10 @@ function SignUp({
     password: "",
   });
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  // const { login } = useAuth();
+  const { signUp } = useSignUp();
+  const { setActive } = useClerk();
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -297,9 +317,34 @@ function SignUp({
 
     try {
       setIsLoading(true);
-      const { user, token } = await singUp({ email, password });
-      toast.success("Signed up successfully");
-      login(user, token);
+      // const { user, token } = await singUp({ email, password });
+      if (!signUp) {
+        toast.error("Sign in is not ready. Please try again.");
+        setIsLoading(false);
+        return;
+      }
+      // 1. Provide email and optional password
+      await signUp.create({
+        emailAddress: email,
+        password,
+      });
+
+      // 2. Prepare email verification (send code)
+      await signUp.prepareEmailAddressVerification({
+        strategy: "email_link",
+        redirectUrl: "http://localhost:3000",
+      });
+
+      // 3. Show a form to collect the code from the user, then verify:
+      // await signUp.attemptEmailAddressVerification({
+      //   code: "123456",
+      // });
+
+      // 4. Finish the sign-up process
+      // await signUp.finishSignUp();
+
+      toast.success("Linked sent to your email");
+      // login(user, token);
       onClose?.();
     } catch (err) {
       console.error(err);

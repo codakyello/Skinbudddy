@@ -10,11 +10,9 @@ import TransitionLink from "./TransitionLink";
 import { usePathname } from "next/navigation";
 export default function CartReminder() {
   const { user } = useAuth();
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
   const hasMounted = useRef(false);
-
-  console.log(pathname);
 
   const { data: cartSummary } = useCartSummary({
     userId: user?._id,
@@ -23,25 +21,31 @@ export default function CartReminder() {
   // This is running on initial render and i dont want it to run on initial render
 
   useEffect(() => {
-    if (!hasMounted.current) {
-      hasMounted.current = true;
-      return;
-    }
-
     // Only close if it's currently open
     if (isOpen) {
       console.log("closing cart reminder due to route change");
       setIsOpen(false);
     }
-  }, [pathname, isOpen]);
 
-  console.log(isOpen);
+    if (cartSummary?.cartCount > 0) {
+      setIsOpen(true);
+    }
+  }, [cartSummary]);
 
-  if (cartSummary?.cartCount > 0)
+  // useEffect(() => {
+  //   if (!hasMounted.current) {
+  //     hasMounted.current = true;
+  //     return;
+  //   }
+
+  //   setIsOpen(false);
+  // }, [pathname]);
+
+  if (isOpen)
     return (
       <Box
         className={`fixed shadow-sm flex top-[8rem] gap-[16px] right-[4.5rem] p-[16px] bg-white z-[9999]  ${
-          isOpen ? "cart-reminder-enter" : "cart-reminder-exit"
+          isOpen && "cart-reminder-enter"
         }`}
       >
         <Box className="w-[10rem] h-[12rem] ">

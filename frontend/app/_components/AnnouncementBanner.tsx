@@ -22,7 +22,7 @@ export default function AnnouncementBanner({
   if (!announcements) return null;
 
   return (
-    <Box className="bg-[var(--color-primary)] font-dmSans text-[1.2rem] flex items-center justify-center h-[4rem] text-[#fff]">
+    <Box className="bg-[#000] font-dmSans text-[1.2rem] flex items-center justify-center h-[35px] text-[#fff]">
       <AnimatePresence mode="wait">
         <motion.p
           key={index}
@@ -32,7 +32,7 @@ export default function AnnouncementBanner({
           transition={{ duration: 0.2, ease: "easeIn" }}
           className="absolute"
         >
-          {announcements[index].title}
+          {announcements?.[index]?.title}
         </motion.p>
       </AnimatePresence>
     </Box>
