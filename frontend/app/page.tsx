@@ -7,8 +7,6 @@ import { Box } from "@chakra-ui/react";
 import SectionSets from "./_components/SectionSets";
 import Image from "next/image";
 import NewProductImageCarousel from "./_components/NewProductImageCarousel";
-import Button from "./_components/Button";
-import Link from "next/link";
 import { Footer } from "./_components/Footer";
 
 export default async function HomePage() {
