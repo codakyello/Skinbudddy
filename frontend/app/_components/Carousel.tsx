@@ -3,6 +3,7 @@ import { Box } from "@chakra-ui/react";
 import { useState, useEffect, useRef } from "react";
 // import { FaArrowLeft, FaArrowRight } from "react-icons/fa";
 import Image from "next/image";
+import useDeviceDetection from "../_hooks/useDeviceDetection";
 
 export default function Carousel({
   className,
@@ -14,6 +15,10 @@ export default function Carousel({
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const [index, setIndex] = useState(0);
+
+  const { isDesktop, isTablet } = useDeviceDetection();
+
+  console.log(isDesktop, "desktop", isTablet, "tablet");
 
   useEffect(() => {
     intervalRef.current = setInterval(() => {
@@ -28,9 +33,7 @@ export default function Carousel({
 
   return (
     <Box
-      className={`relative h-[65rem] animate-fade-in object-cover bg-center ${
-        className
-      }`}
+      className={`relative ${isDesktop ? "h-[100rem]" : "h-[65rem]"} w-full animate-fade-in ${className}`}
       //   style={{
       //     backgroundImage: `linear-gradient(to bottom, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.8)), url(${images[index]})`,
       //   }}
@@ -41,6 +44,7 @@ export default function Carousel({
         alt="hero"
         className="object-cover w-full h-full"
       />
+      {/* Image preloader here to preload all of the images down */}
       {/* <Box
         onClick={handlePrev}
         className="absolute top-[50%] left-[10px] translate-y-[-50%] text-[#fff] flex items-center justify-center h-[4.4rem] w-[4.4rem] rounded-full bg-[rgba(0,0,0,0.4)]"
@@ -54,7 +58,6 @@ export default function Carousel({
       >
         <Icon as={FaArrowRight} />
       </Box> */}
-
       {/* <Box className="bottom-[15rem] absolute w-[70rem] ml-[5rem] flex flex-col gap-[2rem]">
               <h1 className="text-[8rem] text-[#fff] leading-[8rem] font-['Playfair_Display']">
                 <span>

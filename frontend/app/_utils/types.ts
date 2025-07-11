@@ -27,7 +27,6 @@ export type FilterObj = {
   title: string;
   type: string;
   filters: Filter[];
-  showAll: boolean;
 };
 
 export type Product = {

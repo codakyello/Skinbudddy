@@ -13,56 +13,78 @@ export const getAllProducts = query({
       })
     ),
 
-    sort: v.optional(
-      v.object({
-        field: v.optional(v.string()),
-        order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
-      })
-    ),
+    sort: v.optional(v.string()),
 
     page: v.optional(v.number()),
 
     search: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db.query("products");
+    const filters = args.filters;
+    const sort = args.sort;
 
-    // for brands
-    // get the id of the brand from the brand name
-    // return only the products that match the brandId
-    // 1) Bestseller
-    if (args.filters) {
-      const { isBestseller, brand, isNew, isTrending, discount } = args.filters;
+    let products = await ctx.db.query("products").collect();
+
+    console.log(filters, sort, "These are filters and sort from backend");
+
+    // 🧪 Apply Filters
+    if (filters) {
+      const { isBestseller, isNew, isTrending, discount, brand } = filters;
 
       if (isBestseller) {
-        // get best seller products
-        const allProducts = await query.collect();
-        // const searchTitle = title.toLowerCase()
-        const bestseller = allProducts.filter(
-          (products) => products.isBestseller
-        );
-
-        return bestseller;
+        products = products.filter((p) => p.isBestseller);
       }
 
       if (isNew) {
-        // get new products
+        products = products.filter((p) => p.isNew);
       }
+
       if (isTrending) {
-        // get trending products
+        products = products.filter((p) => p.isTrending);
       }
 
       if (discount) {
-        // get discount products
+        products = products.filter((p) => p.discount && p.discount > 0);
       }
 
       if (brand) {
-        // get the products
-        // populate with the brand
-        // filter the brand
+        // Optionally, find brand ID by name if needed
+        const brandDocs = await ctx.db
+          .query("brands")
+          .filter((q) => q.eq(q.field("name"), brand))
+          .collect();
+        const brandId = brandDocs[0]?._id;
+        if (brandId) {
+          products = products.filter((p) => p.brandId === brandId);
+        }
       }
     }
-    const products = await ctx.db.query("products").collect();
+
+    // 🧪 Apply Sorting
+    if (sort) {
+      if (sort === "trending") {
+        products.sort(
+          (a, b) => (b.isTrending ? 1 : 0) - (a.isTrending ? 1 : 0)
+        );
+      }
+
+      if (sort === "latest") {
+        products.sort((a, b) => b.createdAt - a.createdAt);
+      }
+
+      // if (sort === "rating") {
+      //   // Add rating field to products if needed
+      //   products.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      // }
+
+      if (sort === "price-asc") {
+        products.sort((a, b) => b.price - a.price);
+      }
+
+      if (sort === "price-desc") {
+        products.sort((a, b) => a.price - b.price);
+      }
+    }
 
     return products;
   },

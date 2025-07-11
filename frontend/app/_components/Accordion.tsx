@@ -1,4 +1,5 @@
 "use client";
+import { Box } from "@chakra-ui/react";
 import React, {
   createContext,
   useContext,
@@ -19,10 +20,10 @@ import React, {
 // }
 
 interface AccordionContextValue {
-  open: (name: string) => void;
   close: () => void;
-  isOpen: string;
-  toggle: (name: string) => void;
+  // openStates: { [key: string]: boolean };
+  toggle: () => void;
+  isOpen: boolean;
 }
 
 // Context
@@ -47,24 +48,30 @@ interface AccordionProviderProps {
 
 // Provider Component
 export const Accordion: React.FC<AccordionProviderProps> = ({ children }) => {
-  const [isOpen, setOpen] = useState("");
+  const [isOpen, setOpen] = useState(false);
+  // const [openStates, setOpenStates] = useState<{ [key: string]: boolean }>({});
 
   const open = setOpen;
-  const close = () => {
-    setOpen("");
-  };
-
-  function toggle(name: string) {
-    //   if (isOpen !== name) open(name);
-    //   else close();
-    open((prev) => (prev === name ? "" : name));
+  // const close = () => {
+  //   setOpen("");
+  // };
+  // const toggle = (type: string) => {
+  // setOpenStates((prev) => ({
+  //   ...prev,
+  //   [type]: !prev[type],
+  // }));
+  // };
+  function toggle() {
+    // //   if (isOpen !== name) open(name);
+    // //   else close();
+    // open((prev) => (prev === name ? "" : name));
+    open((prev) => !prev);
   }
 
   const value: AccordionContextValue = {
-    open,
     close,
-    isOpen,
     toggle,
+    isOpen,
   };
 
   return (
@@ -92,41 +99,30 @@ export const Accordion: React.FC<AccordionProviderProps> = ({ children }) => {
 //   disabled?: boolean;
 // }
 
-export function AccordionOpen({
-  children,
-  name,
-}: {
-  children: ReactElement;
-  name: string;
-}) {
+export function AccordionOpen({ children }: { children: ReactElement }) {
   const context = useContext(AccordionContext);
 
   if (!context) return null;
 
   const { toggle } = context;
 
-  return cloneElement(children, {
-    onClick: () => {
-      toggle(name);
-    },
-    openName: name,
-  });
+  return (
+    <Box className="cursor-pointer">
+      {cloneElement(children, {
+        onClick: toggle,
+      })}
+    </Box>
+  );
 }
 
-export function AccordionBody({
-  name,
-  children,
-}: {
-  name: string;
-  children: ReactNode;
-}) {
+export function AccordionBody({ children }: { children: ReactNode }) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   const { isOpen } = useAccordion();
   useEffect(() => {
     if (contentRef.current) {
       const el = contentRef.current;
-      if (isOpen === name) {
+      if (isOpen) {
         el.style.maxHeight = el.scrollHeight + "px";
       } else {
         el.style.maxHeight = "0px";
@@ -146,20 +142,13 @@ export function AccordionBody({
   );
 }
 
-export function AccordionIcon({
-  onClick,
-  openName,
-}: {
-  onClick?: () => void;
-  openName?: string;
-}) {
+export function AccordionIcon() {
   const { isOpen } = useAccordion();
 
   return (
     <button
-      onClick={onClick}
       className={`transition-transform duration-500 ease-in-out ${
-        openName === isOpen ? "rotate-[360deg]" : "rotate-0"
+        isOpen ? "rotate-[360deg]" : "rotate-0"
       }`}
     >
       <svg
@@ -184,7 +173,7 @@ export function AccordionIcon({
           d="M10.5 1V19H9.5V1H10.5Z"
           fill="#666666"
           className={`transition-all duration-500 ease-in-out origin-center ${
-            openName === isOpen ? "scale-0 opacity-0" : "scale-100 opacity-100"
+            isOpen ? "scale-0 opacity-0" : "scale-100 opacity-100"
           }`}
         />
       </svg>

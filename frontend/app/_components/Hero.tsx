@@ -1,17 +1,11 @@
 "use client";
-
-import useDeviceDetection from "../_hooks/useDeviceDetection";
 import { useNavSticky } from "../_contexts/Sticky";
 import Carousel from "./Carousel";
 
 export default function Hero() {
   const { isSticky } = useNavSticky();
 
-  console.log(isSticky, "It is sticky");
-
-  const { isMobile, isTablet, isDesktop } = useDeviceDetection();
-
-  console.log(isMobile, isTablet, isDesktop);
+  // const { isMobile, isTablet, isDesktop } = useDeviceDetection();
 
   //   const [interval, setInterval] = useState<NodeJS.Timeout | null>(null);
 

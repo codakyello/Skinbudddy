@@ -6,10 +6,12 @@ export default function CheckBox({
   name,
   id,
   checked,
+  className,
 }: {
   name: string;
   id: string;
   checked?: boolean;
+  className?: string;
 }) {
   const [isChecked, setIsChecked] = useState(false);
 
@@ -30,7 +32,7 @@ export default function CheckBox({
 
       <label
         htmlFor={id}
-        className="h-[22px] aspect-square border border-[#000] flex items-center justify-center cursor-pointer"
+        className={`${className} h-[22px] aspect-square border border-[#000] flex items-center justify-center cursor-pointer`}
       >
         {isChecked ? <GoCheck className="text-[20px] text-[#000]" /> : ""}
       </label>

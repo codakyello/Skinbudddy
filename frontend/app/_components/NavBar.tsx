@@ -9,6 +9,7 @@ import useUserCart from "../_hooks/useUserCart";
 import { useUser } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
 import { useNavSticky } from "../_contexts/Sticky";
+import { useConvexUser } from "./CreateConvexUser";
 
 export default function NavBar() {
   const pathname = usePathname();
@@ -21,9 +22,9 @@ export default function NavBar() {
 
   const { isOpen } = useModal();
 
-  const { user } = useUser();
+  const { userId } = useConvexUser();
 
-  const { cart } = useUserCart(user?.id);
+  const { cart } = useUserCart(userId || undefined);
 
   const totalCartItems =
     cart?.reduce((acc, item) => {

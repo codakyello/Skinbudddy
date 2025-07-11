@@ -16,7 +16,7 @@ export default defineSchema({
     price: v.number(),
     stock: v.number(),
     brandId: v.id("brands"),
-    // imageUrl: v.optional(v.string()),
+    categories: v.array(v.id("categories")), // imageUrl: v.optional(v.string()),
     images: v.array(v.string()),
     promoImage: v.optional(v.string()),
     createdAt: v.number(),
@@ -84,4 +84,6 @@ export default defineSchema({
     productIds: v.array(v.id("products")),
     createdAt: v.number(),
   }),
+
+  categories: defineTable({}),
 });

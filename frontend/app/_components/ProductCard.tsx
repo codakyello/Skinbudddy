@@ -11,6 +11,7 @@ import { useUser } from "@clerk/nextjs";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
+import { useConvexUser } from "./CreateConvexUser";
 
 // import useCustomMutation from "../_hooks/useCustomMutation";
 // import { createCartItem } from "../_lib/data-service";
@@ -26,13 +27,13 @@ export default function ProductCard({
   // const { user } = useAuth();
   // const { mutate: addToCart, isPending } = useCustomMutation(createCartItem);
   const addToCart = useMutation(api.cart.createCart);
-  const { user } = useUser();
+  const { userId } = useConvexUser();
 
   const handleAddToCart = async () => {
-    if (user)
+    if (userId)
       try {
         const cartId = await addToCart({
-          userId: user.id,
+          userId,
           productId: product._id,
           quantity: 1,
         });

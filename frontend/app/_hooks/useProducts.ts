@@ -18,11 +18,11 @@ export default function useProducts({
     size?: string[];
     price?: { minPrice: string; maxPrice: string };
   };
-  sort?: { order?: "asc" | "desc"; field?: string };
+  sort?: string;
   search?: string;
   page?: number;
 }) {
-  // lets get the filter directly in this hook
+  console.log(filters, sort, "Filters and sort");
   const {
     category = [],
     size = [],
@@ -38,6 +38,7 @@ export default function useProducts({
     error,
   } = useQuery(
     convexQuery(api.products.getAllProducts, {
+      // best practice so we dont send undefined values to backend
       filters: {
         ...(isNew && { isNew }),
         ...(isTrending && { isTrending }),

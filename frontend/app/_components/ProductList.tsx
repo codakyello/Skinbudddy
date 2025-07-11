@@ -8,7 +8,17 @@ import { useFilters } from "../_hooks/useFilters";
 
 export default function ProductList() {
   const { filters } = useFilters();
-  const { products, isPending, error } = useProducts({ filters, sort: {} });
+  const { products, isPending, error } = useProducts({
+    filters: {
+      brand: filters.brand?.[0],
+      category: filters.category,
+      isBestseller: filters.bestseller?.[0] === "true",
+      isDiscounted: filters.discount?.[0] === "true",
+      isTrending: filters.discount?.[0] === "true",
+      size: filters.size,
+    },
+    sort: filters.sort?.[0],
+  });
   const { isSticky } = useSticky(96);
 
   return (

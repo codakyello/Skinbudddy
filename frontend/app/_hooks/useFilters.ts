@@ -12,7 +12,7 @@ export function useFilters() {
 
   Array.from(searchParams.entries()).forEach(([key, value]) => {
     if (filters[key]) {
-      filters[key].push(value);
+      (filters[key] as string[]).push(value);
     } else {
       filters[key] = [value];
     }
@@ -21,13 +21,16 @@ export function useFilters() {
   // console.log(filters, "Before converting to activeFilters");
 
   const activeFilters = Object.entries(filters).flatMap(([key, value]) => {
+    // excludes sort from activeFilters since they are being stored in the same place
+    if (key === "sort") return [];
+
     return value.map((v) => ({
       type: key,
       name: v,
     }));
   });
 
-  console.log(activeFilters, "These are active filters");
+  const activeSort = searchParams.get("sort");
 
   const handleAddFilter = (filterType: string, filter: string) => {
     const existing = params.getAll(filterType);
@@ -35,6 +38,11 @@ export function useFilters() {
       params.append(filterType, filter);
     }
 
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const handleAddSort = (sort: string) => {
+    params.set("sort", sort);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -63,9 +71,11 @@ export function useFilters() {
   };
   return {
     activeFilters,
+    activeSort,
     filters,
     handleAddFilter,
     handleRemoveFilter,
     handleRemoveAllFilters,
+    handleAddSort,
   };
 }
