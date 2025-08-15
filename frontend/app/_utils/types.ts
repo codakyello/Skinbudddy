@@ -30,16 +30,15 @@ export type FilterObj = {
 };
 
 export type Product = {
-  _id: Id<"products">; // or Id<"products"> if using Convex
+  _id: Id<"products"> | string; // or Id<"products"> if using Convex
   name: string;
-  description: string;
+  description?: string;
   price: number;
-  stock: number;
-  brandId: Id<"brands">; // or Id<"brands">
+  stock?: number;
+  brandId?: Id<"brands">; // or Id<"brands">
   images: string[];
   promoImage?: string;
-  createdAt: number;
-
+  createdAt?: number;
   isNew?: boolean;
   isBestseller?: boolean;
   isTrending?: boolean;

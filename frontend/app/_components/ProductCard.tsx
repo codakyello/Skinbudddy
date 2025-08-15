@@ -4,14 +4,16 @@
 import { Box } from "@chakra-ui/react";
 import { Product } from "../_utils/types";
 // import Tag from "./Tag";
-import { formatNumber, getTagType } from "../_utils/utils";
+import { formatPrice, getTagType } from "../_utils/utils";
 import Tag from "./Tag";
 import { CiHeart } from "react-icons/ci";
-import { useUser } from "@clerk/nextjs";
+import { FiEye } from "react-icons/fi";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
-import { useConvexUser } from "./CreateConvexUser";
+import { useConvexUser as useUser } from "../_contexts/CreateConvexUser";
+import Link from "next/link";
+import { Id } from "@/convex/_generated/dataModel";
 
 // import useCustomMutation from "../_hooks/useCustomMutation";
 // import { createCartItem } from "../_lib/data-service";
@@ -27,14 +29,16 @@ export default function ProductCard({
   // const { user } = useAuth();
   // const { mutate: addToCart, isPending } = useCustomMutation(createCartItem);
   const addToCart = useMutation(api.cart.createCart);
-  const { userId } = useConvexUser();
+  const { userId } = useUser();
 
-  const handleAddToCart = async () => {
+  const handleAddToCart = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
     if (userId)
       try {
         const cartId = await addToCart({
           userId,
-          productId: product._id,
+          productId: product._id as Id<"products">,
           quantity: 1,
         });
         toast.success(`Added to cart with ID: ${cartId}`);
@@ -47,38 +51,64 @@ export default function ProductCard({
   };
 
   const isDiscounted = product.discount;
+  const imageUrl = product.images?.[0] || "/placeholder.png";
 
   return (
-    <Box>
-      <Box className="group relative cursor-pointer w-full aspect-[4/5] ">
-        <img className="object-cover w-full h-full" src={product.images[0]} />
+    <Box className="relative overflow-hidden min-h-[580px] h-full flex flex-col">
+      <Link href={`/products/${product._id}`}>
+        <Box className="group aspect-[4/5] bg-[#f4f4f2] cursor-pointer w-full relative">
+          <Tag className="top-[15px] left-[15px]" type={getTagType(product)} />
+          <button
+            className="absolute bottom-0 left-0 w-full opacity-0 group-hover:opacity-100 transition-all duration-300 bg-black text-white text-[1.2rem] px-[1.6rem] py-[1.2rem] flex items-center justify-center gap-[0.8rem] z-10 border-t border-gray-900"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('Quick View clicked for product:', product.name);
+            }}
+          >
+            <FiEye className="w-[1.4rem] h-[1.4rem]" />
+            Quick View
+          </button>
+          <img
+            className="object-contain w-full h-full"
+            src={imageUrl}
+            alt={product.name}
+          />
+        </Box>
+      
 
-        <Tag type={getTagType(product)} />
+      <button
+        className="absolute top-[15px] right-[15px]"
+        onClick={handleAddToCart}
+      >
+        <CiHeart className="w-[24px] h-[24px]" />
+      </button>
 
-        <button className="absolute top-4 right-4" onClick={handleAddToCart}>
-          <CiHeart className="w-[20px] h-[20px]" />
-        </button>
+      <Box className="text-[1.4rem]">
+        <h2 className="text-[#000] capitalize font-medium mt-[1.6rem] tracking-[0.25px] leading-tight  ">
+          {product.name}
+        </h2>
+
+        <p className="font-dmsans mb-[.5rem]">{product.description}</p>
       </Box>
 
-      <h2 className="text-[#222222] font-inter mt-[1.6rem] tracking-[0.25px] leading-tight text-[1.3rem] mb-[.5rem] ">
-        {product.name}
-      </h2>
-
-      <Box className="flex gap-[15px] items-center text-[1.4rem]">
-        <p
-          className={` font-dmsans ${isDiscounted && "line-through text-[#888]"}  text-[#222222]`}
-        >
-          {formatNumber.format(product.price)}
+      <Box className="flex gap-[15px] items-center text-[1.5rem] mb-[2rem]">
+        <p className={` ${isDiscounted ? "line-through text-[#888]" : ""} `}>
+          {formatPrice.format(product.price)}
         </p>
-
-        {isDiscounted ? (
+        {product.discount && (
           <p className="text-[var(--color-red)]">
-            {formatNumber.format(product.price - (product.discount || 0))}
+            {formatPrice.format(product.price - product.discount)}
           </p>
-        ) : (
-          ""
         )}
       </Box>
+      </Link>
+      <button
+        className="hover:bg-black hover:text-white mt-auto font-hostgrotesk capitalize w-full h-[50px] text-[1.4rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
+        onClick={handleAddToCart}
+      >
+        Add to cart
+      </button>
     </Box>
   );
 }

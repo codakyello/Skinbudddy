@@ -12,7 +12,7 @@ import { mutation, query } from "./_generated/server";
 export const createCart = mutation({
   args: {
     userId: v.string(),
-    productId: v.id("products"),
+    productId: v.id("products") || v.string(),
     quantity: v.number(),
   },
   handler: async (ctx, { userId, productId, quantity }) => {

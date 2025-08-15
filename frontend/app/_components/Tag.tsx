@@ -1,10 +1,10 @@
 import { Box } from "@chakra-ui/react";
 
-export default function Tag({ type }: { type: string | undefined }) {
+export default function Tag({ type, className }: { type: string | undefined, className?: string }) {
   if (type)
     return (
       <Box
-        className={`absolute bg-white text-black bottom-[10px] left-[10px] text-[1.2rem] px-[8px] py-[5px] font-medium font-inter`}
+        className={`${className} absolute bg-white font-semibold font-raleway text-[#333] text-[1.2rem] px-[8px] py-[5px]`}
       >
         {type === "isNew" && "New"}
         {type === "isBestseller" && "Bestseller"}

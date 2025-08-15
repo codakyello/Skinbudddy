@@ -16,7 +16,7 @@ const StickyContext = createContext<StickyContextType | undefined>(undefined);
 
 export function NavSticky({
   children,
-  defaultPosition = 0,
+  defaultPosition = 40,
 }: {
   children: ReactNode;
   defaultPosition?: number;

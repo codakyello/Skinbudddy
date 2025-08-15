@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import LocomotiveScroll from "locomotive-scroll";
+import { useRef } from "react";
 import "locomotive-scroll/dist/locomotive-scroll.css";
 
 export default function SmoothLayout({
@@ -11,16 +10,16 @@ export default function SmoothLayout({
 }) {
   const scrollRef = useRef(null);
 
-  useEffect(() => {
-    const scroll = new LocomotiveScroll({
-      el: scrollRef.current!,
-      smooth: true,
-    });
+  // useEffect(() => {
+  //   const scroll = new LocomotiveScroll({
+  //     el: scrollRef.current!,
+  //     smooth: true,
+  //   });
 
-    return () => {
-      scroll.destroy();
-    };
-  }, []);
+  //   return () => {
+  //     scroll.destroy();
+  //   };
+  // }, []);
 
   return (
     <div data-scroll-container ref={scrollRef}>

@@ -14,7 +14,7 @@ export default function AnnouncementBanner({
   useEffect(() => {
     const interval = setInterval(() => {
       setIndex((prevIndex) => (prevIndex + 1) % announcements?.length);
-    }, 6000); // Change every 5 seconds
+    }, 10000); // Change every 10 seconds
 
     return () => clearInterval(interval);
   }, [announcements?.length]);
@@ -22,7 +22,7 @@ export default function AnnouncementBanner({
   if (!announcements) return null;
 
   return (
-    <Box className="bg-[#000] font-dmSans text-[1.2rem] flex items-center justify-center h-[35px] text-[#fff]">
+    <Box className="bg-[#000] font-dmSans text-[14px] flex items-center justify-center h-[40px] text-[#fff]">
       <AnimatePresence mode="wait">
         <motion.p
           key={index}

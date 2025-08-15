@@ -13,7 +13,6 @@ export default async function HomePage() {
   return (
     <Modal>
       <Hero />
-      <Box className="flex flex-col gap-[16rem] mt-[14.6rem] mb-[25rem]">
         <SectionBestSeller />
         <SectionCategories />
         <SectionSets />
@@ -47,7 +46,6 @@ export default async function HomePage() {
         <NewProductImageCarousel />
 
         <SectionSets />
-      </Box>
 
       <Footer />
     </Modal>

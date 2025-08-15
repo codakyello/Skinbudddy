@@ -8,12 +8,10 @@ import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { NavSticky } from "./Sticky";
 import { FullPageLoader } from "./FullPageLoader";
 import CartReminder from "../_components/CartReminder";
-import NavBar from "../_components/NavBar";
-import AuthProvider from "./AuthProvider";
-import { authenticate } from "../_lib/data-service";
 import { ConvexReactClient } from "convex/react";
 import { ConvexQueryClient } from "@convex-dev/react-query";
-import ConvexUserProvider from "../_components/CreateConvexUser";
+import ConvexUserProvider from "./CreateConvexUser";
+import AuthProvider from "./AuthProvider";
 
 const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -32,9 +30,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <Modal>
       <QueryProvider>
-        <AuthProvider authenticateFn={authenticate}>
+        <AuthProvider >
           <ClerkProvider>
-            {/* <ConvexProvider client={convex}> */}
             <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
               <QueryClientProvider client={queryClient}>
                 <NavSticky defaultPosition={35}>
@@ -42,7 +39,6 @@ export default function Providers({ children }: { children: React.ReactNode }) {
                     {/* <SmoothLayout> */}
                     <FullPageLoader>
                       <CartReminder />
-                      <NavBar />
                       {children}
                     </FullPageLoader>
                   </ConvexUserProvider>
@@ -50,7 +46,6 @@ export default function Providers({ children }: { children: React.ReactNode }) {
                 </NavSticky>
               </QueryClientProvider>
             </ConvexProviderWithClerk>
-            {/* </ConvexProvider> */}
           </ClerkProvider>
         </AuthProvider>
       </QueryProvider>

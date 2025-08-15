@@ -38,7 +38,7 @@ export function validatePassword(
   return null;
 }
 
-export const formatNumber = new Intl.NumberFormat("en-NG", {
+export const formatPrice = new Intl.NumberFormat("en-NG", {
   style: "currency",
   currency: "NGN",
   minimumFractionDigits: 0,
@@ -60,4 +60,12 @@ export function getTagType(product: Product) {
   if (product.discount) return "isDiscount";
   if (product.isNew) return "isNew";
   if (product.isBestseller) return "isBestseller";
+}
+
+export function formatProductName (name: string) {
+  let formattedName = "";
+  name.split(" ").forEach((word) => {
+    formattedName += word.slice(0, 1).toUpperCase() + word.slice(1) + " ";
+  })
+  return formattedName.trim();
 }

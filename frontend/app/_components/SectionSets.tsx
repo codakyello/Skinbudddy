@@ -15,7 +15,7 @@ export default function SectionSets() {
 
   const { products: sets, isPending } = useProducts({
     filters: { isBestseller: true },
-    sort: {},
+    sort: '-createdAt',
   });
 
   if (!sets && !isPending) return null;

@@ -1,79 +1,126 @@
 "use client";
 import { Box } from "@chakra-ui/react";
 import { useState, useEffect, useRef } from "react";
-// import { FaArrowLeft, FaArrowRight } from "react-icons/fa";
 import Image from "next/image";
-import useDeviceDetection from "../_hooks/useDeviceDetection";
+import Link from "next/link";
+
+//  const images = [
+//     "/images/hero/hero--1.webp",
+//     "/images/hero/hero--2.webp",
+//     "/images/hero/hero--3.webp",
+//   ];
+
+  const content = [
+    {
+      title: "Essential hydration",
+      description: "Our routines with the 9-ingredient moisturizer for soft skin all summer",
+      image: "/images/hero/hero--1.webp",
+      link: "/products/essential-hydration",
+    },
+    {
+      title: "Protect & soothe",
+      description: "The essential routine to shield your skin from UV and soothe it",
+      image: "/images/hero/hero--2.webp",
+      link: "/products/nourish-your-skin",
+    },
+    {
+      title: "Diagnostic",
+      description: "Get your personalized routine in under 4 minutes",
+      image: "/images/hero/hero--3.webp",
+      link: "/products/transform-your-routine",
+    },
+    {
+      image: "/images/hero/hero--4.png",
+      link: "/products/new-arrivals",
+    },
+    {
+      image: "/images/hero/hero--5.webp",
+      link: "/products/best-sellers",
+    },
+    {
+      image: "/images/hero/hero--6.webp",
+      link: "/products/special-offers",
+    },
+    
+    {
+      image: "/images/hero/hero--7.webp",
+      link: "/products/skin-care-tips",
+    },
+  ];
 
 export default function Carousel({
   className,
-  images,
 }: {
   className?: string;
-  images: string[];
 }) {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-
   const [index, setIndex] = useState(0);
 
-  const { isDesktop, isTablet } = useDeviceDetection();
-
-  console.log(isDesktop, "desktop", isTablet, "tablet");
 
   useEffect(() => {
     intervalRef.current = setInterval(() => {
-      setIndex((prev) => (prev + 1) % images.length);
+      goNext();
     }, 8000);
     return () => {
       if (intervalRef.current !== null) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [index, images.length]);
+  }, [index]);
+
+  const goNext = () => {
+    setIndex((prev) => (prev + 1) % content.length);
+  };
+
+  // const goBack = () => {
+  //   setIndex((prev) => (prev - 1 + images.length) % images.length);
+  // };
+
+  const goTo = (i: number) => {
+    if (i >= 0 && i < content.length) {
+      setIndex(i);
+    }
+  };
+
 
   return (
-    <Box
-      className={`relative ${isDesktop ? "h-[100rem]" : "h-[65rem]"} w-full animate-fade-in ${className}`}
-      //   style={{
-      //     backgroundImage: `linear-gradient(to bottom, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.8)), url(${images[index]})`,
-      //   }}
-    >
-      <Image
-        fill
-        src={images[index]}
-        alt="hero"
-        className="object-cover w-full h-full"
-      />
-      {/* Image preloader here to preload all of the images down */}
-      {/* <Box
-        onClick={handlePrev}
-        className="absolute top-[50%] left-[10px] translate-y-[-50%] text-[#fff] flex items-center justify-center h-[4.4rem] w-[4.4rem] rounded-full bg-[rgba(0,0,0,0.4)]"
+    <Box className={`cursor-pointer relative w-screen overflow-hidden h-[55vw] ${className}`}>
+      <Box
+        className="flex h-full transition-transform duration-700 ease-in-out"
+        style={{ transform: `translateX(-${index * 100}vw)` }}
       >
-        <Icon as={FaArrowLeft} />
+        {content.map((item, i) => (
+          <Box key={i} className="relative w-screen h-full flex-shrink-0">
+            <Link href={"#"}>
+            <Image
+              src={item.image}
+              alt={`Slide ${i}`}
+              fill
+              className="object-cover h-full w-full"
+            />
+            </Link>
+            
+            <Box className="absolute top-[50%] translate-y-[-50%] left-[12%] z-10 font-hostgrotesk">
+              <h2 className="text-[6.2rem] leading-[9rem] uppercase font-bold">{item.title}</h2>
+              <p className="text-[2rem]">{item.description}</p>
+            </Box>
+          </Box>
+        ))}
       </Box>
 
-      <Box
-        onClick={handleNext}
-        className="absolute top-[50%] right-[10px] translate-y-[-50%] text-[#fff] flex items-center justify-center h-[4.4rem] w-[4.4rem] rounded-full bg-[rgba(0,0,0,0.4)]"
-      >
-        <Icon as={FaArrowRight} />
-      </Box> */}
-      {/* <Box className="bottom-[15rem] absolute w-[70rem] ml-[5rem] flex flex-col gap-[2rem]">
-              <h1 className="text-[8rem] text-[#fff] leading-[8rem] font-['Playfair_Display']">
-                <span>
-                  Explore Our <br />
-                </span>
-                Curated Collections
-              </h1>
-              <p className="w-[40rem] text-[#ffffffa1]">
-                From skincare essentials to beauty must-haves, discover
-                everything you need to elevate your routine.
-              </p>
-
-              <button className="uppercase w-[11rem] h-[4rem] flex items-center justify-center mt-6  border text-[#000] text-[1.5rem] bg-[#fff] border-white rounded-full transition-all duration-300">
-                Shop Now
-              </button>
-            </Box> */}
+      <Box>
+        <Box className="absolute bottom-[5rem] right-[5rem] flex justify-center items-center gap-[.5rem] p-4">
+          {content.map((_, i) => (
+            <p
+            className={`${index === i ? "text-[#000]" : "text-[#CECDC9]"} cursor-pointer text-[1.6rem] font-medium flex items-center justify-center`}
+              key={i}
+              onClick={() => goTo(i)}
+            >
+              {i + 1 > 10 ? i + 1 : `0${i + 1}`}
+            </p>
+          ))}
+        </Box>
+      </Box>
     </Box>
   );
 }

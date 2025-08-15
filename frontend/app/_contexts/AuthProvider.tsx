@@ -85,7 +85,7 @@ function AuthProvider({
   authenticateFn,
 }: {
   children: ReactNode;
-  authenticateFn: (token: string | null) => Promise<boolean>;
+  authenticateFn?: (token: string | null) => Promise<boolean>;
 }) {
   const router = useRouter();
 

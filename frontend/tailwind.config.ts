@@ -13,6 +13,8 @@ const config: Config = {
         inter: ["Inter", "sans-serif"],
         poppins: ["Poppins", "sans-serif"],
         dmsans: ['"DM Sans"', "sans-serif"],
+        raleway: ["Raleway", "sans-serif"],
+        hostgrotesk: ["Host Grotesk", "sans-serif"],
       },
       colors: {
         background: "var(--background)",

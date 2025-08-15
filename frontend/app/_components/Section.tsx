@@ -16,18 +16,19 @@ export default function Section({
   className,
 }: SectionProps) {
   return (
-    <Box className={`pl-[5.6rem] ${className ?? ""}`}>
-      <h1 className="text-[2.8rem] text-[#000] leading-none">
-        {title[0].toUpperCase() + title.slice(1)}
+    <Box className={`${className || ""} max-w-[1200px] mx-auto px-[5rem]`}>
+      <h1 className="text-[12.8rem] uppercase pt-[6.4rem] font-hostgrotesk font-medium text-[#000] font- leading-none">
+        {title}
       </h1>
 
       {description && (
         <p className="mb-[1.6rem] text-[1.2rem] text-[#999]">{description}</p>
       )}
-
+{/* 
       <Box className="flex gap-x-[1.6rem] no-scrollbar overflow-x-auto gap-y-[4rem]">
         {children}
-      </Box>
+      </Box> */}
+      {children}
     </Box>
   );
 }

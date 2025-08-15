@@ -5,81 +5,105 @@ import Section from "./Section";
 import { Box } from "@chakra-ui/react";
 import useProducts from "../_hooks/useProducts";
 import ProductCardSkeleton from "./ProductCardSkeleton";
+import Link from "next/link";
 // import { getAllProducts } from "../_lib/actions";
 
 export default function SectionBestSeller() {
-  // const bestSellers = await getAllProducts({
-  //   sortBy: "best-seller",
-  //   limit: 8,
-  //   page: 1,
-  // });
+  // #FBF9F7
+  const limit = 3;
 
-  // const bestSellers = [
-  //   {
-  //     images: ["images/categories--1.png"],
-  //     name: "FaceFacts face wash",
-  //     price: 124400,
-  //     _id: "1",
-  //   },
-  //   {
-  //     images: ["images/categories--2.png"],
-  //     name: "FaceFacts face wash",
-  //     price: 130000,
-  //     _id: "2",
-  //   },
-  //   {
-  //     images: ["images/categories--3.png"],
-  //     name: "FaceFacts face wash",
-  //     price: 140000,
-  //     _id: "3",
-  //   },
-  //   {
-  //     images: ["images/categories--4.png"],
-  //     name: "FaceFacts face wash",
-  //     price: 140000,
-  //     _id: "4",
-  //   },
-  //   {
-  //     images: ["images/categories--3.png"],
-  //     name: "FaceFacts face wash",
-  //     price: 140000,
-  //     _id: "5",
-  //   },
-  //   {
-  //     images: ["images/categories--3.png"],
-  //     name: "FaceFacts face wash",
-  //     price: 140000,
-  //     _id: "6",
-  //   },
-  // ];
+  const bestSellers = [
+    {
+      images: ["images/product/product-1.webp"],
+      name: " T40 - Tinted Lip Oil",
+      description: "Squalane 10% + Vitamin E — 24,90 €",
+      price: 124400,
+      _id: "1",
+      isBestseller: true,
+    },
+    {
+      images: ["images/product/product-2.jpg"],
+      name: "FaceFacts face wash",
+      price: 130000,
+      _id: "2",
+      isBestseller: true,
+      isNew: true,
+    },
+    {
+      images: ["images/product/product-3.jpg"],
+      name: "FaceFacts face wash",
+      price: 140000,
+      _id: "3",
+      discount: 5000,
+    },
+    {
+      images: ["images/product/product-4.jpg"],
+      name: "FaceFacts face wash",
+      price: 140000,
+      _id: "4",
+    },
+    {
+      images: ["images/product/product-1.webp"],
+      name: "FaceFacts face wash",
+      price: 140000,
+      _id: "5",
+    },
+    {
+      images: ["images/product/product-3.jpg"],
+      name: "FaceFacts face wash",
+      price: 140000,
+      _id: "6",
+    },
+  ];
 
   const {
-    products: bestSellers,
+    products: bestSeller,
     isPending,
     error,
-  } = useProducts({ filters: { isBestseller: true }, sort: {} });
+  } = useProducts({ filters: { isBestseller: true }, sort: "" });
 
-  if (!bestSellers && !isPending) return null;
+  if (!bestSeller && !isPending) return null;
 
   return (
-    <Section
-      title="bestsellers"
-      description="Our most loved products handpicked by beauty enthusiasts like you"
-    >
-      {isPending &&
-        Array.from({ length: 5 }).map((_, i) => (
-          <Box key={i} className="min-w-[32rem]">
-            <ProductCardSkeleton />
-          </Box>
-        ))}
+    <Box className="bg-[#FBF9F7] pt-[120px] pb-[120px]">
+      <Section title="Best sellers">
+        {isPending &&
+          Array.from({ length: limit }).map((_, i) => (
+            <Box key={i} className="min-w-[32rem]">
+              <ProductCardSkeleton />
+            </Box>
+          ))}
 
-      {!isPending &&
-        !error &&
-        bestSellers?.map((product: Product, i: number) => (
-          <Box key={i} className="min-w-[32rem]">
-            <ProductCard key={i} product={product} />
+        <Box className="grid grid-cols-3 gap-x-[24px] pt-[7.2rem] no-scrollbar overflow-x-auto gap-y-[4rem]">
+          {!isPending &&
+            !error &&
+            bestSellers.slice(0, limit)?.map((product: Product, i: number) => (
+              <Box key={i}>
+                <ProductCard key={i} product={product} />
+              </Box>
+            ))}
+        </Box>
+
+        {bestSellers.length > limit && (
+          <Box className="flex justify-end mt-[25px]">
+            <Link
+              className="flex items-center uppercase font-hostgrotesk group"
+              href="/shop"
+            >
+              <svg
+                width="13"
+                height="12"
+                viewBox="0 0 13 12"
+                xmlns="http://www.w3.org/2000/svg"
+                className="fill-current mr-3 transition-transform duration-300 group-hover:translate-x-2 group-hover:scale-110 group-hover:opacity-80"
+              >
+                <path d="M0 4.8H8.5L5.5 1.7L7.2 0L13 6L7.2 12L5.5 10.3L8.5 7.2H0V4.8Z"></path>
+              </svg>
+              <span className="text-[14px] font-medium">View all</span>
+            </Link>
           </Box>
-        ))}
-    </Section>
+        )}
+      </Section>
+    </Box>
   );
 }
