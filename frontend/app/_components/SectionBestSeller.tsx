@@ -4,80 +4,33 @@ import { Product } from "../_utils/types";
 import Section from "./Section";
 import { Box } from "@chakra-ui/react";
 import useProducts from "../_hooks/useProducts";
-import ProductCardSkeleton from "./ProductCardSkeleton";
 import Link from "next/link";
 // import { getAllProducts } from "../_lib/actions";
 
-export default function SectionBestSeller() {
+export default function SectionBestSeller({initialProducts}: { initialProducts?: Product[] }) {
   // #FBF9F7
   const limit = 3;
 
-  const bestSellers = [
-    {
-      images: ["images/product/product-1.webp"],
-      name: " T40 - Tinted Lip Oil",
-      description: "Squalane 10% + Vitamin E — 24,90 €",
-      price: 124400,
-      _id: "1",
-      isBestseller: true,
-    },
-    {
-      images: ["images/product/product-2.jpg"],
-      name: "FaceFacts face wash",
-      price: 130000,
-      _id: "2",
-      isBestseller: true,
-      isNew: true,
-    },
-    {
-      images: ["images/product/product-3.jpg"],
-      name: "FaceFacts face wash",
-      price: 140000,
-      _id: "3",
-      discount: 5000,
-    },
-    {
-      images: ["images/product/product-4.jpg"],
-      name: "FaceFacts face wash",
-      price: 140000,
-      _id: "4",
-    },
-    {
-      images: ["images/product/product-1.webp"],
-      name: "FaceFacts face wash",
-      price: 140000,
-      _id: "5",
-    },
-    {
-      images: ["images/product/product-3.jpg"],
-      name: "FaceFacts face wash",
-      price: 140000,
-      _id: "6",
-    },
-  ];
-
   const {
-    products: bestSeller,
-    isPending,
-    error,
-  } = useProducts({ filters: { isBestseller: true }, sort: "" });
+    products: bestSellers,
+  } = useProducts({ filters: { isBestseller: true }, sort: "", initialProducts });
 
-  if (!bestSeller && !isPending) return null;
+  // if (!bestSeller && !isPending) return null;
+
+  if(!bestSellers) return null;
 
   return (
     <Box className="bg-[#FBF9F7] pt-[120px] pb-[120px]">
       <Section title="Best sellers">
-        {isPending &&
+        {/* {isPending &&
           Array.from({ length: limit }).map((_, i) => (
             <Box key={i} className="min-w-[32rem]">
               <ProductCardSkeleton />
             </Box>
-          ))}
+          ))} */}
 
         <Box className="grid grid-cols-3 gap-x-[24px] pt-[7.2rem] no-scrollbar overflow-x-auto gap-y-[4rem]">
-          {!isPending &&
-            !error &&
-            bestSellers.slice(0, limit)?.map((product: Product, i: number) => (
+          { bestSellers.slice(0, limit)?.map((product: Product, i: number) => (
               <Box key={i}>
                 <ProductCard key={i} product={product} />
               </Box>

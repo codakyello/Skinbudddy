@@ -1,12 +1,14 @@
 import { api } from "@/convex/_generated/api";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
+import { Product } from "../_utils/types";
 
 export default function useProducts({
   filters,
   sort,
   search,
   page,
+  initialProducts = [],
 }: {
   filters: {
     isNew?: boolean;
@@ -21,8 +23,8 @@ export default function useProducts({
   sort?: string;
   search?: string;
   page?: number;
+  initialProducts?: Product[]; 
 }) {
-  console.log(filters, sort, "Filters and sort");
   const {
     category = [],
     size = [],
@@ -33,7 +35,7 @@ export default function useProducts({
     isDiscounted,
   } = filters;
   const {
-    data: products,
+    data: products = initialProducts,
     isPending,
     error,
   } = useQuery(

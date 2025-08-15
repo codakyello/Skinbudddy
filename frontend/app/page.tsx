@@ -8,12 +8,21 @@ import SectionSets from "./_components/SectionSets";
 import Image from "next/image";
 import NewProductImageCarousel from "./_components/NewProductImageCarousel";
 import { Footer } from "./_components/Footer";
+import { fetchQuery } from "convex/nextjs";
+import { api } from "@/convex/_generated/api";
 
 export default async function HomePage() {
+  const products = await fetchQuery(api.products.getAllProducts, {
+    filters: { isNew: true },
+    sort: "-createdAt",
+    page: 1,
+  })
+
+
   return (
     <Modal>
       <Hero />
-        <SectionBestSeller />
+        <SectionBestSeller initialProducts={products} />
         <SectionCategories />
         <SectionSets />
         <Box className="px-[5.6rem] grid grid-cols-[370px_1fr] gap-[70px]">

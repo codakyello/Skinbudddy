@@ -51,7 +51,9 @@ export default function ProductCard({
   };
 
   const isDiscounted = product.discount;
-  const imageUrl = product.images?.[0] || "/placeholder.png";
+  // const imageUrl = product.images?.[0] || "/placeholder.png";
+
+  const randomImageNumber = Math.floor(Math.random() * 3) + 2;
 
   return (
     <Box className="relative overflow-hidden min-h-[580px] h-full flex flex-col">
@@ -71,7 +73,9 @@ export default function ProductCard({
           </button>
           <img
             className="object-contain w-full h-full"
-            src={imageUrl}
+            // 2 3 4
+            
+            src={`images/product/product-${randomImageNumber}.jpg`}
             alt={product.name}
           />
         </Box>
