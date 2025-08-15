@@ -100,11 +100,11 @@ export default function ProductCard({
         <p className={` ${isDiscounted ? "line-through text-[#888]" : ""} `}>
           {formatPrice.format(product.price)}
         </p>
-        {product.discount && (
+       {product.discount ?
           <p className="text-[var(--color-red)]">
             {formatPrice.format(product.price - product.discount)}
           </p>
-        )}
+        : ""}
       </Box>
       </Link>
       <button
