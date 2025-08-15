@@ -13,9 +13,7 @@ import { api } from "@/convex/_generated/api";
 
 export default async function HomePage() {
   const products = await fetchQuery(api.products.getAllProducts, {
-    filters: { isNew: true },
-    sort: "-createdAt",
-    page: 1,
+    filters: { isBestseller: true },
   })
 
 
