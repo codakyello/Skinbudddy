@@ -118,6 +118,7 @@ export function ModalWindow({
   position = "center",
   listenCapturing = false,
   openType = "click",
+  overlayColor
 }: {
   children: ReactElement;
   className?: string;
@@ -125,14 +126,25 @@ export function ModalWindow({
   position?: "center" | "top" | "bottom" | "left" | "right";
   openType?: "click" | "hover";
   listenCapturing?: boolean;
+  overlayColor?: string;
 }) {
+ 
   const { close, isOpen, setHovering } = useModal();
 
+   // prevent body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "auto";
+    }
+  }, [isOpen]);
+  
   const ref = useOutsideClick<HTMLDivElement>(close, listenCapturing);
 
   return isOpen === name ? (
     <Box
-      className={`fixed ${className} modal-bg top-0 left-0 flex h-screen w-screen 
+      className={`fixed ${overlayColor} ${className}  modal-bg top-0 left-0 flex h-screen w-screen 
         ${position === "center" ? "items-center justify-center" : ""}
         ${position === "top" ? "items-start justify-center" : ""}
         ${position === "bottom" ? "items-end justify-center" : ""}

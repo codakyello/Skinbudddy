@@ -7,7 +7,7 @@ import { FaFacebook } from "react-icons/fa";
 import Input from "./Input";
 import Button from "./Button";
 import CheckBox from "./CheckBox";
-import { useState } from "react";
+import {  useState } from "react";
 import { toast } from "sonner";
 // import { useQueryClient } from "@tanstack/react-query";
 import SpinnerMini from "./SpinnerMini";
@@ -22,6 +22,7 @@ type FormError = {
 };
 
 export default function AuthModal({ onClose }: { onClose?: () => void }) {
+
   const [hasAccount, setHasAccount] = useState(true);
 
   // const { authenticated, logout } = useAuth();

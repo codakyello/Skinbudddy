@@ -1,13 +1,13 @@
 "use client";
 import { Box } from "@chakra-ui/react";
-import { ModalHoverOpen, ModalOpen, ModalWindow, useModal } from "./Modal";
-import { useEffect } from "react";
+import { ModalHoverOpen, ModalOpen, ModalWindow } from "./Modal";
 import CartModal from "./CartModal";
 import AuthModal from "./AuthModal";
 import Link from "next/link";
 import useUserCart from "../_hooks/useUserCart";
 import { useNavSticky } from "../_contexts/Sticky";
 import { useConvexUser } from "../_contexts/CreateConvexUser";
+
 
 export default function NavBar() {
 
@@ -17,7 +17,6 @@ export default function NavBar() {
 
   const { isSticky } = useNavSticky();
 
-  const { isOpen } = useModal();
 
   const { userId } = useConvexUser();
 
@@ -28,13 +27,8 @@ export default function NavBar() {
       return acc + item.quantity;
     }, 0) || 0;
 
-  useEffect(() => {
-    if (isOpen === "user") {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "auto";
-    }
-  }, [isOpen]);
+
+   
 
   return (
     <>
