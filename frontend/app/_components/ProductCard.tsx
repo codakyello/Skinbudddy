@@ -61,7 +61,7 @@ export default function ProductCard({
         <Box className="group aspect-[4/5] bg-[#f4f4f2] cursor-pointer w-full relative">
           <Tag className="top-[15px] left-[15px]" type={getTagType(product)} />
           <button
-            className="absolute bottom-0 left-0 w-full opacity-0 group-hover:opacity-100 transition-all duration-300 bg-black text-white text-[1.2rem] px-[1.6rem] py-[1.2rem] flex items-center justify-center gap-[0.8rem] z-10 border-t border-gray-900"
+            className="absolute bottom-0 left-0 w-full opacity-0 group-hover:opacity-100 transition-all duration-300 bg-black text-white text-[1.2rem] px-[1.6rem] py-[1.2rem] flex items-center justify-center gap-[0.8rem] border-t border-gray-900"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();

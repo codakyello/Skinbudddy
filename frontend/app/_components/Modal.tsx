@@ -36,9 +36,10 @@ export default function Modal({ children }: { children: ReactNode }) {
     console.log("close called");
     // The close animation
     document.body.classList.add("close-modal");
-    // Wait for the animation to finish before closing
-    await wait(0.1);
+    // Wait for the animation duration before closing
+    await wait(0.25);
     setOpen("");
+    document.body.classList.remove("close-modal");
   }, []);
 
   return (
@@ -98,10 +99,9 @@ export function ModalHoverOpen({
   }, [hovering, close]);
 
   return cloneElement(children, {
-    onMouseEnter: async () => {
+    onMouseEnter: () => {
       if (!openCondition) return;
       setHovering(true);
-      await wait(0.5);
       open(name);
     },
     onMouseLeave: () => {
