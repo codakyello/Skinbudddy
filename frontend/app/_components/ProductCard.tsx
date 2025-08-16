@@ -150,10 +150,9 @@ export function ProductPreviewModal({
   const handleDecrement = () => setQuantity((q) => (q > 1 ? q - 1 : 1));
 
   return (
-    <Box className="relative max-w-[110rem] h-[60rem] overflow-hidden w-[100%] grid grid-cols-2 bg-white md:flex-row gap-[4rem]">
+    <Box className="relative max-w-[110rem] h-[60rem] overflow-hidden w-[100%] grid grid-cols-2 bg-white md:flex-row">
       <button onClick={onClose} className="absolute top-[2rem] right-[2rem]">
         <IoCloseOutline className="h-[3.5rem] w-[3.5rem]" />
-
       </button>
       <Box className="bg-[#f4f4f2]">
         <img
@@ -162,7 +161,7 @@ export function ProductPreviewModal({
           alt={product.name}
         />
       </Box>
-      <Box className="flex flex-col h-[60rem] overflow-auto py-[2rem]">
+      <Box className="flex flex-col h-[45rem] my-auto mx-[7rem] overflow-auto ">
         <h2 className="text-[2.4rem] font-bold mb-[1.6rem]">{product.name}</h2>
         <Box className="mb-[2rem]">
           <p className="text-[1.4rem]">{product.description}</p>
