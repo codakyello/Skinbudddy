@@ -15,7 +15,8 @@ import { useConvexUser as useUser } from "../_contexts/CreateConvexUser";
 import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
 import { ModalOpen, ModalWindow } from "./Modal";
-import {  useState } from "react";
+import { useState } from "react";
+import { IoCloseOutline } from "react-icons/io5";
 
 // import useCustomMutation from "../_hooks/useCustomMutation";
 // import { createCartItem } from "../_lib/data-service";
@@ -33,7 +34,6 @@ export default function ProductCard({
   const addToCart = useMutation(api.cart.createCart);
   const { userId } = useUser();
 
-  
   const handleAddToCart = async (
     e: React.MouseEvent<HTMLButtonElement>,
     customQty?: number
@@ -74,11 +74,13 @@ export default function ProductCard({
             Quick View
           </button>
         </ModalOpen>
-        <img
-          className="object-contain w-full h-full"
-          src={`images/product/product-${randomImageNumber}.jpg`}
-          alt={product.name}
-        />
+        <Link href={`/products/${product._id}`}>
+          <img
+            className="object-contain w-full h-full"
+            src={`images/product/product-${randomImageNumber}.jpg`}
+            alt={product.name}
+          />
+        </Link>
       </Box>
       <button
         className="absolute top-[15px] right-[15px]"
@@ -131,27 +133,44 @@ export default function ProductCard({
   );
 }
 
-export function ProductPreviewModal({ product, handleAddToCart }: { product: Product, handleAddToCart: (e: React.MouseEvent<HTMLButtonElement>, customQty?: number) => void }) {
+export function ProductPreviewModal({
+  product,
+  handleAddToCart,
+  onClose,
+}: {
+  product: Product;
+  handleAddToCart: (
+    e: React.MouseEvent<HTMLButtonElement>,
+    customQty?: number
+  ) => void;
+  onClose?: () => void;
+}) {
   const [quantity, setQuantity] = useState(1);
   const handleIncrement = () => setQuantity((q) => q + 1);
   const handleDecrement = () => setQuantity((q) => (q > 1 ? q - 1 : 1));
-  
+
   return (
-    <Box className="max-w-[90rem] h-[55rem] w-[100%] grid grid-cols-2 bg-white md:flex-row gap-[2rem] p-[2rem]">
+    <Box className="relative max-w-[110rem] h-[60rem] overflow-hidden w-[100%] grid grid-cols-2 bg-white md:flex-row gap-[4rem]">
+      <button onClick={onClose} className="absolute top-[2rem] right-[2rem]">
+        <IoCloseOutline className="h-[3.5rem] w-[3.5rem]" />
+
+      </button>
       <Box className="bg-[#f4f4f2]">
         <img
           className="w-full h-full object-contain"
-          src={`images/product/product-${2}.jpg`}
+          src={`images/product/product-${4}.jpg`}
           alt={product.name}
         />
       </Box>
-      <Box className="flex flex-col">
+      <Box className="flex flex-col h-[60rem] overflow-auto py-[2rem]">
         <h2 className="text-[2.4rem] font-bold mb-[1.6rem]">{product.name}</h2>
         <Box className="mb-[2rem]">
           <p className="text-[1.4rem]">{product.description}</p>
         </Box>
         <Box className="flex gap-[15px] items-center text-[1.5rem] mb-[2rem]">
-          <p className={` ${product.discount ? "line-through text-[#888]" : ""} `}>
+          <p
+            className={` ${product.discount ? "line-through text-[#888]" : ""} `}
+          >
             {formatPrice.format(product.price)}
           </p>
           {product.discount ? (
@@ -183,11 +202,71 @@ export function ProductPreviewModal({ product, handleAddToCart }: { product: Pro
           </Box>
         </Box>
         <button
-          className="hover:bg-black hover:text-white font-hostgrotesk capitalize w-full h-[50px] text-[1.4rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
+          className="hover:bg-black hover:text-white font-hostgrotesk capitalize w-full h-[8rem] text-[1.4rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
           onClick={(e) => handleAddToCart(e, quantity)}
         >
           Add to cart
         </button>
+
+        <p className="mt-[2rem] text-[1.4rem]">
+          Cocos nucifera (Coconut) Oil, De-ionized Water, Sodium Hydroxide,
+          Fragrance, Kojic Acid, Glycerin, Aqua (and) Xanthan Gum (and) Caprylyl
+          Glycol (and) Glucose (and) Chondrus crispus (Carrageenan) (and)
+          Phenoxyethanol (and) Ethylhexylglycerine, Cocodiethanolamide, Mineral
+          Oil, Melaleuca alternifolia (Tea Tree) Oil, Cl 15985, Cl 19140, BHT
+          Directioons Lather soap and apply to treatment areas. Leave the soap
+          on for up to 30 seconds. Apply once per day and increase to twice a
+          day if well tolerated. If dryness occurs follow with a moisturizing
+          cream.
+        </p>
+
+        <p className="mt-[2rem] text-[1.4rem]">
+          Cocos nucifera (Coconut) Oil, De-ionized Water, Sodium Hydroxide,
+          Fragrance, Kojic Acid, Glycerin, Aqua (and) Xanthan Gum (and) Caprylyl
+          Glycol (and) Glucose (and) Chondrus crispus (Carrageenan) (and)
+          Phenoxyethanol (and) Ethylhexylglycerine, Cocodiethanolamide, Mineral
+          Oil, Melaleuca alternifolia (Tea Tree) Oil, Cl 15985, Cl 19140, BHT
+          Directioons Lather soap and apply to treatment areas. Leave the soap
+          on for up to 30 seconds. Apply once per day and increase to twice a
+          day if well tolerated. If dryness occurs follow with a moisturizing
+          cream.
+        </p>
+
+        <p className="mt-[2rem] text-[1.4rem]">
+          Cocos nucifera (Coconut) Oil, De-ionized Water, Sodium Hydroxide,
+          Fragrance, Kojic Acid, Glycerin, Aqua (and) Xanthan Gum (and) Caprylyl
+          Glycol (and) Glucose (and) Chondrus crispus (Carrageenan) (and)
+          Phenoxyethanol (and) Ethylhexylglycerine, Cocodiethanolamide, Mineral
+          Oil, Melaleuca alternifolia (Tea Tree) Oil, Cl 15985, Cl 19140, BHT
+          Directioons Lather soap and apply to treatment areas. Leave the soap
+          on for up to 30 seconds. Apply once per day and increase to twice a
+          day if well tolerated. If dryness occurs follow with a moisturizing
+          cream.
+        </p>
+
+        <p className="mt-[2rem] text-[1.4rem]">
+          Cocos nucifera (Coconut) Oil, De-ionized Water, Sodium Hydroxide,
+          Fragrance, Kojic Acid, Glycerin, Aqua (and) Xanthan Gum (and) Caprylyl
+          Glycol (and) Glucose (and) Chondrus crispus (Carrageenan) (and)
+          Phenoxyethanol (and) Ethylhexylglycerine, Cocodiethanolamide, Mineral
+          Oil, Melaleuca alternifolia (Tea Tree) Oil, Cl 15985, Cl 19140, BHT
+          Directioons Lather soap and apply to treatment areas. Leave the soap
+          on for up to 30 seconds. Apply once per day and increase to twice a
+          day if well tolerated. If dryness occurs follow with a moisturizing
+          cream.
+        </p>
+
+        <p className="mt-[2rem] text-[1.4rem]">
+          Cocos nucifera (Coconut) Oil, De-ionized Water, Sodium Hydroxide,
+          Fragrance, Kojic Acid, Glycerin, Aqua (and) Xanthan Gum (and) Caprylyl
+          Glycol (and) Glucose (and) Chondrus crispus (Carrageenan) (and)
+          Phenoxyethanol (and) Ethylhexylglycerine, Cocodiethanolamide, Mineral
+          Oil, Melaleuca alternifolia (Tea Tree) Oil, Cl 15985, Cl 19140, BHT
+          Directioons Lather soap and apply to treatment areas. Leave the soap
+          on for up to 30 seconds. Apply once per day and increase to twice a
+          day if well tolerated. If dryness occurs follow with a moisturizing
+          cream.
+        </p>
       </Box>
     </Box>
   );
