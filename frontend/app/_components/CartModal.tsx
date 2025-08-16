@@ -4,12 +4,12 @@ import { Box } from "@chakra-ui/react";
 import ClipLoader from "react-spinners/ClipLoader";
 import { useNavSticky } from "../_contexts/Sticky";
 import useUserCart from "../_hooks/useUserCart";
-import { useUser } from "@clerk/nextjs";
 import { Cart } from "../_utils/types";
+import { useUser } from "../_contexts/CreateConvexUser";
 
 export default function CartModal() {
-  const { user } = useUser();
-  const { cart, isPending } = useUserCart(user?.id);
+  const { userId } = useUser();
+  const { cart, isPending } = useUserCart(userId as string);
   const { isSticky } = useNavSticky();
 
   return (

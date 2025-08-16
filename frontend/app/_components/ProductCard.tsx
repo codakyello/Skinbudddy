@@ -11,7 +11,7 @@ import { FiEye } from "react-icons/fi";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
-import { useConvexUser as useUser } from "../_contexts/CreateConvexUser";
+import { useUser } from "../_contexts/CreateConvexUser";
 import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
 import { ModalOpen, ModalWindow } from "./Modal";

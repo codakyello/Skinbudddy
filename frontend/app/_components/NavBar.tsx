@@ -6,7 +6,7 @@ import AuthModal from "./AuthModal";
 import Link from "next/link";
 import useUserCart from "../_hooks/useUserCart";
 import { useNavSticky } from "../_contexts/Sticky";
-import { useConvexUser } from "../_contexts/CreateConvexUser";
+import { useUser } from "../_contexts/CreateConvexUser";
 
 
 export default function NavBar() {
@@ -18,7 +18,7 @@ export default function NavBar() {
   const { isSticky } = useNavSticky();
 
 
-  const { userId } = useConvexUser();
+  const { userId } = useUser();
 
   const { cart } = useUserCart(userId || undefined);
 

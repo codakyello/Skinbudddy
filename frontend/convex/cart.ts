@@ -51,7 +51,7 @@ export const createCart = mutation({
 // Get user's cart with product details
 export const getUserCart = query({
   args: {
-    userId: v.optional(v.string()),
+    userId: v.optional(v.string()) ,
   },
   handler: async (ctx, { userId }) => {
     // Get all cart items for the user

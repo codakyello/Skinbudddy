@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { useUser } from "@clerk/clerk-react";
+import { useUser as useClerkUser } from "@clerk/clerk-react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
@@ -22,7 +22,7 @@ export default function ConvexUserProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, isSignedIn } = useUser();
+  const { user, isSignedIn } = useClerkUser();
   const createUser = useMutation(api.users.createUser);
   const [userId, setConvexUserId] = useState<string | null>(null);
 
@@ -55,7 +55,7 @@ export default function ConvexUserProvider({
   );
 }
 
-export const useConvexUser = () => {
+export const useUser = () => {
   const context = useContext(ConvexUserContext);
   if (!context) {
     throw new Error("useConvexUser must be used within a ConvexUserProvider");

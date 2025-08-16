@@ -1,10 +1,9 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { useUser } from "@clerk/clerk-react";
+import { useUser as useClerkUser } from "@clerk/clerk-react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { toast } from "sonner";
 
 const GUEST_ID_KEY = "convex_guest_id";
 
@@ -23,7 +22,7 @@ export default function ConvexUserProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, isSignedIn } = useUser();
+  const { user, isSignedIn } = useClerkUser();
   const createUser = useMutation(api.users.createUser);
   const [userId, setConvexUserId] = useState<string | null>(null);
 
@@ -62,4 +61,4 @@ export default function ConvexUserProvider({
   );
 }
 
-export const useConvexUser = () => useContext(ConvexUserContext);
+export const useUser = () => useContext(ConvexUserContext);
