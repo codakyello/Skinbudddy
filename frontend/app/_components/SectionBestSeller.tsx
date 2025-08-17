@@ -5,19 +5,32 @@ import Section from "./Section";
 import { Box } from "@chakra-ui/react";
 import useProducts from "../_hooks/useProducts";
 import Link from "next/link";
+import useUserCart from "../_hooks/useUserCart";
+import { useUser } from "../_contexts/CreateConvexUser";
+import { use } from "react";
 // import { getAllProducts } from "../_lib/actions";
 
-export default function SectionBestSeller({initialProducts}: { initialProducts?: Product[] }) {
+export default function SectionBestSeller({
+  initialProducts,
+}: {
+  initialProducts?: Product[];
+}) {
   // #FBF9F7
-  const limit = 3;
+  const limit = 8;
 
-  const {
-    products: bestSellers,
-  } = useProducts({ filters: { isBestseller: true }, sort: "", initialProducts });
+  const { userId } = useUser();
+
+  const { cart } = useUserCart(userId as string);
+
+  const { products: bestSellers } = useProducts({
+    filters: { isBestseller: true },
+    sort: "",
+    initialProducts,
+  });
 
   // if (!bestSeller && !isPending) return null;
 
-  if(!bestSellers) return null;
+  if (!bestSellers) return null;
 
   return (
     <Box className="bg-[#FBF9F7] pt-[120px] pb-[120px]">
@@ -30,11 +43,15 @@ export default function SectionBestSeller({initialProducts}: { initialProducts?:
           ))} */}
 
         <Box className="grid grid-cols-3 gap-x-[24px] pt-[7.2rem] no-scrollbar overflow-x-auto gap-y-[4rem]">
-          { bestSellers.slice(0, limit)?.map((product: Product, i: number) => (
-              <Box key={i}>
-                <ProductCard key={i} product={product} />
-              </Box>
-            ))}
+          {bestSellers.slice(0, limit)?.map((product: Product, i: number) => (
+            <Box key={i}>
+              <ProductCard
+                key={i}
+                product={product}
+                isInCart={cart?.some((item) => item.productId === product._id) || false}
+              />
+            </Box>
+          ))}
         </Box>
 
         {bestSellers.length > limit && (

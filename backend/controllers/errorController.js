@@ -62,37 +62,24 @@ const sendErrProd = (err, res) => {
 };
 
 function globalErrorHandler(err, _req, res, _next) {
-  console.log(err);
-  err.statusCode = err.statusCode || 500;
-  err.status = err.status || "error";
+  let error = Object.create(
+    Object.getPrototypeOf(err),
+    Object.getOwnPropertyDescriptors(err)
+  );
+  error.statusCode = err.statusCode || 500;
+  error.status = err.status || "error";
 
-  // console.log(err);
   if (process.env.NODE_ENV === "development") {
-    sendErrDev(err, res);
-    console.log("dev");
+    sendErrDev(error, res);
   } else if (process.env.NODE_ENV === "production") {
-    console.log("prod");
-
-    let error = Object.create(
-      Object.getPrototypeOf(err),
-      Object.getOwnPropertyDescriptors(err)
-    );
-
     // Handle specific MongoDB errors
     if (error.name === "CastError") error = handleCastErrorDB(error);
-
     if (error.code === 11000) error = handleDuplicateFieldsDB(error);
-
-    if (error.name === "ValidationError")
-      error = handleValidationErrorDB(error);
-
+    if (error.name === "ValidationError") error = handleValidationErrorDB(error);
     if (error.name === "JsonWebTokenError") error = handleJWTError();
-
-    if (err.name === "TokenExpiredError") error = handleJWTExpiredError();
-
+    if (error.name === "TokenExpiredError") error = handleJWTExpiredError();
     if (error.name === "MongooseError") error = handleTimeoutError();
 
-    console.log(error.statusCode);
     sendErrProd(error, res);
   }
 }

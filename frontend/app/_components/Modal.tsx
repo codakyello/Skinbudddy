@@ -172,6 +172,7 @@ export function ModalWindow({
         ref={ref}
       >
         {cloneElement(children, {
+          ...children.props,
           onClose: close,
         })}
       </Box>

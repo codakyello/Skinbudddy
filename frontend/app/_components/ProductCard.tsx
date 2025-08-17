@@ -25,9 +25,12 @@ import { IoCloseOutline } from "react-icons/io5";
 
 export default function ProductCard({
   product,
+  isInCart,
+  className = "",
 }: {
   product: Product;
   className?: string;
+  isInCart: boolean;
 }) {
   // const { user } = useAuth();
   // const { mutate: addToCart, isPending } = useCustomMutation(createCartItem);
@@ -59,6 +62,8 @@ export default function ProductCard({
   // const imageUrl = product.images?.[0] || "/placeholder.png";
 
   const randomImageNumber = Math.floor(Math.random() * 3) + 2;
+
+  console.log(isInCart, "Is in product card");
 
   return (
     <Box className="relative overflow-hidden min-h-[580px] h-full flex flex-col">
@@ -114,7 +119,7 @@ export default function ProductCard({
         className="hover:bg-black hover:text-white mt-auto font-hostgrotesk capitalize w-full h-[50px] text-[1.4rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
         onClick={handleAddToCart}
       >
-        Add to cart
+       {isInCart ? "Added to cart" : "Add to cart"} 
       </button>
 
       {/* ModalWindow: fully functional Quick View */}
@@ -126,6 +131,7 @@ export default function ProductCard({
       >
         <ProductPreviewModal
           product={product}
+          isInCart={isInCart}
           handleAddToCart={handleAddToCart}
         />
       </ModalWindow>
@@ -134,17 +140,20 @@ export default function ProductCard({
 }
 
 export function ProductPreviewModal({
+  isInCart,
   product,
   handleAddToCart,
   onClose,
 }: {
   product: Product;
+  isInCart: boolean;
   handleAddToCart: (
     e: React.MouseEvent<HTMLButtonElement>,
     customQty?: number
   ) => void;
   onClose?: () => void;
 }) {
+  console.log(isInCart, `This is in cart`)
   const [quantity, setQuantity] = useState(1);
   const handleIncrement = () => setQuantity((q) => q + 1);
   const handleDecrement = () => setQuantity((q) => (q > 1 ? q - 1 : 1));
@@ -204,7 +213,7 @@ export function ProductPreviewModal({
           className="hover:bg-black hover:text-white font-hostgrotesk capitalize w-full h-[8rem] text-[1.4rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
           onClick={(e) => handleAddToCart(e, quantity)}
         >
-          Add to cart
+          {isInCart ? "Added to cart" : "Add to cart"}
         </button>
 
         <p className="mt-[2rem] text-[1.4rem]">
