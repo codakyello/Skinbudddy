@@ -7,16 +7,26 @@ import useProducts from "../_hooks/useProducts";
 import Link from "next/link";
 import useUserCart from "../_hooks/useUserCart";
 import { useUser } from "../_contexts/CreateConvexUser";
-import { use } from "react";
 // import { getAllProducts } from "../_lib/actions";
 
+/*************  ✨ Windsurf Command ⭐  *************/
+/**
+ * SectionBestSeller renders a section that displays the best selling products. 
+ * It accepts an optional initialProducts prop to provide initial products to be displayed.
+ * If initialProducts is not provided, it fetches the best selling products from the server.
+ * It displays a maximum of 3 products and includes a link to view all products.
+ * @param {Object} props - The props object.
+ * @param {Product[]} props.initialProducts - The initial products to be displayed.
+ * @returns {JSX.Element|null} - The SectionBestSeller component or null if products are not available.
+ */
+/*******  57f26256-1f3d-436d-b3a9-90ae8991d482  *******/
 export default function SectionBestSeller({
   initialProducts,
 }: {
   initialProducts?: Product[];
 }) {
   // #FBF9F7
-  const limit = 8;
+  const limit = 3;
 
   const { userId } = useUser();
 

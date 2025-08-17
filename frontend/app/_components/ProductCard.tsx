@@ -25,12 +25,11 @@ import { IoCloseOutline } from "react-icons/io5";
 
 export default function ProductCard({
   product,
-  isInCart,
-  className = "",
+  isInCart = false,
 }: {
   product: Product;
   className?: string;
-  isInCart: boolean;
+  isInCart?: boolean;
 }) {
   // const { user } = useAuth();
   // const { mutate: addToCart, isPending } = useCustomMutation(createCartItem);
