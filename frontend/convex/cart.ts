@@ -14,15 +14,17 @@ export const createCart = mutation({
     userId: v.string(),
     productId: v.id("products") || v.string(),
     quantity: v.number(),
+    sizeId: v.optional(v.string())
   },
-  handler: async (ctx, { userId, productId, quantity }) => {
+  handler: async (ctx, { userId, productId, quantity, sizeId }) => {
     // Check if item already exists in cart
     const existingCartItem = await ctx.db
       .query("carts")
       .filter((q) =>
         q.and(
           q.eq(q.field("userId"), userId),
-          q.eq(q.field("productId"), productId)
+          q.eq(q.field("productId"), productId),
+          q.eq(q.field("sizeId"), sizeId) // Assuming variantId is optional and null for non-variant products
         )
       )
       .first();
@@ -37,6 +39,7 @@ export const createCart = mutation({
       // Create new cart item
       const cartId = await ctx.db.insert("carts", {
         userId,
+        sizeId,
         productId,
         quantity,
         createdAt: Date.now(),
@@ -67,6 +70,7 @@ export const getUserCart = query({
         return {
           ...item,
           product,
+          size: product?.sizes?.find(size => size.id === item.sizeId) || null, // Get size details if available
         };
       })
     );

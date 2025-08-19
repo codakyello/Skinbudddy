@@ -3,7 +3,7 @@ import { v } from "convex/values";
 
 export default defineSchema({
   users: defineTable({
-    userId: v.string(), // Clerk user ID
+    userId: v.string(), 
     name: v.optional(v.string()),
     email: v.optional(v.string()),
     createdAt: v.number(),
@@ -16,22 +16,23 @@ export default defineSchema({
     price: v.number(),
     stock: v.number(),
     brandId: v.id("brands"),
-    categories: v.array(v.id("categories")), // imageUrl: v.optional(v.string()),
+    categories: v.optional(v.array(v.id("categories"))), // imageUrl: v.optional(v.string()),
     images: v.array(v.string()),
     promoImage: v.optional(v.string()),
     createdAt: v.number(),
-
     isNew: v.optional(v.boolean()),
     isBestseller: v.optional(v.boolean()),
     isTrending: v.optional(v.boolean()),
     discount: v.optional(v.number()),
 
-    sizes: v.optional(
+    sizes: 
+    v.optional(
       v.array(
         v.object({
+          id: v.string(),
           size: v.string(),
-          price: v.optional(v.number()),
-          stock: v.optional(v.number()),
+          price: v.number(),
+          stock: v.number(),
         })
       )
     ),
@@ -47,6 +48,7 @@ export default defineSchema({
   carts: defineTable({
     userId: v.string(),
     productId: v.id("products"),
+    sizeId: v.optional(v.string()), // For size variants
     quantity: v.number(),
     createdAt: v.number(),
   }),
@@ -62,6 +64,7 @@ export default defineSchema({
     items: v.array(
       v.object({
         productId: v.id("products"),
+        sizeId: v.optional(v.string()), // For size variants
         quantity: v.number(),
       })
     ),

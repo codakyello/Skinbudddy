@@ -8,6 +8,7 @@ export default function useProducts({
   sort,
   search,
   page,
+  limit = 10,
   initialProducts = [],
 }: {
   filters: {
@@ -23,7 +24,8 @@ export default function useProducts({
   sort?: string;
   search?: string;
   page?: number;
-  initialProducts?: Product[]; 
+  initialProducts?: Product[];
+  limit?: number;
 }) {
   const {
     category = [],
@@ -53,6 +55,7 @@ export default function useProducts({
       sort,
       page,
       search,
+      limit,
     })
   );
 

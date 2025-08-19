@@ -23,7 +23,7 @@ export default function CartModal() {
       ) : cart && cart?.length > 0 ? (
         cart.map((item: Cart, index: number) => (
           <p className="text-black" key={index}>
-            {item?.product?.name}
+            {item?.product?.name} x {item?.quantity} {item.size ? item.size?.size : ""}
           </p>
         ))
       ) : (

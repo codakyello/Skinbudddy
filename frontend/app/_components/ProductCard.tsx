@@ -17,6 +17,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { ModalOpen, ModalWindow } from "./Modal";
 import { useState } from "react";
 import { IoCloseOutline } from "react-icons/io5";
+import { Size } from "../_utils/types";
 
 // import useCustomMutation from "../_hooks/useCustomMutation";
 // import { createCartItem } from "../_lib/data-service";
@@ -24,8 +25,9 @@ import { IoCloseOutline } from "react-icons/io5";
 // import { toast } from "sonner";
 
 export default function ProductCard({
+  className,
   product,
-  isInCart = false,
+  isInCart = false, // Problem here when i open modal this is set to the default value and not the actual value
 }: {
   product: Product;
   className?: string;
@@ -35,26 +37,38 @@ export default function ProductCard({
   // const { mutate: addToCart, isPending } = useCustomMutation(createCartItem);
   const addToCart = useMutation(api.cart.createCart);
   const { userId } = useUser();
+  const [sizeId, setSizeId] = useState<string | undefined>();
 
+  // we will hvae one product size product.sizes?.[0].id
   const handleAddToCart = async (
     e: React.MouseEvent<HTMLButtonElement>,
-    customQty?: number
+    qty = 1
   ) => {
     e.stopPropagation();
     e.preventDefault();
-    const qty = customQty ?? 1;
-    if (userId)
-      try {
-        const cartId = await addToCart({
-          userId,
-          productId: product._id as Id<"products">,
-          quantity: qty,
-        });
-        toast.success(`Added to cart with ID: ${cartId}`);
-      } catch (error) {
-        if (error instanceof Error)
-          toast.error(`Failed to add to cart: ${error.message}`);
-      }
+    let chosenSizeId = sizeId;
+    if (product.sizes && product.sizes.length > 1 && !chosenSizeId) {
+      return toast.error("Please select a size");
+    }
+    // fallback to first size if none selected
+    if (!chosenSizeId) {
+      chosenSizeId = product.sizes?.[0]?.id;
+      setSizeId(chosenSizeId);
+    }
+
+    if (!userId) return;
+    try {
+      const cartId = await addToCart({
+        sizeId: chosenSizeId,
+        userId,
+        productId: product._id as Id<"products">,
+        quantity: qty,
+      });
+      toast.success(`Added to cart with ID: ${cartId}`);
+    } catch (error) {
+      if (error instanceof Error)
+        toast.error(`Failed to add to cart: ${error.message}`);
+    }
   };
 
   const isDiscounted = product.discount;
@@ -62,18 +76,15 @@ export default function ProductCard({
 
   const randomImageNumber = Math.floor(Math.random() * 3) + 2;
 
-  console.log(isInCart, "Is in product card");
-
   return (
-    <Box className="relative overflow-hidden min-h-[580px] h-full flex flex-col">
+    <Box
+      className={`relative ${className || ""} overflow-hidden min-h-[580px] h-full flex flex-col`}
+    >
       <Box className="group aspect-[4/5] bg-[#f4f4f2] cursor-pointer w-full relative">
         <Tag className="top-[15px] left-[15px]" type={getTagType(product)} />
         {/* ModalOpen with smooth hover animation */}
         <ModalOpen name={product.name}>
-          <button
-            onClick={(e) => e.stopPropagation()}
-            className="absolute bottom-0 left-0 w-full opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all duration-300 bg-black text-white text-[1.2rem] px-[1.6rem] py-[1.2rem] flex items-center justify-center gap-[0.8rem] border-t border-gray-900"
-          >
+          <button className="absolute bottom-0 left-0 w-full opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all duration-300 bg-black text-white text-[1.2rem] px-[1.6rem] py-[1.2rem] flex items-center justify-center gap-[0.8rem] border-t border-gray-900">
             <FiEye className="w-[1.4rem] h-[1.4rem]" />
             Quick View
           </button>
@@ -94,7 +105,7 @@ export default function ProductCard({
       </button>
       <Link href={`/products/${product._id}`}>
         <Box className="text-[1.4rem]">
-          <h2 className="text-[#000] capitalize font-medium mt-[1.6rem] tracking-[0.25px] leading-tight  ">
+          <h2 className="text-[#000] font-hostgrotesk capitalize font-medium mt-[1.6rem] tracking-[0.25px] leading-tight  ">
             {product.name}
           </h2>
           <p className="font-dmsans mb-[.5rem]">{product.description}</p>
@@ -114,11 +125,44 @@ export default function ProductCard({
         )}
       </Box>
 
+      {/* Size selection UI */}
+      {product.sizes && product.sizes.length > 0 && (
+        <Box className="mb-4">
+          <label className="block mb-2 text-[1.2rem] font-medium">
+            Select Size:
+          </label>
+          <Box className="flex gap-2 flex-wrap">
+            {product.sizes.map((s: Size) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setSizeId(s.id)}
+                disabled={s.stock === 0}
+                className={[
+                  "px-4 py-2 rounded-md border text-[1.2rem] font-medium transition-all",
+                  sizeId === s.id
+                    ? "bg-black text-white border-black"
+                    : "bg-white text-black border-[#e1ded9] hover:border-black",
+                  s.stock === 0 ? "opacity-50 cursor-not-allowed" : "",
+                ].join(" ")}
+              >
+                {s.size}
+                {typeof s.price === "number" && (
+                  <span className="ml-2 text-[1rem] text-gray-500">
+                    {formatPrice.format(s.price)}
+                  </span>
+                )}
+              </button>
+            ))}
+          </Box>
+        </Box>
+      )}
+
       <button
         className="hover:bg-black hover:text-white mt-auto font-hostgrotesk capitalize w-full h-[50px] text-[1.4rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
         onClick={handleAddToCart}
       >
-       {isInCart ? "Added to cart" : "Add to cart"} 
+        {isInCart ? "Added to cart" : "Add to cart"}
       </button>
 
       {/* ModalWindow: fully functional Quick View */}
@@ -152,7 +196,6 @@ export function ProductPreviewModal({
   ) => void;
   onClose?: () => void;
 }) {
-  console.log(isInCart, `This is in cart`)
   const [quantity, setQuantity] = useState(1);
   const handleIncrement = () => setQuantity((q) => q + 1);
   const handleDecrement = () => setQuantity((q) => (q > 1 ? q - 1 : 1));

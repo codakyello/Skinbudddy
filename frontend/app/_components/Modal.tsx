@@ -118,7 +118,7 @@ export function ModalWindow({
   position = "center",
   listenCapturing = false,
   openType = "click",
-  overlayColor
+  overlayColor,
 }: {
   children: ReactElement;
   className?: string;
@@ -128,10 +128,9 @@ export function ModalWindow({
   listenCapturing?: boolean;
   overlayColor?: string;
 }) {
- 
   const { close, isOpen, setHovering } = useModal();
 
-   // prevent body scroll when modal is open
+  // prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -139,7 +138,7 @@ export function ModalWindow({
       document.body.style.overflow = "auto";
     }
   }, [isOpen]);
-  
+
   const ref = useOutsideClick<HTMLDivElement>(close, listenCapturing);
 
   return isOpen === name ? (
@@ -172,7 +171,6 @@ export function ModalWindow({
         ref={ref}
       >
         {cloneElement(children, {
-          ...children.props,
           onClose: close,
         })}
       </Box>

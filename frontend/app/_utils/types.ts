@@ -1,9 +1,11 @@
 import { Id } from "@/convex/_generated/dataModel";
 
-type Size = {
+export type Size = {
+  id: string;
   size: string;
   price?: number;
   stock?: number;
+  name?: string;
 };
 
 // type Filter = {
@@ -53,6 +55,9 @@ export type Cart = {
   productId: Id<"products">; // or Id<"products">
   quantity: number;
   createdAt: number;
+  variantId?: string; // Optional for products with variants
+  sizeId?: string; // Optional for size variants
+  size?: Size | null; // Optional populated size field, if you're including it via query
 
   // Optional populated product field, if you're including it via query
   product?: Product | null;
