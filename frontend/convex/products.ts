@@ -9,9 +9,10 @@ export const getAllProducts = query({
         discount: v.optional(v.number()),
         isTrending: v.optional(v.boolean()),
         isNew: v.optional(v.boolean()),
-        brand: v.optional(v.string()),
+        brandSlug: v.optional(v.string()),
       })
     ),
+    limit: v.optional(v.number()),
 
     sort: v.optional(v.string()),
 
@@ -20,16 +21,19 @@ export const getAllProducts = query({
     search: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+
+    // lets add a 5 seconds delay here 
+    // await wait(5)
+
     const filters = args.filters;
     const sort = args.sort;
 
     let products = await ctx.db.query("products").collect();
 
-    console.log(filters, sort, "These are filters and sort from backend");
 
     // 🧪 Apply Filters
     if (filters) {
-      const { isBestseller, isNew, isTrending, discount, brand } = filters;
+      const { isBestseller, isNew, isTrending, discount, brandSlug } = filters;
 
       if (isBestseller) {
         products = products.filter((p) => p.isBestseller);
@@ -47,11 +51,11 @@ export const getAllProducts = query({
         products = products.filter((p) => p.discount && p.discount > 0);
       }
 
-      if (brand) {
+      if (brandSlug) {
         // Optionally, find brand ID by name if needed
         const brandDocs = await ctx.db
           .query("brands")
-          .filter((q) => q.eq(q.field("name"), brand))
+          .filter((q) => q.eq(q.field("slug"), brandSlug))
           .collect();
         const brandId = brandDocs[0]?._id;
         if (brandId) {
@@ -86,7 +90,8 @@ export const getAllProducts = query({
       }
     }
 
-    return products;
+    // return products with sorted out sizes meaning small sizes should come before bigger sizes
+    return products.map((item)=> ({...item, sizes: item.sizes?.sort((a, b)=> a.size - b.size ) }));
   },
 });
 
@@ -95,3 +100,10 @@ export const getAllProducts = query({
 // }
 
 // add({ num1: 2, num2: 3 });
+
+
+function wait (seconds: number) {
+  return new Promise((resolve, reject)=> {
+    setTimeout(resolve, seconds * 1000)
+  })
+}

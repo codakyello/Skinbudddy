@@ -10,12 +10,17 @@ const GUEST_ID_KEY = "convex_guest_id";
 const generateGuestId = () => `guest_${crypto.randomUUID()}`;
 
 type ConvexUserContextValue = {
-  userId: string | undefined | null;
+  user: User;
 };
 
 const ConvexUserContext = createContext<ConvexUserContextValue>({
-  userId: undefined,
+  user: {},
 });
+
+type User = {
+  id?: string;
+
+}
 
 export default function ConvexUserProvider({
   children,
@@ -23,9 +28,10 @@ export default function ConvexUserProvider({
   children: React.ReactNode;
 }) {
   // clerk lets us know if the user is signed in using sessions
-  const { user, isSignedIn } = useClerkUser();
+  const { user: clerkUser, isSignedIn } = useClerkUser();
+  console.log(clerkUser)
   const createUser = useMutation(api.users.createUser);
-  const [userId, setConvexUserId] = useState<string | null>(null);
+  const [user, setConvexUser] = useState<User>({});
 
   useEffect(() => {
     (async () => {
@@ -37,24 +43,23 @@ export default function ConvexUserProvider({
           guestId = generateGuestId();
           localStorage.setItem(GUEST_ID_KEY, guestId);
 
-          // when should we create a new user?
           await createUser({ userId: guestId });
         }
 
-        setConvexUserId(guestId);
+        setConvexUser({id: guestId});
       } else {
         // Optional: Clear guest ID since user is now signed in
         // before removing though, we should take all of the data from the guest user and moved it to the signed in user
         // await transferGuestDataToUser(guestId, user.id);
         localStorage.removeItem(GUEST_ID_KEY);
         // Set the user id from clerk on sign in or sign up
-        setConvexUserId(user.id);
+        setConvexUser(clerkUser);
       }
     })();
-  }, [isSignedIn, user, createUser]);
+  }, [isSignedIn, clerkUser, createUser, user]);
 
   return (
-    <ConvexUserContext.Provider value={{ userId }}>
+    <ConvexUserContext.Provider value={{ user }}>
       {children}
     </ConvexUserContext.Provider>
   );

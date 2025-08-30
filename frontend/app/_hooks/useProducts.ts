@@ -9,7 +9,6 @@ export default function useProducts({
   search,
   page,
   limit = 10,
-  initialProducts = [],
 }: {
   filters: {
     isNew?: boolean;
@@ -37,7 +36,7 @@ export default function useProducts({
     isDiscounted,
   } = filters;
   const {
-    data: products = initialProducts,
+    data: products,
     isPending,
     error,
   } = useQuery(

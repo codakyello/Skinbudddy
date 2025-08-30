@@ -17,7 +17,7 @@ export default function Section({
 }: SectionProps) {
   return (
     <Box
-      className={`${className || ""} max-w-[1200px] overflow-hidden mx-auto px-[5rem]`}
+      className={`${className || ""}  overflow-hidden px-[5rem]`}
     >
       <h1 className="text-[12.8rem] uppercase pt-[6.4rem] font-hostgrotesk font-medium text-[#000] font- leading-none">
         {title}

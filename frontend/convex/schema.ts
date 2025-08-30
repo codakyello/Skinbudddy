@@ -12,11 +12,12 @@ export default defineSchema({
 
   products: defineTable({
     name: v.string(),
+    slug:v.optional(v.string()),
     description: v.string(),
     price: v.number(),
     stock: v.number(),
     brandId: v.id("brands"),
-    categories: v.optional(v.array(v.id("categories"))), // imageUrl: v.optional(v.string()),
+    categories: v.optional(v.array(v.id("categories"))), // facewash, toner, serum 
     images: v.array(v.string()),
     promoImage: v.optional(v.string()),
     createdAt: v.number(),
@@ -24,26 +25,30 @@ export default defineSchema({
     isBestseller: v.optional(v.boolean()),
     isTrending: v.optional(v.boolean()),
     discount: v.optional(v.number()),
-
+    ingredients: v.optional(v.number()),
+    skinType: v.optional(v.array(v.string())),
+    
     sizes: 
     v.optional(
       v.array(
         v.object({
           id: v.string(),
-          size: v.string(),
+          size: v.number(),
           price: v.number(),
+          discount: v.optional(v.number()),
           stock: v.number(),
+          unit: v.string()
         })
-      )
-    ),
+      ))
   }),
 
   brands: defineTable({
     name: v.string(),
+    slug: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
     description: v.optional(v.string()),
     createdAt: v.number(),
-  }),
+  }).index("by_slug", ["slug"]),
 
   carts: defineTable({
     userId: v.string(),
@@ -88,5 +93,11 @@ export default defineSchema({
     createdAt: v.number(),
   }),
 
-  categories: defineTable({}),
+  categories: defineTable({
+    name: v.string(),
+    slug: v.optional(v.string()), // for SEO-friendly URLs
+    description: v.optional(v.string()),
+    image: v.optional(v.string()), // category image for banners
+    createdAt: v.number(),
+  }).index("by_slug", ["slug"]),
 });

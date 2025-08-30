@@ -7,6 +7,7 @@ import useCartSummary from "../_hooks/useCartSummary";
 import { useState } from "react";
 import { TfiClose } from "react-icons/tfi";
 import TransitionLink from "./TransitionLink";
+import Image from "next/image";
 export default function CartReminder() {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
@@ -46,10 +47,11 @@ export default function CartReminder() {
         }`}
       >
         <Box className="w-[10rem] h-[12rem] ">
-          <img
-            className="w-full h-full object-cover"
-            src={cartSummary?.cart?.product?.images[0]}
-            alt="cart-reminder"
+          <Image
+            src="/images/image-no-bg.webp"
+            alt="Cart Reminder Product Image"
+            width={100}
+            height={100}
           />
         </Box>
 

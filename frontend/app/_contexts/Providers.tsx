@@ -28,10 +28,10 @@ convexQueryClient.connect(queryClient);
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <Modal>
-      <QueryProvider>
-        <AuthProvider >
-          <ClerkProvider>
+    <ClerkProvider>
+      <Modal>
+        <QueryProvider>
+          <AuthProvider>
             <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
               <QueryClientProvider client={queryClient}>
                 <NavSticky defaultPosition={35}>
@@ -46,9 +46,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
                 </NavSticky>
               </QueryClientProvider>
             </ConvexProviderWithClerk>
-          </ClerkProvider>
-        </AuthProvider>
-      </QueryProvider>
-    </Modal>
+          </AuthProvider>
+        </QueryProvider>
+      </Modal>
+    </ClerkProvider>
   );
 }

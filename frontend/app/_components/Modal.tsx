@@ -162,7 +162,7 @@ export function ModalWindow({
           console.log("setting hovering true");
           console.log("hovering true");
         }}
-        className={`modal-box 
+        className={`
         ${position === "center" ? "center-modal" : ""}
         ${position === "top" ? "top-modal" : ""}
         ${position === "bottom" ? "bottom-modal" : ""}

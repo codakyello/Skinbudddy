@@ -16,7 +16,6 @@ export default async function HomePage() {
     filters: { isBestseller: true },
   })
 
-
   return (
     <Modal>
       <Hero />

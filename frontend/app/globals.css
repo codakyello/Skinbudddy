@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Host+Grotesk:ital,wght@0,300..800;1,300..800&family=Raleway:ital,wght@0,100..900;1,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Host+Grotesk:ital,wght@0,300..800;1,300..800&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Raleway:ital,wght@0,100..900;1,100..900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -20,6 +20,10 @@
   --input-label-color-focus: #666;
   --checkbox-border-color: #333;
 }
+
+/* :root { --device: desktop; }
+@media (max-width: 1024px) { :root { --device: tablet; } }
+@media (max-width: 768px)  { :root { --device: mobile; } } */
 
 html {
   font-size: 62.5%;
@@ -45,13 +49,18 @@ body {
   color: #000;
   line-height: 1.5;
   font-size: 1.6rem;
-  font-family: "DM Sans", sans-serif !important;
+  font-family: "Montserrat", sans-serif !important;
 }
 
 input:focus-visible {
   border: 1px solid var(--input-border-color-focus);
   outline: none;
   
+}
+
+*:focus-visible {
+  border: 1px solid var(--input-border-color-focus);
+  outline: none;
 }
 
 .container {
@@ -89,74 +98,6 @@ input:focus-visible {
   }
 }
 
-@keyframes slide-in-right {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-@keyframes slide-in-left {
-  from {
-    transform: translateX(-100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes slide-in-top {
-  from {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes slide-in-bottom {
-  from {
-    transform: translateY(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes fade-in-scale {
-  from {
-    transform: scale(0.5);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes slide-left-then-right {
-  0% {
-    transform: translateX(0); /* Start at normal position */
-    opacity: 1;
-  }
-  30% {
-    transform: translateX(-5%); /* Move slightly left */
-    opacity: 0.8;
-  }
-  100% {
-    transform: translateX(100%); /* Move completely to the right */
-    opacity: 0;
-  }
-}
-
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -174,8 +115,11 @@ input:focus-visible {
 .left-modal {
   animation: slide-left-in 0.2s ease-out forwards;
 }
+/* .right-modal {
+  animation: slide-right-in 0.3s ease-out forwards;
+} */
 .right-modal {
-  animation: slide-right-in 0.2s ease-out forwards;
+  animation: slide-right-in-drag 0.4s cubic-bezier(0.5, 0.46, 0.45, 0.94) forwards;
 }
 
 /* Modal Closing Animations */
@@ -205,7 +149,7 @@ input:focus-visible {
 
 /* Keyframes */
 @keyframes fade-scale-in {
-  0% { transform: scale(0.7); opacity: 0; }
+  0% { transform: scale(0.7); opacity: 1; }
   100% { transform: scale(1); opacity: 1; }
 }
 @keyframes fade-scale-out {
@@ -240,15 +184,16 @@ input:focus-visible {
   0% { transform: translateX(100%); }
   100% { transform: translateX(0); }
 }
+@keyframes slide-right-in-drag {
+  0% { transform: translateX(100%); }
+  10%{transform: translateX(102%); }
+  25%{transform: translateX(98%); }
+  100% { transform: translateX(0); }
+}
 @keyframes slide-right-out {
   0% { transform: translateX(0); }
   100% { transform: translateX(100%); }
 }
-
-.animate-fade-in {
-  animation: fade-in 1s ease-in-out;
-}
-
 @keyframes fade-in {
   0% {
     opacity: 0;
@@ -256,4 +201,38 @@ input:focus-visible {
   100% {
     opacity: 1;
   }
+}
+
+.animate-fade-in {
+  animation: fade-in 1s ease-in-out;
+}
+
+/* .fade-in-left {
+  --fade-in-left-opacity-from: 0;
+  --fade-in-left-opacity-to: 1;
+  --fade-in-left-translate-x: 100%;
+  
+  animation-name: fade-in-left;
+  animation-duration: 0.25s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes fade-in-left {
+  from {
+    opacity: var(--fade-in-left-opacity-from, 0);
+    transform: translateX(var(--fade-in-left-translate-x, 100%));
+  }
+  to {
+    opacity: var(--fade-in-left-opacity-to, 1);
+    transform: translateX(0);
+  }
+} */
+
+/* Hide dropdown arrow for select elements */
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: none; /* Remove any custom background image arrows */
 }

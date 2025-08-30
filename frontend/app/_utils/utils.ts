@@ -1,4 +1,4 @@
-import { Product } from "./types";
+import { Product, Size } from "./types";
 
 export const URL = "https://skinbudddy.vercel.app/api/v1";
 
@@ -57,7 +57,6 @@ export function getOrCreateAnonymousId(): string {
 }
 
 export function getTagType(product: Product) {
-  if (product.discount) return "isDiscount";
   if (product.isNew) return "isNew";
   if (product.isBestseller) return "isBestseller";
 }
@@ -68,4 +67,10 @@ export function formatProductName (name: string) {
     formattedName += word.slice(0, 1).toUpperCase() + word.slice(1) + " ";
   })
   return formattedName.trim();
+}
+
+export function getDiscountedType (products?: Size[]) {
+  const isDiscount = products?.find((product)=> product.discount)
+
+  if(isDiscount) return "isDiscount"
 }

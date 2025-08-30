@@ -1,6 +1,6 @@
 "use client";
 import { Box } from "@chakra-ui/react";
-import { ModalHoverOpen, ModalOpen, ModalWindow } from "./Modal";
+import { ModalOpen, ModalWindow } from "./Modal";
 import CartModal from "./CartModal";
 import AuthModal from "./AuthModal";
 import Link from "next/link";
@@ -18,9 +18,9 @@ export default function NavBar() {
   const { isSticky } = useNavSticky();
 
 
-  const { userId } = useUser();
+  const { user } = useUser();
 
-  const { cart } = useUserCart(userId || undefined);
+  const { cart } = useUserCart(user.id);
 
   const totalCartItems =
     cart?.reduce((acc, item) => {
@@ -114,7 +114,7 @@ export default function NavBar() {
             />
           </svg>
 
-          <ModalHoverOpen openCondition={cart && cart?.length > 0} name="cart">
+          {/* <ModalHoverOpen openCondition={cart && cart?.length > 0} name="cart">
             <Link href={"/cart"} className="relative cursor-pointer">
               {cart && cart?.length > 0 && (
                 <span
@@ -139,7 +139,35 @@ export default function NavBar() {
                 />
               </svg>
             </Link>
-          </ModalHoverOpen>
+          </ModalHoverOpen> */}
+
+         <ModalOpen name="cart">
+            <Box className="relative cursor-pointer">
+              {cart && cart?.length > 0 && (
+                <span
+                  className={`absolute -top-2 -right-4 transition-all duration-500  rounded-full w-[2rem] h-[2rem] flex items-center justify-center text-[1rem] group-hover:bg-[var(--color-primary)] bg-[var(--color-primary)] text-white`}
+                >
+                  <div>{totalCartItems}</div>
+                </span>
+              )}
+              <svg
+                className="cursor-pointer"
+                width="21"
+                height="20"
+                viewBox="0 0 21 20"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  fill-rule="evenodd"
+                  clip-rule="evenodd"
+                  d="M8.6307 5C8.74852 4.17776 8.9326 3.55439 9.1729 3.09564C9.38779 2.68539 9.64067 2.42048 9.92184 2.25433C10.204 2.0876 10.5491 2 10.98 2C11.4109 2 11.756 2.0876 12.0381 2.25433C12.3193 2.42048 12.5722 2.68539 12.7871 3.09564C13.0274 3.55439 13.2115 4.17776 13.3293 5H8.6307ZM7.52497 6C7.49468 6.46527 7.47998 6.96498 7.47998 7.5H8.47998C8.47998 6.95197 8.49611 6.45312 8.52737 6H13.4326C13.4639 6.45312 13.48 6.95197 13.48 7.5H14.48C14.48 6.96498 14.4653 6.46527 14.435 6H17.0489L17.906 18H4.05395L4.91105 6H7.52497ZM7.62124 5C7.74933 4.02758 7.96739 3.24191 8.28706 2.63163C8.57217 2.08734 8.94429 1.67043 9.41312 1.3934C9.88096 1.11695 10.4108 1 10.98 1C11.5491 1 12.079 1.11695 12.5469 1.3934C13.0157 1.67043 13.3878 2.08734 13.6729 2.63163C13.9926 3.24191 14.2106 4.02758 14.3387 5H17.98L18.98 19H2.97998L3.97993 5H7.62124Z"
+                  fill="black"
+                />
+              </svg>
+           </Box>
+          </ModalOpen>
+
         </Box>
       </nav>
 
@@ -153,11 +181,20 @@ export default function NavBar() {
         <AuthModal />
       </ModalWindow>
 
-      <ModalWindow
+      {/* <ModalWindow
         className="z-[9]"
         name="cart"
         position="right"
         openType="hover"
+      >
+        <CartModal />
+      </ModalWindow> */}
+
+      <ModalWindow
+       listenCapturing={true}
+        className="z-[9]"
+        name="cart"
+        position="right"
       >
         <CartModal />
       </ModalWindow>

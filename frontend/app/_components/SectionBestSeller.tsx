@@ -1,104 +1,175 @@
 "use client";
 import ProductCard from "./ProductCard";
 import { Product } from "../_utils/types";
-import Section from "./Section";
+// import Section from "./Section";
 import { Box } from "@chakra-ui/react";
 import useProducts from "../_hooks/useProducts";
 import Link from "next/link";
-import useUserCart from "../_hooks/useUserCart";
-import { useUser } from "../_contexts/CreateConvexUser";
-import { useEffect, useState } from "react";
+// import useUserCart from "../_hooks/useUserCart";
+// import { useUser } from "../_contexts/CreateConvexUser";
+import { useEffect, useState, } from "react";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
+import useDeviceDetection from "../_hooks/useDeviceDetection";
 // import { getAllProducts } from "../_lib/actions";
+
+const images = [
+  "/images/product/good-molecules.webp",
+  "/images/product/cerave-daily.png",
+  "/images/product/larosh-moisturizer.png",
+  "/images/product/facefacts-moisturising-gel-cream.webp",
+  "/images/product/good-molecules.webp",
+  "/images/product/cerave-daily.png",
+  "/images/product/larosh-moisturizer.png",
+  "/images/product/facefacts-moisturising-gel-cream.webp",
+  "/images/product/good-molecules.webp",
+  "/images/product/cerave-daily.png",
+  "/images/product/larosh-moisturizer.png",
+  "/images/product/facefacts-moisturising-gel-cream.webp",
+];
 
 export default function SectionBestSeller({
   initialProducts,
 }: {
-  initialProducts?: Product[];
+  initialProducts: Product[];
 }) {
   // #FBF9F7
-  const limit = 10;
 
-  const { userId } = useUser();
+  // const { cart } = useUserCart(user.id as string);
 
-  const { cart } = useUserCart(userId as string);
-
-  const { products: bestSellers } = useProducts({
+  const { products, error, isPending } = useProducts({
     filters: { isBestseller: true },
-    limit,
     sort: "",
-    initialProducts,
   });
+
+  console.log(products, "products now availabele");
+
+  console.log(error, isPending);
+
+  const bestSellers = products || initialProducts;
+
+  // reorder the product size array smaller comes first in the list
+
   const [offset, setOffset] = useState(0);
+
   const [paused, setPaused] = useState(false);
 
-  function handleNext() {
-    setOffset((prev) => (prev + 1) % (bestSellers.length - 3));
-  }
+  const [cardWidth, setCardWidth] = useState(300);
+
+  const { isMobile, isTablet } = useDeviceDetection();
+
+  const [displayLimit, setDisplayLimit] = useState(4);
+
+  useEffect(() => {
+    if (isMobile) setDisplayLimit(2);
+    else if (isTablet) setDisplayLimit(3);
+    else setDisplayLimit(4);
+  }, [isMobile, isTablet]);
+
+  // const displayLimit = isMobile ? 2 : isTablet ? 3 : 4;
+
+
+  useEffect(() => {
+    function updateCardWidth() {
+      const card = document.querySelector(".product-card");
+      if (card) {
+        const width = card.clientWidth + 40;
+        setCardWidth(width);
+      }
+    }
+    updateCardWidth();
+    window.addEventListener("resize", updateCardWidth);
+    return () => window.removeEventListener("resize", updateCardWidth);
+  }, [displayLimit]);
+
+  // function handleNext() {
+  //   setOffset((prev) => (prev + 1) % (bestSellers.length - 3));
+  // }
 
   function handlePrev() {
-    if (offset === 0) {
-      setOffset(bestSellers.length - 3);
+    console.log("prev");
+
+    if (offset >= 0) return;
+    setOffset((prev) => prev + cardWidth);
+  }
+
+  console.log(bestSellers.length);
+
+  function handleNext() {
+    console.log("next");
+    // If the last item is in view (i.e., offset has reached the maximum negative scroll),
+    // reset offset to 0 to start from the beginning. Otherwise, move to the next item.
+    const maxOffset = -cardWidth * (bestSellers.length - displayLimit);
+    if (offset <= maxOffset) {
+      setOffset(0);
     } else {
-      setOffset((prev) => prev - 1);
+      setOffset((prev) => prev - cardWidth);
     }
   }
 
+
   useEffect(() => {
     if (paused) return;
+
     const interval = setInterval(() => {
-      setOffset((prev) => (prev + 1) % (bestSellers.length - 3));
+      const maxOffset = -cardWidth * (bestSellers.length - displayLimit);
+      setOffset((prev) => {
+        if (prev <= maxOffset) {
+          return 0;
+        } else {
+          return prev - cardWidth;
+        }
+      });
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [bestSellers.length, offset, paused]);
+  }, [bestSellers.length, displayLimit, paused, offset, cardWidth]);
 
   if (!bestSellers) return null;
 
+  console.log(isMobile, "mobile", isTablet, 'tablet')
+
   return (
-    <Box className="bg-[#FBF9F7] pt-[120px] pb-[120px] ">
-      <Section title="Best sellers">
-        {/* {isPending &&
-          Array.from({ length: limit }).map((_, i) => (
-            <Box key={i} className="min-w-[32rem]">
-              <ProductCardSkeleton />
-            </Box>
-          ))} */}
+    // <Section title="Best sellers" className=" bg-[#FBF9F7] py-[120px]">
+    <section className="py-[120px] relative px-[2rem]">
+      <Box className={`overflow-hidden max-w-[1200px] mx-auto relative`}>
+        <h1 className="text-[12.8rem] uppercase pt-[6.4rem] font-hostgrotesk font-medium text-[#000] font- leading-none">
+          Best sellers
+        </h1>
+
+        <button
+          onClick={handlePrev}
+          className="absolute z-[1] left-[50px] top-[50%] -translate-y-1/2 bg-white rounded-full p-4 border border-gray-200 text-gray-700 hover:text-black hover:bg-gray-50 transition-all duration-200 hover:scale-105 disabled:opacity-50 -translate-x-1/2"
+        >
+          <FaChevronLeft className="w-5 h-5" />
+        </button>
+        <button
+          onClick={handleNext}
+          className="absolute z-[1] right-[50px] top-[50%] -translate-y-1/2 bg-white rounded-full p-4 border border-gray-200 text-gray-700 hover:text-black hover:bg-gray-50 transition-all duration-200 hover:scale-105 disabled:opacity-50 translate-x-1/2"
+        >
+          <FaChevronRight className="w-5 h-5" />
+        </button>
 
         <Box
-          className="flex  mt-[7.2rem] no-scrollbar relative h-[800px] overflow-x-auto gap-y-[4rem]"
+        key={displayLimit}
+          className="flex gap-x-[4rem] mt-[7.2rem] no-scrollbar transition-transform duration-300 ease-out"
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
+          style={{ transform: `translateX(${offset}px)` }}
         >
-          {bestSellers.slice(0, limit)?.map((product: Product, i: number) => (
+          {bestSellers.map((product: Product, i: number) => (
             <Box
-              key={i}
-              className={`absolute top-0 w-[350px] transition-all duration-500 ease-in-out`}
-              style={{ left: `${370 * (i - offset)}px` }}
+                key={`${i}-${displayLimit}`} // 👈 force re-render when displayLimit changes
+              className="product-card"
+              style={{ flex: `0 0 calc(${100 / displayLimit}% - 4rem)` }}
             >
               <ProductCard
-                // className={`min-w-[35rem]`}
                 key={i}
-                product={product}
-                isInCart={cart?.some((item) => item.productId === product._id)}
+                product={{ ...product, images: [images[i]] }}
               />
             </Box>
           ))}
-          <button
-            onClick={handlePrev}
-            className="absolute left-[-10px] top-[30%] -translate-y-1/2 rounded-full p-3 shadow-md text-gray-700 hover:text-gray-900 transition-colors"
-          >
-            <FaChevronLeft className="w-6 h-6" />
-          </button>
-          <button
-            onClick={handleNext}
-            className="absolute right-[-10px] top-[30%] -translate-y-1/2 rounded-full p-3 shadow-md text-gray-700 hover:text-gray-900 transition-colors"
-          >
-            <FaChevronRight className="w-6 h-6" />
-          </button>
         </Box>
-
-        {bestSellers.length > limit && (
+        {bestSellers.length && (
           <Box className="flex justify-end mt-[25px]">
             <Link
               className="flex items-center uppercase font-hostgrotesk group"
@@ -117,7 +188,7 @@ export default function SectionBestSeller({
             </Link>
           </Box>
         )}
-      </Section>
-    </Box>
+      </Box>
+    </section>
   );
 }

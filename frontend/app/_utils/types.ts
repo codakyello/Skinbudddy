@@ -1,11 +1,13 @@
 import { Id } from "@/convex/_generated/dataModel";
 
 export type Size = {
+  unit: string;
   id: string;
-  size: string;
-  price?: number;
+  size: number;
+  price: number;
   stock?: number;
   name?: string;
+  discount?: number;
 };
 
 // type Filter = {
@@ -32,21 +34,23 @@ export type FilterObj = {
 };
 
 export type Product = {
-  _id: Id<"products"> | string; // or Id<"products"> if using Convex
-  name: string;
+  _id?: Id<"products"> | string; // or Id<"products"> if using Convex
+  name?: string;
   description?: string;
-  price: number;
+  price?: number;
   stock?: number;
   brandId?: Id<"brands">; // or Id<"brands">
-  images: string[];
+  images?: string[];
   promoImage?: string;
   createdAt?: number;
   isNew?: boolean;
   isBestseller?: boolean;
   isTrending?: boolean;
   discount?: number;
-
+  size?: number;
   sizes?: Size[];
+  slug?: string;
+  unit?: string;
 };
 
 export type Cart = {
@@ -62,6 +66,8 @@ export type Cart = {
   // Optional populated product field, if you're including it via query
   product?: Product | null;
 };
+
+
 
 export type Announcement = {
   _id: number;

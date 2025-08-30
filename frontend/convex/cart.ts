@@ -67,10 +67,12 @@ export const getUserCart = query({
     const cartWithProducts = await Promise.all(
       cartItems.map(async (item) => {
         const product = await ctx.db.get(item.productId);
+        const size = product?.sizes?.find(size => size.id === item.sizeId) || null;
+        const price = (size?.price || 0) - (size?.discount || 0);
         return {
           ...item,
-          product,
-          size: product?.sizes?.find(size => size.id === item.sizeId) || null, // Get size details if available
+          product: {...product, originalPrice: size?.price, price, size: size?.size, unit: size?.unit},
+
         };
       })
     );
@@ -86,15 +88,16 @@ export const updateCartQuantity = mutation({
     quantity: v.number(),
   },
   handler: async (ctx, { cartId, quantity }) => {
-    if (quantity <= 0) {
-      // Remove item if quantity is 0 or negative
-      await ctx.db.delete(cartId);
-      return null;
-    } else {
-      // Update quantity
-      await ctx.db.patch(cartId, { quantity });
-      return cartId;
-    }
+
+      if (quantity <= 0) {
+        // Remove item if quantity is 0 or negative
+        await ctx.db.delete(cartId);
+        return null;
+      } else {
+        // Update quantity
+        await ctx.db.patch(cartId, { quantity });
+        return cartId;
+      }
   },
 });
 
