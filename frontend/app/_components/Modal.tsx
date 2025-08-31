@@ -10,6 +10,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import useOutsideClick from "../_hooks/useOutsideClick";
 import { wait } from "../_utils/utils";
 
@@ -141,7 +142,9 @@ export function ModalWindow({
 
   const ref = useOutsideClick<HTMLDivElement>(close, listenCapturing);
 
-  return isOpen === name ? (
+  if (isOpen !== name) return "";
+
+  return createPortal(
     <Box
       className={`fixed ${overlayColor} ${className}  modal-bg top-0 left-0 flex h-screen w-screen 
         ${position === "center" ? "items-center justify-center" : ""}
@@ -174,9 +177,8 @@ export function ModalWindow({
           onClose: close,
         })}
       </Box>
-    </Box>
-  ) : (
-    ""
+    </Box>,
+    document.body
   );
 }
 

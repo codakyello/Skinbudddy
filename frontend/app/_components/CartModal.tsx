@@ -10,7 +10,7 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
-import { formatPrice } from "../_utils/utils";
+import { formatPrice, getErrorMessage } from "../_utils/utils";
 import { useState } from "react";
 
 const images = [
@@ -37,6 +37,10 @@ export default function CartModal() {
   const removeFromCart = useMutation(api.cart.removeFromCart);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // useEffect(() => {
+  //   triggerRerender();
+  // }, []);
+
   const handleUpdateCartQuantity = async function (
     quantity: number,
     cartId: Id<"carts">
@@ -45,9 +49,13 @@ export default function CartModal() {
       setIsUpdating(true);
       await updateCartQuantity({ quantity, cartId });
       toast.success("Cart updated successfully");
-    } catch (_err) {
-      console.log(_err);
-      toast.error("There was an issue updating cart");
+    } catch (err) {
+      if (err instanceof Error) {
+        const message = getErrorMessage(err);
+        toast.error(message);
+      } else {
+        toast.error("An unknown error occurred.");
+      }
     } finally {
       setIsUpdating(false);
     }
@@ -59,9 +67,14 @@ export default function CartModal() {
       await removeFromCart({ cartId });
       toast.success("Successfully removed from cart");
     } catch (err) {
-      console.log(err);
-      toast.error("Failed to removed from cart");
-    }finally {
+      if (err instanceof Error) {
+        console.log(err.message);
+        const message = getErrorMessage(err);
+        toast.error(message);
+      } else {
+        toast.error("An unknown error occurred.");
+      }
+    } finally {
       setIsDeleting(false);
     }
   };
@@ -82,7 +95,7 @@ export default function CartModal() {
           >
             {/* Remove button */}
             <button
-            disabled={isDeleting}
+              disabled={isDeleting}
               className="absolute top-3 right-3 p-[0.8rem] rounded-full bg-gray-100 hover:bg-gray-200 transition"
               onClick={() => {
                 handleDeleteCartItem(item._id);
@@ -114,6 +127,8 @@ export default function CartModal() {
                 </div>
 
                 <p>{item.product?.size + " " + item.product?.unit}</p>
+
+                <p>{item.product?.stock}</p>
               </div>
               <div className="flex gap-x-[2rem] items-center">
                 <div className="flex items-center gap-[0.8rem] mt-[0.8rem]">
@@ -135,7 +150,11 @@ export default function CartModal() {
                     onClick={() => {
                       handleUpdateCartQuantity(item.quantity + 1, item._id);
                     }}
-                    disabled={isUpdating}
+                    disabled={
+                      isUpdating ||
+                      (item.product?.stock !== undefined &&
+                        item.quantity >= item.product.stock)
+                    }
                     type="button"
                   >
                     <Plus className="w-[1.4rem] h-[1.4rem]" />

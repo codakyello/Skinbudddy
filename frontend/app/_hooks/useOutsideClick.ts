@@ -8,6 +8,7 @@ function useOutsideClick<T extends HTMLElement>(
 
   useLayoutEffect(() => {
     async function handleClick(e: MouseEvent) {
+      console.log(ref.current?.contains(e.target as Node));
       if (ref.current && !ref.current.contains(e.target as Node)) {
         document.body.classList.add("close-modal"); // Add class to body
         handler();

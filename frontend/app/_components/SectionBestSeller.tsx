@@ -36,14 +36,10 @@ export default function SectionBestSeller({
 
   // const { cart } = useUserCart(user.id as string);
 
-  const { products, error, isPending } = useProducts({
+  const { products } = useProducts({
     filters: { isBestseller: true },
     sort: "",
   });
-
-  console.log(products, "products now availabele");
-
-  console.log(error, isPending);
 
   const bestSellers = products || initialProducts;
 
@@ -159,7 +155,7 @@ export default function SectionBestSeller({
               style={{ flex: `0 0 calc(${100 / displayLimit}% - 4rem)` }}
             >
               <ProductCard
-                key={i}
+                index={i}
                 product={{ ...product, images: [images[i]] }}
               />
             </Box>

@@ -74,3 +74,26 @@ export function getDiscountedType (products?: Size[]) {
 
   if(isDiscount) return "isDiscount"
 }
+
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    const msg = error.message;
+
+    // Case 1: developer-thrown error (Uncaught Error: ...)
+    const uncaughtMatch = msg.match(/Uncaught Error:\s*(.*?)(?:\s+at|\n|$)/);
+    if (uncaughtMatch && uncaughtMatch[1]) {
+      return uncaughtMatch[1];
+    }
+
+    // Case 2: argument validation or other errors → grab first line after "Server Error"
+    const serverErrorMatch = msg.split("Server Error")[1]?.trim();
+    if (serverErrorMatch) {
+      // Take only the first line, so you don't get the whole stack
+      return serverErrorMatch.split("\n")[0].trim();
+    }
+
+    return "Something went wrong";
+  }
+
+  return "An unknown error occurred.";
+}

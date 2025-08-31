@@ -3,7 +3,6 @@
 "use client";
 import { Box } from "@chakra-ui/react";
 import { Product } from "../_utils/types";
-// import Tag from "./Tag";
 import { formatPrice, getDiscountedType, getTagType } from "../_utils/utils";
 import Tag from "./Tag";
 import { CiHeart } from "react-icons/ci";
@@ -15,73 +14,82 @@ import { useUser } from "../_contexts/CreateConvexUser";
 import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
 import { ModalOpen, ModalWindow, useModal } from "./Modal";
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
 import { IoCloseOutline } from "react-icons/io5";
-import useUserCart from "../_hooks/useUserCart";
+// import useUserCart from "../_hooks/useUserCart";
 import Select from "./Select";
 
-// import useCustomMutation from "../_hooks/useCustomMutation";
-// import { createCartItem } from "../_lib/data-service";
-// import { useAuth } from "../_contexts/AuthProvider";
-// import { toast } from "sonner";
+const images = [
+  "/images/product/good-molecules.webp",
+  "/images/product/cerave-daily.png",
+  "/images/product/larosh-moisturizer.png",
+  "/images/product/facefacts-moisturising-gel-cream.webp",
+  "/images/product/good-molecules.webp",
+  "/images/product/cerave-daily.png",
+  "/images/product/larosh-moisturizer.png",
+  "/images/product/facefacts-moisturising-gel-cream.webp",
+  "/images/product/good-molecules.webp",
+  "/images/product/cerave-daily.png",
+  "/images/product/larosh-moisturizer.png",
+  "/images/product/facefacts-moisturising-gel-cream.webp",
+];
 
 export default function ProductCard({
   className,
   product,
   selectClassName,
   bgwhite,
+  index,
 }: {
   product: Product;
   className?: string;
   selectClassName?: string;
   bgwhite?: boolean;
+  index?: number;
 }) {
-  // const { user } = useAuth();
-  // const { mutate: addToCart, isPending } = useCustomMutation(createCartItem);
+  // console.log(index, "This is index");
   const addToCart = useMutation(api.cart.createCart);
   const [isAdding, setIsAdding] = useState(false);
   const { user, triggerRerender } = useUser();
-  const { cart } = useUserCart(user.id as string);
+  // const { cart } = useUserCart(user.id as string);
   const [selectedSize, setSelectedSize] = useState(product.sizes?.at(0));
   const { open } = useModal();
-  const isInCart =
-    cart?.some((item) => item.productId === product._id) || false;
+  // const isInCart =
+  //   cart?.some((item) => item.productId === product._id) || false;
   const isDiscounted = selectedSize?.discount;
 
-  // we will hvae one product size product.sizes?.[0].id
-  const handleAddToCart = async (
-    e: React.MouseEvent<HTMLButtonElement>,
-    qty = 1
-  ) => {
-    e.stopPropagation();
-    e.preventDefault();
-    triggerRerender();
+  console.log(product.images);
 
+  // console.log(selectedSize)
+
+  useEffect(() => {
+    triggerRerender();
+  }, []);
+
+  const handleAddToCart = async (qty = 1) => {
     try {
-      setIsAdding(true)
+      setIsAdding(true);
       console.log(user, "This is the user");
 
       if (!user.id) return;
 
-      const cartId = await addToCart({
+      await addToCart({
         sizeId: selectedSize?.id,
         userId: user.id,
         productId: product._id as Id<"products">,
         quantity: qty,
       });
 
-      toast.success(`Added to cart with ID: ${cartId}`);
+      toast.success(`Added to cart}`);
       // open the cart modal for confirmation
       open("cart");
     } catch (error) {
       if (error instanceof Error)
         toast.error(`Failed to add to cart: ${error.message}`);
-    }finally {
-      setIsAdding(false)
+    } finally {
+      setIsAdding(false);
     }
   };
-
-  // const imageUrl = product.images?.[0] || "/placeholder.png";
 
   const handleSizeChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const value = event.currentTarget.value;
@@ -95,7 +103,7 @@ export default function ProductCard({
       <Box className="group aspect-square overflow-hidden cursor-pointer w-full relative">
         <button
           className="absolute top-[15px] right-[15px]"
-          onClick={handleAddToCart}
+          onClick={() => handleAddToCart(1)}
         >
           <CiHeart className="w-[20px] h-[20px]" />
         </button>
@@ -103,8 +111,6 @@ export default function ProductCard({
           <Tag type={getTagType(product)} />
           <Tag type={getDiscountedType(product?.sizes)} />
         </Box>
-
-        {/* if (selectedProduct?.discount) return "isDiscount"; */}
 
         <Link href={`/products/${product.slug}`}>
           <img
@@ -176,44 +182,14 @@ export default function ProductCard({
         )}
       </Box>
 
-      {/* {product.sizes && product.sizes.length > 0 && (
-        <Box className="mb-[1.6rem]">
-          <label className="block mb-2 text-[1.2rem] font-medium">
-            Select Size:
-          </label>
-          <Box className="flex gap-2 flex-wrap">
-            {product.sizes.map((s: Size) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSelectedSize(s)}
-                disabled={s.stock === 0}
-                className={[
-                  "px-4 py-2 rounded-md border text-[1.2rem] font-medium transition-all",
-                  selectedSize?.id === s.id
-                    ? "bg-black text-white border-black"
-                    : "bg-white text-black border-[#e1ded9] hover:border-black",
-                  s.stock === 0 ? "opacity-50 cursor-not-allowed" : "",
-                ].join(" ")}
-              >
-                {`${s.size} ${s.unit}`}
-                {typeof s.price === "number" && (
-                  <span className="ml-2 text-[1rem] text-gray-500">
-                    {formatPrice.format(s.price)}
-                  </span>
-                )}
-              </button>
-            ))}
-          </Box>
-        </Box>
-      )} */}
-
       <button
-        className="hover:bg-black shadow-[0_4px_8px_rgba(0,0,0,0.15)]  hover:text-white font-hostgrotesk capitalize w-full h-[44px] text-[1.4rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
-        onClick={handleAddToCart}
+        className="hover:bg-black shadow-[0_4px_8px_rgba(0,0,0,0.15)] hover:text-white font-hostgrotesk capitalize w-full h-[44px] text-[1.4rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
+        onClick={() => {
+          handleAddToCart(1);
+        }}
         disabled={isAdding}
       >
-        {isInCart ? "Added to cart" : "Add to cart"}
+        Add to cart
       </button>
 
       {/* ModalWindow: fully functional Quick View */}
@@ -221,11 +197,11 @@ export default function ProductCard({
         name={product.name || ""}
         position="center"
         listenCapturing={true}
-        className="bg-black/25 z-[9999]"
+        className="bg-black/25 z-[99]"
       >
         <ProductPreviewModal
-          product={product}
-          isInCart={isInCart}
+          product={{ ...product, images: [images[index ?? 0]] }}
+          // isInCart={isInCart}
           handleAddToCart={handleAddToCart}
         />
       </ModalWindow>
@@ -234,22 +210,23 @@ export default function ProductCard({
 }
 
 export function ProductPreviewModal({
-  isInCart,
   product,
   handleAddToCart,
   onClose,
 }: {
   product: Product;
-  isInCart: boolean;
-  handleAddToCart: (
-    e: React.MouseEvent<HTMLButtonElement>,
-    customQty?: number
-  ) => void;
+  handleAddToCart: (customQty?: number) => void;
   onClose?: () => void;
 }) {
+  const [selectedSize, setSelectedSize] = useState(product.sizes?.at(0));
+  console.log(setSelectedSize);
   const [quantity, setQuantity] = useState(1);
-  const handleIncrement = () => setQuantity((q) => q + 1);
-  const handleDecrement = () => setQuantity((q) => (q > 1 ? q - 1 : 1));
+  const handleIncrement = function () {
+    setQuantity((q) => q + 1);
+  };
+  const handleDecrement = function () {
+    setQuantity((q) => (q > 1 ? q - 1 : 1));
+  };
 
   return (
     <Box className="relative max-w-[110rem] h-[60rem] overflow-hidden w-[100%] grid grid-cols-2 bg-white md:flex-row">
@@ -257,9 +234,11 @@ export function ProductPreviewModal({
         <IoCloseOutline className="h-[3.5rem] w-[3.5rem]" />
       </button>
       <Box className="bg-[#f4f4f2]">
+        {/* src={product.images?.[0] || "/images/product-1.webp"}
+      alt={product.name} */}
         <img
           className="w-full h-full object-contain"
-          src={`images/product/product-${4}.jpg`}
+          src={product.images?.at(0)}
           alt={product.name}
         />
       </Box>
@@ -270,13 +249,15 @@ export function ProductPreviewModal({
         </Box>
         <Box className="flex gap-[15px] items-center text-[1.5rem] mb-[2rem]">
           <p
-            className={` ${product.discount ? "line-through text-[#888]" : ""} `}
+            className={`${product.discount ? "line-through text-[#888]" : ""} `}
           >
-            {formatPrice.format(product.price || 0)}
+            {formatPrice.format(selectedSize?.price || 0)}
           </p>
-          {product.discount ? (
+          {selectedSize?.discount ? (
             <p className="text-[var(--color-red)]">
-              {formatPrice.format((product.price || 0) - product.discount)}
+              {formatPrice.format(
+                (selectedSize.price || 0) - selectedSize.discount
+              )}
             </p>
           ) : (
             ""
@@ -303,10 +284,10 @@ export function ProductPreviewModal({
           </Box>
         </Box>
         <button
-          className="hover:bg-black hover:text-white font-hostgrotesk capitalize w-full h-[8rem] text-[1.4rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
-          onClick={(e) => handleAddToCart(e, quantity)}
+          className="hover:bg-black flex-shrink-0 hover:text-white font-hostgrotesk capitalize w-full h-[5rem] border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
+          onClick={() => handleAddToCart(quantity)}
         >
-          {isInCart ? "Added to cart" : "Add to cart"}
+          Add to cart
         </button>
 
         <p className="mt-[2rem] text-[1.4rem]">
