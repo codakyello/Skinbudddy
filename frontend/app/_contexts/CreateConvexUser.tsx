@@ -11,10 +11,12 @@ const generateGuestId = () => `guest_${crypto.randomUUID()}`;
 
 type ConvexUserContextValue = {
   user: User;
+  triggerRerender: () => void;
 };
 
 const ConvexUserContext = createContext<ConvexUserContextValue>({
   user: {},
+  triggerRerender: () => {},
 });
 
 type User = {
@@ -29,16 +31,25 @@ export default function ConvexUserProvider({
 }) {
   // clerk lets us know if the user is signed in using sessions
   const { user: clerkUser, isSignedIn } = useClerkUser();
-  console.log(clerkUser)
   const createUser = useMutation(api.users.createUser);
+  const transferGuestData = useMutation(api.users.transferGuestDataToUser);
   const [user, setConvexUser] = useState<User>({});
+  const [state, setState] = useState(false)
+
+  function triggerRerender () {
+    console.log(state)
+    setState((prev)=>!prev)
+  }
+
+  console.log('ConvexUserProvider is rendering'); // Add this line
+
 
   useEffect(() => {
     (async () => {
-      if (!isSignedIn || !user) {
+      if (!isSignedIn || !clerkUser) {
         let guestId = localStorage.getItem(GUEST_ID_KEY);
 
-        // If no guest ID exists, set an anonymous guest id and create a new user 
+        // If not signed in and no guest ID exists, set an anonymous guest id and create a new user 
         if (!guestId) {
           guestId = generateGuestId();
           localStorage.setItem(GUEST_ID_KEY, guestId);
@@ -48,18 +59,41 @@ export default function ConvexUserProvider({
 
         setConvexUser({id: guestId});
       } else {
-        // Optional: Clear guest ID since user is now signed in
-        // before removing though, we should take all of the data from the guest user and moved it to the signed in user
-        // await transferGuestDataToUser(guestId, user.id);
+        // Ensure the Convex user exists for the signed-in Clerk user
+        if (clerkUser?.id) {
+          await createUser({
+            userId: clerkUser.id,
+            email: clerkUser.emailAddresses?.[0]?.emailAddress,
+            name: (clerkUser.fullName || clerkUser.username) || undefined,
+            imageUrl: clerkUser.imageUrl || undefined,
+          });
+        }
+
+        const guestId = localStorage.getItem(GUEST_ID_KEY);
+        if (guestId && clerkUser?.id) {
+          await transferGuestData({ guestId, userId: clerkUser.id });
+        }
         localStorage.removeItem(GUEST_ID_KEY);
-        // Set the user id from clerk on sign in or sign up
+
         setConvexUser(clerkUser);
       }
     })();
-  }, [isSignedIn, clerkUser, createUser, user]);
+  }, [isSignedIn, clerkUser, createUser, transferGuestData]);
+
+  useEffect(()=> {
+    console.log('Running')
+    // incase the guest id is mistakenly deleted from localstorage set it back
+    if(!isSignedIn || !clerkUser) {
+       const guestId = localStorage.getItem(GUEST_ID_KEY);
+        if (!guestId && user.id) {
+          console.log('ran here')
+          localStorage.setItem(GUEST_ID_KEY, user.id)
+       }
+    }
+  },)
 
   return (
-    <ConvexUserContext.Provider value={{ user }}>
+    <ConvexUserContext.Provider value={{ user, triggerRerender }}>
       {children}
     </ConvexUserContext.Provider>
   );

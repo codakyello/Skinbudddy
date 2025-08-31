@@ -11,45 +11,60 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
 import { formatPrice } from "../_utils/utils";
+import { useState } from "react";
+
+const images = [
+  "/images/product/good-molecules.webp",
+  "/images/product/cerave-daily.png",
+  "/images/product/larosh-moisturizer.png",
+  "/images/product/facefacts-moisturising-gel-cream.webp",
+  "/images/product/good-molecules.webp",
+  "/images/product/cerave-daily.png",
+  "/images/product/larosh-moisturizer.png",
+  "/images/product/facefacts-moisturising-gel-cream.webp",
+  "/images/product/good-molecules.webp",
+  "/images/product/cerave-daily.png",
+  "/images/product/larosh-moisturizer.png",
+  "/images/product/facefacts-moisturising-gel-cream.webp",
+];
 
 export default function CartModal() {
   const { user } = useUser();
   const { cart, isPending } = useUserCart(user.id as string);
   const { isSticky } = useNavSticky();
-
-  const images = [
-    "/images/product/good-molecules.webp",
-    "/images/product/cerave-daily.png",
-    "/images/product/larosh-moisturizer.png",
-    "/images/product/facefacts-moisturising-gel-cream.webp",
-    "/images/product/good-molecules.webp",
-    "/images/product/cerave-daily.png",
-    "/images/product/larosh-moisturizer.png",
-    "/images/product/facefacts-moisturising-gel-cream.webp",
-    "/images/product/good-molecules.webp",
-    "/images/product/cerave-daily.png",
-    "/images/product/larosh-moisturizer.png",
-    "/images/product/facefacts-moisturising-gel-cream.webp",
-  ];
-
   const updateCartQuantity = useMutation(api.cart.updateCartQuantity);
-
+  const [isUpdating, setIsUpdating] = useState(false);
   const removeFromCart = useMutation(api.cart.removeFromCart);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleUpdateCartQuantity = async function (
     quantity: number,
     cartId: Id<"carts">
   ) {
     try {
+      setIsUpdating(true);
       await updateCartQuantity({ quantity, cartId });
       toast.success("Cart updated successfully");
     } catch (_err) {
-      console.log(_err)
-      toast.success("There was an issue updating cart");
+      console.log(_err);
+      toast.error("There was an issue updating cart");
+    } finally {
+      setIsUpdating(false);
     }
   };
 
-  console.log(cart);
+  const handleDeleteCartItem = async function (cartId: Id<"carts">) {
+    try {
+      setIsDeleting(true);
+      await removeFromCart({ cartId });
+      toast.success("Successfully removed from cart");
+    } catch (err) {
+      console.log(err);
+      toast.error("Failed to removed from cart");
+    }finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <Box
@@ -67,15 +82,10 @@ export default function CartModal() {
           >
             {/* Remove button */}
             <button
+            disabled={isDeleting}
               className="absolute top-3 right-3 p-[0.8rem] rounded-full bg-gray-100 hover:bg-gray-200 transition"
-              onClick={async () => {
-                try {
-                  await removeFromCart({ cartId: item._id });
-                  toast.success("Successfully removed from cart");
-                } catch (err) {
-                  console.log(err)
-                  toast.success("Failed to removed from cart");
-                }
+              onClick={() => {
+                handleDeleteCartItem(item._id);
               }}
               type="button"
             >
@@ -99,15 +109,12 @@ export default function CartModal() {
             {/* Product info and quantity controls */}
             <div className="flex-1 min-w-0 flex flex-col gap-[15px]">
               <div className="flex flex-col gap-[5px]">
-              <div className="font-semibold text-gray-900 text-[1.6rem] truncate">
-                {item?.product?.name}
-              </div>
+                <div className="font-semibold text-gray-900 text-[1.6rem] truncate">
+                  {item?.product?.name}
+                </div>
 
-              <p>{item.product?.size + " " + item.product?.unit}</p>
+                <p>{item.product?.size + " " + item.product?.unit}</p>
               </div>
-             
-              
-
               <div className="flex gap-x-[2rem] items-center">
                 <div className="flex items-center gap-[0.8rem] mt-[0.8rem]">
                   <button
@@ -115,7 +122,7 @@ export default function CartModal() {
                     onClick={() => {
                       handleUpdateCartQuantity(item.quantity - 1, item._id);
                     }}
-                    disabled={item.quantity <= 1}
+                    disabled={item.quantity <= 1 || isUpdating}
                     type="button"
                   >
                     <Minus className="w-[1.4rem] h-[1.4rem]" />
@@ -128,6 +135,7 @@ export default function CartModal() {
                     onClick={() => {
                       handleUpdateCartQuantity(item.quantity + 1, item._id);
                     }}
+                    disabled={isUpdating}
                     type="button"
                   >
                     <Plus className="w-[1.4rem] h-[1.4rem]" />
@@ -135,8 +143,9 @@ export default function CartModal() {
                 </div>
 
                 <div className="text-gray-500 text-[1.4rem] mt-1">
-                {item?.product?.price && formatPrice.format(item.product.price * item.quantity)}
-              </div>
+                  {item?.product?.price &&
+                    formatPrice.format(item.product.price * item.quantity)}
+                </div>
               </div>
             </div>
           </div>

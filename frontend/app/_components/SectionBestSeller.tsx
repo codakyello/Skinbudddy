@@ -7,7 +7,7 @@ import useProducts from "../_hooks/useProducts";
 import Link from "next/link";
 // import useUserCart from "../_hooks/useUserCart";
 // import { useUser } from "../_contexts/CreateConvexUser";
-import { useEffect, useState, } from "react";
+import { useEffect, useState } from "react";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import useDeviceDetection from "../_hooks/useDeviceDetection";
 // import { getAllProducts } from "../_lib/actions";
@@ -67,7 +67,6 @@ export default function SectionBestSeller({
 
   // const displayLimit = isMobile ? 2 : isTablet ? 3 : 4;
 
-
   useEffect(() => {
     function updateCardWidth() {
       const card = document.querySelector(".product-card");
@@ -106,7 +105,6 @@ export default function SectionBestSeller({
     }
   }
 
-
   useEffect(() => {
     if (paused) return;
 
@@ -126,31 +124,29 @@ export default function SectionBestSeller({
 
   if (!bestSellers) return null;
 
-  console.log(isMobile, "mobile", isTablet, 'tablet')
-
   return (
     // <Section title="Best sellers" className=" bg-[#FBF9F7] py-[120px]">
     <section className="py-[120px] relative px-[2rem]">
+      <button
+        onClick={handlePrev}
+        className="absolute z-[1] left-[100px] top-[50%] -translate-y-1/2 bg-white rounded-full p-4 border border-gray-200 text-gray-700 hover:text-black hover:bg-gray-50 transition-all duration-200 hover:scale-105 disabled:opacity-50 -translate-x-1/2"
+      >
+        <FaChevronLeft className="w-5 h-5" />
+      </button>
+      <button
+        onClick={handleNext}
+        className="absolute z-[1] right-[150px] top-[50%] -translate-y-1/2 bg-white rounded-full p-4 border border-gray-200 text-gray-700 hover:text-black hover:bg-gray-50 transition-all duration-200 hover:scale-105 disabled:opacity-50 translate-x-1/2"
+      >
+        <FaChevronRight className="w-5 h-5" />
+      </button>
+
       <Box className={`overflow-hidden max-w-[1200px] mx-auto relative`}>
         <h1 className="text-[12.8rem] uppercase pt-[6.4rem] font-hostgrotesk font-medium text-[#000] font- leading-none">
           Best sellers
         </h1>
 
-        <button
-          onClick={handlePrev}
-          className="absolute z-[1] left-[50px] top-[50%] -translate-y-1/2 bg-white rounded-full p-4 border border-gray-200 text-gray-700 hover:text-black hover:bg-gray-50 transition-all duration-200 hover:scale-105 disabled:opacity-50 -translate-x-1/2"
-        >
-          <FaChevronLeft className="w-5 h-5" />
-        </button>
-        <button
-          onClick={handleNext}
-          className="absolute z-[1] right-[50px] top-[50%] -translate-y-1/2 bg-white rounded-full p-4 border border-gray-200 text-gray-700 hover:text-black hover:bg-gray-50 transition-all duration-200 hover:scale-105 disabled:opacity-50 translate-x-1/2"
-        >
-          <FaChevronRight className="w-5 h-5" />
-        </button>
-
         <Box
-        key={displayLimit}
+          key={displayLimit}
           className="flex gap-x-[4rem] mt-[7.2rem] no-scrollbar transition-transform duration-300 ease-out"
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
@@ -158,7 +154,7 @@ export default function SectionBestSeller({
         >
           {bestSellers.map((product: Product, i: number) => (
             <Box
-                key={`${i}-${displayLimit}`} // 👈 force re-render when displayLimit changes
+              key={`${i}-${displayLimit}`} // 👈 force re-render when displayLimit changes
               className="product-card"
               style={{ flex: `0 0 calc(${100 / displayLimit}% - 4rem)` }}
             >

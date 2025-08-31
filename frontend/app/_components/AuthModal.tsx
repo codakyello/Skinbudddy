@@ -329,7 +329,7 @@ function SignUp({
         password,
       });
 
-      // 2. Prepare email verification (send code)
+      // 2. Prepare email verification (send magic link)
       await signUp.prepareEmailAddressVerification({
         strategy: "email_link",
         redirectUrl: "http://localhost:3000",
@@ -343,7 +343,7 @@ function SignUp({
       // 4. Finish the sign-up process
       // await signUp.finishSignUp();
 
-      toast.success("Linked sent to your email");
+      toast.success("Link sent to your email");
       // login(user, token);
       onClose?.();
     } catch (err) {

@@ -30,22 +30,23 @@ export default function ProductCard({
   product,
   selectClassName,
   bgwhite,
-
 }: {
   product: Product;
   className?: string;
   selectClassName?: string;
-  bgwhite?:boolean;
+  bgwhite?: boolean;
 }) {
   // const { user } = useAuth();
   // const { mutate: addToCart, isPending } = useCustomMutation(createCartItem);
   const addToCart = useMutation(api.cart.createCart);
-  const { user } = useUser();
+  const [isAdding, setIsAdding] = useState(false);
+  const { user, triggerRerender } = useUser();
   const { cart } = useUserCart(user.id as string);
-  const isInCart =
-    cart?.some((item) => item.productId === product._id) || false;
   const [selectedSize, setSelectedSize] = useState(product.sizes?.at(0));
   const { open } = useModal();
+  const isInCart =
+    cart?.some((item) => item.productId === product._id) || false;
+  const isDiscounted = selectedSize?.discount;
 
   // we will hvae one product size product.sizes?.[0].id
   const handleAddToCart = async (
@@ -54,8 +55,12 @@ export default function ProductCard({
   ) => {
     e.stopPropagation();
     e.preventDefault();
+    triggerRerender();
 
     try {
+      setIsAdding(true)
+      console.log(user, "This is the user");
+
       if (!user.id) return;
 
       const cartId = await addToCart({
@@ -71,19 +76,18 @@ export default function ProductCard({
     } catch (error) {
       if (error instanceof Error)
         toast.error(`Failed to add to cart: ${error.message}`);
+    }finally {
+      setIsAdding(false)
     }
   };
 
-  const isDiscounted = selectedSize?.discount;
   // const imageUrl = product.images?.[0] || "/placeholder.png";
 
   const handleSizeChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const value = event.currentTarget.value;
-    console.log(value, "This is value");
     setSelectedSize(product.sizes?.find((s) => s.id === value));
   };
 
-  console.log(product.sizes, 'This are the available sizes')
   return (
     <Box
       className={`relative ${className || ""} overflow-hidden h-full flex flex-col`}
@@ -95,8 +99,10 @@ export default function ProductCard({
         >
           <CiHeart className="w-[20px] h-[20px]" />
         </button>
-        <Tag className="top-[15px] left-[15px]" type={getTagType(product)} />
-        <Tag className="top-[45px] left-[15px]" type={getDiscountedType(product?.sizes)} />
+        <Box className="absolute top-[15px] left-[15px] flex flex-col items-start gap-[.5rem]">
+          <Tag type={getTagType(product)} />
+          <Tag type={getDiscountedType(product?.sizes)} />
+        </Box>
 
         {/* if (selectedProduct?.discount) return "isDiscount"; */}
 
@@ -128,15 +134,27 @@ export default function ProductCard({
       {/* Size selection UI */}
       <Box className="relative mt-auto mb-[20px]">
         {product.sizes && product.sizes.length < 2 ? (
-          <Box className="flex flex-col min-h-[4.5rem] ">
+          <Box className="flex flex-col text-[1.4rem] min-h-[4.5rem] ">
             <span>One size only</span>
-            <span>{selectedSize && selectedSize?.size + selectedSize?.unit}</span>
-            </Box>
-        ) : 
-          
-         product.sizes && <Select className={selectClassName} bgwhite={bgwhite} handleChange={handleSizeChange} value={selectedSize?.id} label="Select a size" options={product.sizes.map((s)=>({name: s.size + " " + s.unit, value: s.id}))}/>
-       
-        }
+            <span>
+              {selectedSize && selectedSize?.size + selectedSize?.unit}
+            </span>
+          </Box>
+        ) : (
+          product.sizes && (
+            <Select
+              className={selectClassName}
+              bgwhite={bgwhite}
+              handleChange={handleSizeChange}
+              value={selectedSize?.id}
+              label="Select a size"
+              options={product.sizes.map((s) => ({
+                name: s.size + " " + s.unit,
+                value: s.id,
+              }))}
+            />
+          )
+        )}
       </Box>
 
       <Box className="flex flex-wrap gap-[8px] items-center font-[montserrat] text-[1.4rem] mb-[2rem] font-semibold">
@@ -193,6 +211,7 @@ export default function ProductCard({
       <button
         className="hover:bg-black shadow-[0_4px_8px_rgba(0,0,0,0.15)]  hover:text-white font-hostgrotesk capitalize w-full h-[44px] text-[1.4rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
         onClick={handleAddToCart}
+        disabled={isAdding}
       >
         {isInCart ? "Added to cart" : "Add to cart"}
       </button>

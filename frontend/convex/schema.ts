@@ -58,6 +58,14 @@ export default defineSchema({
     createdAt: v.number(),
   }),
 
+  // find user cart with token to implement pay for others feature
+  cartSessions: defineTable({
+    userId: v.string(),         
+    token: v.string(),           
+    expiresAt: v.optional(v.number()), 
+    createdAt: v.number(),
+  }),
+
   wishlists: defineTable({
     userId: v.string(),
     productId: v.id("products"),

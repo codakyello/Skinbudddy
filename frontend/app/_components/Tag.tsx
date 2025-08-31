@@ -4,7 +4,7 @@ export default function Tag({ type, className }: { type: string | undefined, cla
   if (type)
     return (
       <Box
-        className={`${className} absolute font-semibold font-raleway text-[1.2rem] px-[8px] py-[5px] ${
+        className={`${className} font-semibold font-raleway text-[1.2rem] px-[8px] py-[5px] ${
           type === "isDiscount" ? "bg-red-500 text-white" :
           type === "isBestseller" ? "bg-yellow-400 text-[#333]" :
           type === "isNew" ? "bg-green-400 text-white" : ""
