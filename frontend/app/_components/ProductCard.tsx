@@ -13,58 +13,29 @@ import { toast } from "sonner";
 import { useUser } from "../_contexts/CreateConvexUser";
 import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
-import { ModalOpen, ModalWindow, useModal } from "./Modal";
-import { ChangeEvent, useEffect, useState } from "react";
-import { IoCloseOutline } from "react-icons/io5";
-// import useUserCart from "../_hooks/useUserCart";
+import { ModalOpen, useModal } from "./Modal";
+import { ChangeEvent, useState } from "react";
 import Select from "./Select";
-
-const images = [
-  "/images/product/good-molecules.webp",
-  "/images/product/cerave-daily.png",
-  "/images/product/larosh-moisturizer.png",
-  "/images/product/facefacts-moisturising-gel-cream.webp",
-  "/images/product/good-molecules.webp",
-  "/images/product/cerave-daily.png",
-  "/images/product/larosh-moisturizer.png",
-  "/images/product/facefacts-moisturising-gel-cream.webp",
-  "/images/product/good-molecules.webp",
-  "/images/product/cerave-daily.png",
-  "/images/product/larosh-moisturizer.png",
-  "/images/product/facefacts-moisturising-gel-cream.webp",
-];
 
 export default function ProductCard({
   className,
   product,
   selectClassName,
   bgwhite,
-  index,
+  handleProductToPreview,
 }: {
   product: Product;
   className?: string;
   selectClassName?: string;
   bgwhite?: boolean;
-  index?: number;
+  handleProductToPreview?: (product: Product) => void;
 }) {
-  // console.log(index, "This is index");
   const addToCart = useMutation(api.cart.createCart);
   const [isAdding, setIsAdding] = useState(false);
-  const { user, triggerRerender } = useUser();
-  // const { cart } = useUserCart(user.id as string);
+  const { user } = useUser();
   const [selectedSize, setSelectedSize] = useState(product.sizes?.at(0));
   const { open } = useModal();
-  // const isInCart =
-  //   cart?.some((item) => item.productId === product._id) || false;
   const isDiscounted = selectedSize?.discount;
-
-  console.log(product.images);
-
-  // console.log(selectedSize)
-
-  useEffect(() => {
-    triggerRerender();
-  }, []);
 
   const handleAddToCart = async (qty = 1) => {
     try {
@@ -120,7 +91,10 @@ export default function ProductCard({
           />
         </Link>
         {/* ModalOpen with smooth hover animation */}
-        <ModalOpen name={product.name || ""}>
+        <ModalOpen
+          name="product-preview"
+          handler={() => handleProductToPreview?.(product)}
+        >
           <button className="absolute bottom-0 left-0 w-full opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all duration-300 bg-black text-white text-[1.2rem] px-[1.6rem] py-[1.2rem] flex items-center justify-center gap-[0.8rem] border-t border-gray-900">
             <FiEye className="w-[1.4rem] h-[1.4rem]" />
             Quick View
@@ -191,165 +165,6 @@ export default function ProductCard({
       >
         Add to cart
       </button>
-
-      {/* ModalWindow: fully functional Quick View */}
-      <ModalWindow
-        name={product.name || ""}
-        position="center"
-        listenCapturing={true}
-        className="bg-black/25 z-[99]"
-      >
-        <ProductPreviewModal
-          product={{ ...product, images: [images[index ?? 0]] }}
-          // isInCart={isInCart}
-          handleAddToCart={handleAddToCart}
-        />
-      </ModalWindow>
-    </Box>
-  );
-}
-
-export function ProductPreviewModal({
-  product,
-  handleAddToCart,
-  onClose,
-}: {
-  product: Product;
-  handleAddToCart: (customQty?: number) => void;
-  onClose?: () => void;
-}) {
-  const [selectedSize, setSelectedSize] = useState(product.sizes?.at(0));
-  console.log(setSelectedSize);
-  const [quantity, setQuantity] = useState(1);
-  const handleIncrement = function () {
-    setQuantity((q) => q + 1);
-  };
-  const handleDecrement = function () {
-    setQuantity((q) => (q > 1 ? q - 1 : 1));
-  };
-
-  return (
-    <Box className="relative max-w-[110rem] h-[60rem] overflow-hidden w-[100%] grid grid-cols-2 bg-white md:flex-row">
-      <button onClick={onClose} className="absolute top-[2rem] right-[2rem]">
-        <IoCloseOutline className="h-[3.5rem] w-[3.5rem]" />
-      </button>
-      <Box className="bg-[#f4f4f2]">
-        {/* src={product.images?.[0] || "/images/product-1.webp"}
-      alt={product.name} */}
-        <img
-          className="w-full h-full object-contain"
-          src={product.images?.at(0)}
-          alt={product.name}
-        />
-      </Box>
-      <Box className="flex flex-col h-[45rem] my-auto mx-[7rem] overflow-auto ">
-        <h2 className="text-[2.4rem] font-bold mb-[1.6rem]">{product.name}</h2>
-        <Box className="mb-[2rem]">
-          <p className="text-[1.4rem]">{product.description}</p>
-        </Box>
-        <Box className="flex gap-[15px] items-center text-[1.5rem] mb-[2rem]">
-          <p
-            className={`${product.discount ? "line-through text-[#888]" : ""} `}
-          >
-            {formatPrice.format(selectedSize?.price || 0)}
-          </p>
-          {selectedSize?.discount ? (
-            <p className="text-[var(--color-red)]">
-              {formatPrice.format(
-                (selectedSize.price || 0) - selectedSize.discount
-              )}
-            </p>
-          ) : (
-            ""
-          )}
-        </Box>
-        <Box className="flex gap-[15px] items-center text-[1.5rem] mb-[2rem]">
-          <p className="text-[1.4rem]">Quantity:</p>
-          <Box className="flex gap-[1rem] items-center">
-            <button
-              className="w-[3rem] h-[3rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
-              onClick={handleDecrement}
-              aria-label="Decrease quantity"
-            >
-              -
-            </button>
-            <p className="text-[1.4rem] min-w-[2rem] text-center">{quantity}</p>
-            <button
-              className="w-[3rem] h-[3rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
-              onClick={handleIncrement}
-              aria-label="Increase quantity"
-            >
-              +
-            </button>
-          </Box>
-        </Box>
-        <button
-          className="hover:bg-black flex-shrink-0 hover:text-white font-hostgrotesk capitalize w-full h-[5rem] border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
-          onClick={() => handleAddToCart(quantity)}
-        >
-          Add to cart
-        </button>
-
-        <p className="mt-[2rem] text-[1.4rem]">
-          Cocos nucifera (Coconut) Oil, De-ionized Water, Sodium Hydroxide,
-          Fragrance, Kojic Acid, Glycerin, Aqua (and) Xanthan Gum (and) Caprylyl
-          Glycol (and) Glucose (and) Chondrus crispus (Carrageenan) (and)
-          Phenoxyethanol (and) Ethylhexylglycerine, Cocodiethanolmide, Mineral
-          Oil, Melaleuca alternifolia (Tea Tree) Oil, Cl 15985, Cl 19140, BHT
-          Directioons Lather soap and apply to treatment areas. Leave the soap
-          on for up to 30 seconds. Apply once per day and increase to twice a
-          day if well tolerated. If dryness occurs follow with a moisturizing
-          cream.
-        </p>
-
-        <p className="mt-[2rem] text-[1.4rem]">
-          Cocos nucifera (Coconut) Oil, De-ionized Water, Sodium Hydroxide,
-          Fragrance, Kojic Acid, Glycerin, Aqua (and) Xanthan Gum (and) Caprylyl
-          Glycol (and) Glucose (and) Chondrus crispus (Carrageenan) (and)
-          Phenoxyethanol (and) Ethylhexylglycerine, Cocodiethanolamide, Mineral
-          Oil, Melaleuca alternifolia (Tea Tree) Oil, Cl 15985, Cl 19140, BHT
-          Directioons Lather soap and apply to treatment areas. Leave the soap
-          on for up to 30 seconds. Apply once per day and increase to twice a
-          day if well tolerated. If dryness occurs follow with a moisturizing
-          cream.
-        </p>
-
-        <p className="mt-[2rem] text-[1.4rem]">
-          Cocos nucifera (Coconut) Oil, De-ionized Water, Sodium Hydroxide,
-          Fragrance, Kojic Acid, Glycerin, Aqua (and) Xanthan Gum (and) Caprylyl
-          Glycol (and) Glucose (and) Chondrus crispus (Carrageenan) (and)
-          Phenoxyethanol (and) Ethylhexylglycerine, Cocodiethanolamide, Mineral
-          Oil, Melaleuca alternifolia (Tea Tree) Oil, Cl 15985, Cl 19140, BHT
-          Directioons Lather soap and apply to treatment areas. Leave the soap
-          on for up to 30 seconds. Apply once per day and increase to twice a
-          day if well tolerated. If dryness occurs follow with a moisturizing
-          cream.
-        </p>
-
-        <p className="mt-[2rem] text-[1.4rem]">
-          Cocos nucifera (Coconut) Oil, De-ionized Water, Sodium Hydroxide,
-          Fragrance, Kojic Acid, Glycerin, Aqua (and) Xanthan Gum (and) Caprylyl
-          Glycol (and) Glucose (and) Chondrus crispus (Carrageenan) (and)
-          Phenoxyethanol (and) Ethylhexylglycerine, Cocodiethanolamide, Mineral
-          Oil, Melaleuca alternifolia (Tea Tree) Oil, Cl 15985, Cl 19140, BHT
-          Directioons Lather soap and apply to treatment areas. Leave the soap
-          on for up to 30 seconds. Apply once per day and increase to twice a
-          day if well tolerated. If dryness occurs follow with a moisturizing
-          cream.
-        </p>
-
-        <p className="mt-[2rem] text-[1.4rem]">
-          Cocos nucifera (Coconut) Oil, De-ionized Water, Sodium Hydroxide,
-          Fragrance, Kojic Acid, Glycerin, Aqua (and) Xanthan Gum (and) Caprylyl
-          Glycol (and) Glucose (and) Chondrus crispus (Carrageenan) (and)
-          Phenoxyethanol (and) Ethylhexylglycerine, Cocodiethanolamide, Mineral
-          Oil, Melaleuca alternifolia (Tea Tree) Oil, Cl 15985, Cl 19140, BHT
-          Directioons Lather soap and apply to treatment areas. Leave the soap
-          on for up to 30 seconds. Apply once per day and increase to twice a
-          day if well tolerated. If dryness occurs follow with a moisturizing
-          cream.
-        </p>
-      </Box>
     </Box>
   );
 }

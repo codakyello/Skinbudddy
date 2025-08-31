@@ -10,6 +10,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import useDeviceDetection from "../_hooks/useDeviceDetection";
+import { ModalWindow } from "./Modal";
+import { ProductPreviewModal } from "./ProductPreviewModal";
 // import { getAllProducts } from "../_lib/actions";
 
 const images = [
@@ -55,6 +57,10 @@ export default function SectionBestSeller({
 
   const [displayLimit, setDisplayLimit] = useState(4);
 
+  const [productToPreview, setProductToPreview] = useState<
+    Product | undefined
+  >();
+
   useEffect(() => {
     if (isMobile) setDisplayLimit(2);
     else if (isTablet) setDisplayLimit(3);
@@ -99,6 +105,11 @@ export default function SectionBestSeller({
     } else {
       setOffset((prev) => prev - cardWidth);
     }
+  }
+
+  function handleProductToPreview(product: Product) {
+    console.log("set product to it");
+    setProductToPreview(product);
   }
 
   useEffect(() => {
@@ -155,7 +166,7 @@ export default function SectionBestSeller({
               style={{ flex: `0 0 calc(${100 / displayLimit}% - 4rem)` }}
             >
               <ProductCard
-                index={i}
+                handleProductToPreview={handleProductToPreview}
                 product={{ ...product, images: [images[i]] }}
               />
             </Box>
@@ -181,6 +192,19 @@ export default function SectionBestSeller({
           </Box>
         )}
       </Box>
+
+      <ModalWindow
+        name={"product-preview"}
+        position="center"
+        listenCapturing={true}
+        className="bg-black/25 z-[99]"
+      >
+        {productToPreview ? (
+          <ProductPreviewModal product={productToPreview} />
+        ) : (
+          <div></div>
+        )}
+      </ModalWindow>
     </section>
   );
 }

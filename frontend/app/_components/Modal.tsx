@@ -55,8 +55,10 @@ export default function Modal({ children }: { children: ReactNode }) {
 export function ModalOpen({
   children,
   name,
+  handler,
 }: {
   children: ReactElement;
+  handler?: () => void;
   name: string;
 }) {
   const context = useContext(ModalContext);
@@ -69,6 +71,8 @@ export function ModalOpen({
     onClick: () => {
       document.body.classList.remove("close-modal");
       open(name);
+
+      handler?.();
     },
   });
 }
