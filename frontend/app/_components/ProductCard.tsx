@@ -16,6 +16,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { ModalOpen, useModal } from "./Modal";
 import { ChangeEvent, useState } from "react";
 import Select from "./Select";
+import AppError from "../_utils/appError";
 
 export default function ProductCard({
   className,
@@ -37,26 +38,33 @@ export default function ProductCard({
   const { open } = useModal();
   const isDiscounted = selectedSize?.discount;
 
-  const handleAddToCart = async (qty = 1) => {
+  const handleAddToCart = async () => {
     try {
       setIsAdding(true);
       console.log(user, "This is the user");
 
-      if (!user.id) return;
+      if (!user._id) return;
 
-      await addToCart({
+      const res = await addToCart({
         sizeId: selectedSize?.id,
-        userId: user.id,
+        userId: user._id,
         productId: product._id as Id<"products">,
-        quantity: qty,
+        quantity: 1,
       });
 
-      toast.success(`Added to cart}`);
+      console.log(res, "This is the response");
+
+      if (!res?.success) throw new AppError(res?.message as string);
+
+      toast.success(`Added to cart`);
       // open the cart modal for confirmation
       open("cart");
     } catch (error) {
-      if (error instanceof Error)
-        toast.error(`Failed to add to cart: ${error.message}`);
+      console.log(error, "This is the error");
+      if (error instanceof AppError) toast.error(error.message);
+      else {
+        toast.error("Something went wrong");
+      }
     } finally {
       setIsAdding(false);
     }
@@ -74,7 +82,7 @@ export default function ProductCard({
       <Box className="group aspect-square overflow-hidden cursor-pointer w-full relative">
         <button
           className="absolute top-[15px] right-[15px]"
-          onClick={() => handleAddToCart(1)}
+          onClick={handleAddToCart}
         >
           <CiHeart className="w-[20px] h-[20px]" />
         </button>
@@ -158,9 +166,7 @@ export default function ProductCard({
 
       <button
         className="hover:bg-black shadow-[0_4px_8px_rgba(0,0,0,0.15)] hover:text-white font-hostgrotesk capitalize w-full h-[44px] text-[1.4rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
-        onClick={() => {
-          handleAddToCart(1);
-        }}
+        onClick={handleAddToCart}
         disabled={isAdding}
       >
         Add to cart

@@ -17,6 +17,7 @@ import type * as _utils_slug from "../_utils/slug.js";
 import type * as brands from "../brands.js";
 import type * as cart from "../cart.js";
 import type * as convex from "../convex.js";
+import type * as order from "../order.js";
 import type * as products from "../products.js";
 import type * as users from "../users.js";
 
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   brands: typeof brands;
   cart: typeof cart;
   convex: typeof convex;
+  order: typeof order;
   products: typeof products;
   users: typeof users;
 }>;

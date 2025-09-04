@@ -22,6 +22,6 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["./**/*"],
+  "include": ["./**/*", "_utils/sentry.ts"],
   "exclude": ["./_generated"]
 }

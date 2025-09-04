@@ -18,11 +18,12 @@ export const createUser = mutation({
     if (existing) return;
 
     await ctx.db.insert("users", {
+      clerkId: "",
       userId: args.userId,
       email: args.email,
       name: args.name,
       createdAt: Date.now(),
-      aiBuilderUsed: false,
+      hasUsedRecommender: false,
     });
   },
 });

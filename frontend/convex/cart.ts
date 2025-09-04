@@ -1,12 +1,6 @@
+// import { captureSentryError } from "./_utils/sentry";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-
-//  carts: defineTable({
-//     userId: v.string(),
-//     productId: v.id("products"),
-//     quantity: v.number(),
-//     createdAt: v.number(),
-//   }),
 
 // Create or update cart item
 export const createCart = mutation({
@@ -17,86 +11,116 @@ export const createCart = mutation({
     sizeId: v.optional(v.string()),
   },
   handler: async (ctx, { userId, productId, quantity, sizeId }) => {
-    // Check if item already exists in cart
-    const existingCartItem = await ctx.db
-      .query("carts")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("userId"), userId),
-          q.eq(q.field("productId"), productId),
-          q.eq(q.field("sizeId"), sizeId)
+    try {
+      // Check if item already exists in cart
+      const existingCartItem = await ctx.db
+        .query("carts")
+        .filter((q) =>
+          q.and(
+            q.eq(q.field("userId"), userId),
+            q.eq(q.field("productId"), productId),
+            q.eq(q.field("sizeId"), sizeId)
+          )
         )
-      )
-      .first();
+        .first();
 
-    const product = await ctx.db.get(productId);
+      const product = await ctx.db.get(productId);
 
-    const size = product?.sizes?.find((s) => s.id === sizeId);
+      const size = product?.sizes?.find((s) => s.id === sizeId);
 
-    if (!size) throw new Error("Size not found");
+      if (!size) throw new Error("Size not found");
 
-    if (existingCartItem) {
-      if (size?.stock >= quantity)
-        if (quantity > existingCartItem.quantity) {
-          await ctx.db.patch(existingCartItem._id, {
-            quantity,
-          });
-        } else {
-          if (existingCartItem.quantity + quantity <= size.stock)
+      if (existingCartItem) {
+        if (size?.stock >= quantity)
+          if (quantity > existingCartItem.quantity) {
             await ctx.db.patch(existingCartItem._id, {
-              quantity: existingCartItem.quantity + quantity,
+              quantity,
             });
-        }
-    } else {
-      const cartId = await ctx.db.insert("carts", {
-        userId,
-        sizeId,
-        productId,
-        quantity,
-        createdAt: Date.now(),
-      });
+          } else {
+            if (existingCartItem.quantity + quantity <= size.stock)
+              await ctx.db.patch(existingCartItem._id, {
+                quantity: existingCartItem.quantity + quantity,
+              });
+          }
+        return { success: true, message: "Cart item updated", statusCode: 200 };
+      } else {
+        const cartId = await ctx.db.insert("carts", {
+          userId,
+          sizeId,
+          productId,
+          quantity,
+          createdAt: Date.now(),
+        });
 
-      return cartId;
+        return {
+          success: true,
+          message: "Cart item created",
+          statusCode: 201,
+          cartId,
+        };
+      }
+    } catch (error) {
+      // captureSentryError(ctx, error, userId);
+      throw error;
     }
   },
 });
 
-// Get user's cart with product details
 export const getUserCart = query({
   args: {
-    userId: v.optional(v.string()),
+    userId: v.string(),
   },
   handler: async (ctx, { userId }) => {
-    // Get all cart items for the user
-    const cartItems = await ctx.db
-      .query("carts")
-      .filter((q) => q.eq(q.field("userId"), userId))
-      .collect();
-
-    cartItems.sort((a, b) => b.createdAt - a.createdAt);
-
-    // Get product details for each cart item
-    const cartWithProducts = await Promise.all(
-      cartItems.map(async (item) => {
-        const product = await ctx.db.get(item.productId);
-        const size =
-          product?.sizes?.find((size) => size.id === item.sizeId) || null;
-        const price = (size?.price || 0) - (size?.discount || 0);
+    try {
+      if (!userId) {
         return {
-          ...item,
-          product: {
-            ...product,
-            originalPrice: size?.price,
-            price,
-            size: size?.size,
-            unit: size?.unit,
-            stock: size?.stock,
-          },
+          success: false,
+          message: "Missing userId",
+          cart: [],
+          statusCode: 400,
         };
-      })
-    );
+      }
 
-    return cartWithProducts;
+      const cartItems = await ctx.db
+        .query("carts")
+        .filter((q) => q.eq(q.field("userId"), userId))
+        .collect();
+
+      // if (!cartItems.length) {
+      //   return { success: false, message: "Cart is empty", statusCode:400, cart: [] };
+      // }
+
+      cartItems.sort((a, b) => b.createdAt - a.createdAt);
+
+      const cartWithProducts = await Promise.all(
+        cartItems.map(async (item) => {
+          const product = await ctx.db.get(item.productId);
+          const size =
+            product?.sizes?.find((s) => s.id === item.sizeId) || null;
+
+          const price = (size?.price || 0) - (size?.discount || 0);
+
+          return {
+            ...item,
+            product: product
+              ? {
+                  ...product,
+                  originalPrice: size?.price,
+                  price,
+                  size: size?.size,
+                  unit: size?.unit,
+                  stock: size?.stock,
+                }
+              : null,
+          };
+        })
+      );
+
+      return { success: true, cart: cartWithProducts };
+    } catch (error) {
+      // captureSentryError(ctx, error, userId);
+      throw error;
+    }
   },
 });
 
@@ -107,42 +131,70 @@ export const updateCartQuantity = mutation({
     quantity: v.number(),
   },
   handler: async (ctx, { cartId, quantity }) => {
-    const cart = await ctx.db.get(cartId);
-    if (!cart) throw new Error("Cart item not found");
+    try {
+      const cart = await ctx.db.get(cartId);
+      if (!cart)
+        return {
+          success: false,
+          message: "Cart item not found",
+          statusCode: 404,
+        };
 
-    const product = await ctx.db.get(cart.productId);
-    if (!product) throw new Error("Product not found");
+      const product = await ctx.db.get(cart.productId);
+      if (!product)
+        return {
+          success: false,
+          message: "Product not found",
+          statusCode: 404,
+        };
 
-    const size = product.sizes?.find((s) => s.id === cart.sizeId);
-    if (!size) throw new Error("Size not found");
+      const size = product.sizes?.find((s) => s.id === cart.sizeId);
+      if (!size)
+        return { success: false, message: "Size not found", statusCode: 404 };
 
-    if (quantity <= 0) {
-      // Remove item if quantity is zero
-      await ctx.db.delete(cartId);
-      return { removed: true, cartId };
+      if (quantity <= 0) {
+        // Remove item if quantity is zero
+        await ctx.db.delete(cartId);
+        return { removed: true, cartId };
+      }
+
+      if (quantity > size.stock) {
+        return {
+          success: false,
+          message: `Only ${size.stock} left in stock`,
+          statusCode: 400,
+        };
+      }
+
+      await ctx.db.patch(cartId, { quantity });
+
+      return { success: true, cartId: cart._id };
+    } catch (error) {
+      // For updateCartQuantity, we don't have direct userId from args
+      // captureSentryError(ctx, error);
+      throw error;
     }
-
-    if (quantity > size.stock) {
-      throw new Error(`Only ${size.stock} left in stock`);
-    }
-
-    await ctx.db.patch(cartId, { quantity });
-
-    return cart._id;
   },
 });
+
 // Bonus: Remove item from cart
 export const removeFromCart = mutation({
   args: {
     cartId: v.id("carts"),
   },
   handler: async (ctx, { cartId }) => {
-    const cart = await ctx.db.get(cartId);
-    if (!cart) {
-      throw new Error("Cart not found");
+    try {
+      const cart = await ctx.db.get(cartId);
+      if (!cart) {
+        return { success: false, message: "Cart not found", statusCode: 404 };
+      }
+      await ctx.db.delete(cartId);
+      return { success: true, removed: true, cartId };
+    } catch (error) {
+      // For removeFromCart, we don't have direct userId from args
+      // captureSentryError(ctx, error);
+      throw error;
     }
-    await ctx.db.delete(cartId);
-    return { removed: true, cartId };
   },
 });
 
@@ -152,11 +204,16 @@ export const clearCart = mutation({
     userId: v.string(),
   },
   handler: async (ctx, { userId }) => {
-    const cartItems = await ctx.db
-      .query("carts")
-      .filter((q) => q.eq(q.field("userId"), userId))
-      .collect();
+    try {
+      const cartItems = await ctx.db
+        .query("carts")
+        .filter((q) => q.eq(q.field("userId"), userId))
+        .collect();
 
-    await Promise.all(cartItems.map((item) => ctx.db.delete(item._id)));
+      await Promise.all(cartItems.map((item) => ctx.db.delete(item._id)));
+    } catch (error) {
+      // captureSentryError(ctx, error, userId);
+      throw error;
+    }
   },
 });

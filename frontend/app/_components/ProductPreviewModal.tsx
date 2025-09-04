@@ -9,6 +9,7 @@ import { api } from "@/convex/_generated/api";
 import { useMutation } from "convex/react";
 import { Id } from "@/convex/_generated/dataModel";
 import { useModal } from "./Modal";
+import AppError from "../_utils/appError";
 
 export function ProductPreviewModal({
   product,
@@ -36,21 +37,25 @@ export function ProductPreviewModal({
       setIsAdding(true);
       console.log(user, "This is the user");
 
-      if (!user.id) return;
+      if (!user._id) return;
 
-      await addToCart({
+      const res = await addToCart({
         sizeId: selectedSize?.id,
-        userId: user.id,
+        userId: user._id,
         productId: product._id as Id<"products">,
         quantity,
       });
+
+      if (!res?.success) throw new AppError(res?.message as string);
 
       toast.success(`Added to cart`);
       // open the cart modal for confirmation
       open("cart");
     } catch (error) {
-      if (error instanceof Error)
-        toast.error(`Failed to add to cart: ${error.message}`);
+      if (error instanceof AppError) toast.error(error.message);
+      else {
+        toast.error("An unknown error occured");
+      }
     } finally {
       setIsAdding(false);
     }

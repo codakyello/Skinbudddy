@@ -67,8 +67,6 @@ export type Cart = {
   product?: Product | null;
 };
 
-
-
 export type Announcement = {
   _id: number;
   title: string;
@@ -81,7 +79,7 @@ export interface User {
   phone?: string;
   email?: string;
   accountType?: string;
-  image: string;
+  image?: string;
   organisationId?: string;
   subscriptionStatus?: string;
 }

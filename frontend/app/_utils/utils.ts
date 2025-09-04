@@ -61,18 +61,18 @@ export function getTagType(product: Product) {
   if (product.isBestseller) return "isBestseller";
 }
 
-export function formatProductName (name: string) {
+export function formatProductName(name: string) {
   let formattedName = "";
   name.split(" ").forEach((word) => {
     formattedName += word.slice(0, 1).toUpperCase() + word.slice(1) + " ";
-  })
+  });
   return formattedName.trim();
 }
 
-export function getDiscountedType (products?: Size[]) {
-  const isDiscount = products?.find((product)=> product.discount)
+export function getDiscountedType(products?: Size[]) {
+  const isDiscount = products?.find((product) => product.discount);
 
-  if(isDiscount) return "isDiscount"
+  if (isDiscount) return "isDiscount";
 }
 
 export function getErrorMessage(error: unknown): string {

@@ -17,7 +17,7 @@ export default function NavBar() {
 
   const { user } = useUser();
 
-  const { cart } = useUserCart(user.id);
+  const { cart } = useUserCart(user._id as string);
 
   const totalCartItems =
     cart?.reduce((acc, item) => {
@@ -161,7 +161,7 @@ export default function NavBar() {
                 <span
                   className={`absolute -top-2 -right-4 transition-all duration-500  rounded-full w-[2rem] h-[2rem] flex items-center justify-center text-[1rem] group-hover:bg-[var(--color-primary)] bg-[var(--color-primary)] text-white`}
                 >
-                  <div>{totalCartItems}</div>
+                  {totalCartItems}
                 </span>
               )}
               <svg

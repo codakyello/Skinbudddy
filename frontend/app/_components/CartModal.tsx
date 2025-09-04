@@ -10,8 +10,9 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
-import { formatPrice, getErrorMessage } from "../_utils/utils";
+import { formatPrice } from "../_utils/utils";
 import { useState } from "react";
+import AppError from "../_utils/appError";
 
 const images = [
   "/images/product/good-molecules.webp",
@@ -30,16 +31,17 @@ const images = [
 
 export default function CartModal() {
   const { user } = useUser();
-  const { cart, isPending } = useUserCart(user.id as string);
+  const { cart, isPending } = useUserCart(user._id as string);
   const { isSticky } = useNavSticky();
-  const updateCartQuantity = useMutation(api.cart.updateCartQuantity);
   const [isUpdating, setIsUpdating] = useState(false);
-  const removeFromCart = useMutation(api.cart.removeFromCart);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // useEffect(() => {
-  //   triggerRerender();
-  // }, []);
+  const [isInitiating, setIsInitiating] = useState(false);
+  const updateCartQuantity = useMutation(api.cart.updateCartQuantity);
+  const removeFromCart = useMutation(api.cart.removeFromCart);
+  const initiateOrder = useMutation(api.order.initiateOrder);
+  const [orderDiscrepancies, setOrderDiscrepancies] = useState<
+    Record<string, string>
+  >({});
 
   const handleUpdateCartQuantity = async function (
     quantity: number,
@@ -47,15 +49,12 @@ export default function CartModal() {
   ) {
     try {
       setIsUpdating(true);
-      await updateCartQuantity({ quantity, cartId });
+      const res = await updateCartQuantity({ quantity, cartId });
+      if (!res.success) throw new AppError(res.message as string);
       toast.success("Cart updated successfully");
     } catch (err) {
-      if (err instanceof Error) {
-        const message = getErrorMessage(err);
-        toast.error(message);
-      } else {
-        toast.error("An unknown error occurred.");
-      }
+      if (err instanceof AppError) toast.error(err.message);
+      else toast.error("Something went wrong");
     } finally {
       setIsUpdating(false);
     }
@@ -64,18 +63,92 @@ export default function CartModal() {
   const handleDeleteCartItem = async function (cartId: Id<"carts">) {
     try {
       setIsDeleting(true);
-      await removeFromCart({ cartId });
-      toast.success("Successfully removed from cart");
+      const res = await removeFromCart({ cartId });
+      if (!res.success) throw new AppError(res.message as string);
+      toast.success("Cart item deleted successfully");
     } catch (err) {
-      if (err instanceof Error) {
-        console.log(err.message);
-        const message = getErrorMessage(err);
-        toast.error(message);
-      } else {
-        toast.error("An unknown error occurred.");
-      }
+      if (err instanceof AppError) toast.error(err.message);
+      else toast.error("Something went wrong");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleOrder = async function () {
+    //1. initiate the order, get the orderId
+    try {
+      setIsInitiating(true);
+      const res = await initiateOrder({
+        userId: user._id as string,
+        email: "ruro@email.com",
+        phone: "+2348163136350",
+        address: "123 Main St",
+        city: "Lagos",
+        state: "Lagos",
+        country: "Nigeria",
+        firstName: user.name?.split(" ")[0] || "John",
+        lastName: user.name?.split(" ")[1] || "Doe",
+        companyName: "", // Optional, providing an empty string for dummy data
+        streetAddress: "Apt 4B", // Optional
+        deliveryNote: "Leave at door", // Optional
+      });
+
+      const orderId = res?.orderId;
+
+      const discrepancies = res?.discrepancies;
+
+      const obj: Record<string, string> = {};
+
+      if (discrepancies)
+        discrepancies.forEach((d) => {
+          obj[d.cartId] = d.reason;
+        });
+
+      if (Object.keys(obj).length > 0) setOrderDiscrepancies(obj);
+      // console.log(discrepancies, "This are the discrepancies");
+
+      if (!res.success) throw new AppError(res.message as string);
+
+      //2. initiate the payment transaction and get the authorization url
+      if (!orderId) {
+        throw new AppError("Order ID not found after creation");
+      }
+
+      const totalAmount = cart.reduce(
+        (acc, item) => (item.product?.price ?? 0) * (item.quantity ?? 0) + acc,
+        0
+      );
+
+      const paystackRes = await fetch("/api/paystack/init", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderId,
+          email: "ruro@email.com", // Use user's email for Paystack
+          amount: totalAmount, // Total amount in Naira
+        }),
+      });
+
+      const paystackData = await paystackRes.json();
+
+      if (!paystackRes.ok || !paystackData.success) {
+        throw new AppError(
+          paystackData.message || "Failed to initiate Paystack payment"
+        );
+      }
+
+      //3. Redirect user to the authorization url
+      window.location.href = paystackData.authorization_url;
+
+      toast.success("order created successfully");
+    } catch (err) {
+      if (err instanceof AppError) toast.error(err.message);
+      // else if (err instanceof Error) toast.error(err.message);
+      else toast.error("Something went wrong");
+    } finally {
+      setIsInitiating(false);
     }
   };
 
@@ -88,87 +161,110 @@ export default function CartModal() {
           <ClipLoader color="#000" size={50} />
         </Box>
       ) : cart && cart?.length > 0 ? (
-        cart.map((item: Cart, index: number) => (
-          <div
-            key={index}
-            className="relative flex items-center gap-[1.6rem] mb-[1.6rem] pb-[16px] transition-all duration-300 border-b border-gray-200"
-          >
-            {/* Remove button */}
-            <button
-              disabled={isDeleting}
-              className="absolute top-3 right-3 p-[0.8rem] rounded-full bg-gray-100 hover:bg-gray-200 transition"
-              onClick={() => {
-                handleDeleteCartItem(item._id);
-              }}
-              type="button"
+        <>
+          {cart.map((item: Cart, index: number) => (
+            <Box
+              key={index}
+              className="relative flex items-center gap-[1.6rem] mb-[1.6rem] pb-[16px] transition-all duration-300 border-b border-gray-200"
             >
-              <X className="w-[1.6rem] h-[1.6rem] text-gray-500" />
-            </button>
-            {/* Product image */}
-            <div className="w-[8rem] h-[8rem] overflow-hidden rounded-[1.2rem]flex items-center justify-center">
-              {item?.product?.images ? (
-                <img
-                  src={images.at(index % images.length)}
-                  alt={item?.product?.name || "Product"}
-                  className="object-contain w-full h-full transition-transform duration-300 hover:scale-105"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-300 text-[1.6rem] bg-gray-100">
-                  {/* fallback image or icon */}
-                  <span>—</span>
-                </div>
-              )}
-            </div>
-            {/* Product info and quantity controls */}
-            <div className="flex-1 min-w-0 flex flex-col gap-[15px]">
-              <div className="flex flex-col gap-[5px]">
-                <div className="font-semibold text-gray-900 text-[1.6rem] truncate">
-                  {item?.product?.name}
-                </div>
+              {/* Remove button */}
+              <button
+                disabled={isDeleting}
+                className="absolute top-3 right-3 p-[0.8rem] rounded-full bg-gray-100 hover:bg-gray-200 transition"
+                onClick={() => {
+                  handleDeleteCartItem(item._id);
+                }}
+                type="button"
+              >
+                <X className="w-[1.6rem] h-[1.6rem] text-gray-500" />
+              </button>
+              {/* Product image */}
+              <Box className="w-[8rem] h-[8rem] overflow-hidden rounded-[1.2rem]flex items-center justify-center">
+                {item?.product?.images ? (
+                  <img
+                    src={images.at(index % images.length)}
+                    alt={item?.product?.name || "Product"}
+                    className="object-contain w-full h-full transition-transform duration-300 hover:scale-105"
+                  />
+                ) : (
+                  <Box className="w-full h-full flex items-center justify-center text-gray-300 text-[1.6rem] bg-gray-100">
+                    {/* fallback image or icon */}
+                    <span>—</span>
+                  </Box>
+                )}
+              </Box>
+              {/* Product info and quantity controls */}
+              <Box className="flex-1 min-w-0 flex flex-col gap-[15px]">
+                <Box className="flex flex-col gap-[5px]">
+                  <Box className="font-semibold text-gray-900 text-[1.6rem] truncate">
+                    {item?.product?.name}
+                  </Box>
 
-                <p>{item.product?.size + " " + item.product?.unit}</p>
+                  <p>{item.product?.size + " " + item.product?.unit}</p>
 
-                <p>{item.product?.stock}</p>
-              </div>
-              <div className="flex gap-x-[2rem] items-center">
-                <div className="flex items-center gap-[0.8rem] mt-[0.8rem]">
-                  <button
-                    className="p-[0.8rem] rounded-full border border-gray-300 hover:bg-gray-100"
-                    onClick={() => {
-                      handleUpdateCartQuantity(item.quantity - 1, item._id);
-                    }}
-                    disabled={item.quantity <= 1 || isUpdating}
-                    type="button"
-                  >
-                    <Minus className="w-[1.4rem] h-[1.4rem]" />
-                  </button>
-                  <span className="font-medium text-[1.4rem] text-gray-900">
-                    {item.quantity}
-                  </span>
-                  <button
-                    className="p-[0.8rem] rounded-full border border-gray-300 hover:bg-gray-100"
-                    onClick={() => {
-                      handleUpdateCartQuantity(item.quantity + 1, item._id);
-                    }}
-                    disabled={
-                      isUpdating ||
-                      (item.product?.stock !== undefined &&
-                        item.quantity >= item.product.stock)
-                    }
-                    type="button"
-                  >
-                    <Plus className="w-[1.4rem] h-[1.4rem]" />
-                  </button>
-                </div>
+                  <p>{item.product?.stock}</p>
+                </Box>
+                <Box className="flex gap-x-[2rem] items-center">
+                  <Box className="flex items-center gap-[0.8rem] mt-[0.8rem]">
+                    <button
+                      className="p-[0.8rem] rounded-full border border-gray-300 hover:bg-gray-100"
+                      onClick={() => {
+                        handleUpdateCartQuantity(item.quantity - 1, item._id);
+                      }}
+                      disabled={item.quantity <= 1 || isUpdating}
+                      type="button"
+                    >
+                      <Minus className="w-[1.4rem] h-[1.4rem]" />
+                    </button>
+                    <span className="font-medium text-[1.4rem] text-gray-900">
+                      {item.quantity}
+                    </span>
+                    <button
+                      className="p-[0.8rem] rounded-full border border-gray-300 hover:bg-gray-100"
+                      onClick={() => {
+                        handleUpdateCartQuantity(item.quantity + 1, item._id);
+                      }}
+                      // disabled={
+                      //   isUpdating ||
+                      //   (item.product?.stock !== undefined &&
+                      //     item.quantity >= item.product.stock)
+                      // }
+                      type="button"
+                    >
+                      <Plus className="w-[1.4rem] h-[1.4rem]" />
+                    </button>
+                  </Box>
 
-                <div className="text-gray-500 text-[1.4rem] mt-1">
-                  {item?.product?.price &&
-                    formatPrice.format(item.product.price * item.quantity)}
-                </div>
-              </div>
-            </div>
-          </div>
-        ))
+                  <Box className="text-gray-500 text-[1.4rem] mt-1">
+                    {item?.product?.price &&
+                      formatPrice.format(item.product.price * item.quantity)}
+                  </Box>
+                </Box>
+              </Box>
+
+              <p className="text-red-500">{orderDiscrepancies[item._id]}</p>
+            </Box>
+          ))}
+
+          <p>
+            Total amount:{" "}
+            {formatPrice.format(
+              cart?.reduce(
+                (acc, item) =>
+                  (item.product?.price ?? 0) * (item.quantity ?? 0) + acc,
+                0
+              )
+            )}
+          </p>
+
+          <button
+            disabled={isInitiating}
+            onClick={handleOrder}
+            className="bg-blue-600 text-white font-semibold py-2 px-6 rounded-md hover:bg-blue-700 transition"
+          >
+            Order
+          </button>
+        </>
       ) : (
         <Box className="text-center text-black">Your cart is empty</Box>
       )}

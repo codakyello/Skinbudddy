@@ -4,6 +4,8 @@ import "./globals.css";
 import Announcement from "./_components/Announcement";
 import { Toaster } from "sonner";
 import Providers from "./_contexts/Providers";
+import * as Sentry from "@sentry/nextjs";
+
 // import SmoothLayout from "./_components/SmoothLayout";
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -21,7 +23,17 @@ export const metadata: Metadata = {
   title: "Skin Buddy",
   description:
     "Skin Buddy is a skin care app that helps you track your skin care routine and products.",
+  other: {
+    ...Sentry.getTraceData(),
+  },
 };
+
+// Add or edit your "generateMetadata" to include the Sentry trace data:
+// export function generateMetadata(): Metadata {
+//   return {
+//     // ... your existing metadata
+//   };
+// }
 
 export default async function RootLayout({
   children,
