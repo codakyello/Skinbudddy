@@ -4,7 +4,7 @@ import { api } from "@/convex/_generated/api";
 
 export async function POST(req: NextRequest) {
   try {
-    const { orderId, email, amount } = await req.json();
+    const { orderId, email, amount, phone, fullName } = await req.json();
 
     if (!orderId || !email || !amount) {
       return NextResponse.json(
@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           email,
           amount: amount * 100, // Amount in kobo
+          phone,
+          fullName,
           metadata: {
             orderId,
           },

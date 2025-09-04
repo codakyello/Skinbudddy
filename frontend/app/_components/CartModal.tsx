@@ -128,6 +128,8 @@ export default function CartModal() {
           orderId,
           email: "ruro@email.com", // Use user's email for Paystack
           amount: totalAmount, // Total amount in Naira
+          phone: "2348163136350",
+          fullName: "Olaoluwa Olorede",
         }),
       });
 

@@ -4,10 +4,11 @@ import { api } from "@/convex/_generated/api";
 import crypto from "crypto";
 
 export async function POST(req: NextRequest) {
+  console.log("Paystack webhook secret:", process.env.PAYSTACK_SECRET_KEY);
   try {
-    const secret = process.env.PAYSTACK_WEBHOOK_SECRET;
+    const secret = process.env.PAYSTACK_SECRET_KEY;
     if (!secret) {
-      throw new Error("PAYSTACK_WEBHOOK_SECRET is not set");
+      throw new Error("PAYSTACK_SECRET_KEY is not set");
     }
 
     const signature = req.headers.get("x-paystack-signature");
