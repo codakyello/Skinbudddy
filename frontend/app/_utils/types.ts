@@ -10,10 +10,6 @@ export type Size = {
   discount?: number;
 };
 
-// type Filter = {
-//   name: string;
-//   count?: number;
-// };
 export type Brand = {
   name: string;
   logoUrl?: string;

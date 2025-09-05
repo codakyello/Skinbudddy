@@ -4,9 +4,12 @@ import { api } from "@/convex/_generated/api";
 
 export async function POST(req: NextRequest) {
   try {
-    const { orderId, email, amount, phone, fullName } = await req.json();
+    const { orderId, email, amount, phone, fullName, userId } =
+      await req.json();
 
-    if (!orderId || !email || !amount) {
+    console.log(req.json());
+
+    if (!orderId || !email || !amount || !userId) {
       return NextResponse.json(
         { success: false, message: "Missing required fields" },
         { status: 400 }
@@ -61,6 +64,7 @@ export async function POST(req: NextRequest) {
     const res = await fetchMutation(api.order.createOrderReference, {
       orderId,
       reference,
+      userId,
     });
 
     if (!res?.success) {

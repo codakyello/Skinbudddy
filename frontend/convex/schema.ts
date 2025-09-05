@@ -16,6 +16,15 @@ export const OrderStatus = v.union(
   v.literal("refunded")
 );
 
+// should the status and payment status be together
+// it can be because is only when the payment and the order status are tightly coupled
+// it is only when payment is verified that we update status
+export const FulfillmentStatus = v.union(
+  v.literal("none"),
+  v.literal("partial"),
+  v.literal("full")
+);
+
 export default defineSchema({
   users: defineTable({
     userId: v.string(),
@@ -55,6 +64,8 @@ export default defineSchema({
     ingredients: v.optional(v.number()),
     skinType: v.optional(v.array(v.string())),
     routineId: v.optional(v.string()),
+    fragranceFree: v.optional(v.boolean()),
+    alcoholFree: v.optional(v.boolean()),
 
     sizes: v.optional(
       v.array(
@@ -84,6 +95,7 @@ export default defineSchema({
     sizeId: v.optional(v.string()), // For size variants
     quantity: v.number(),
     createdAt: v.number(),
+    recommended: v.optional(v.boolean()), // default to false
   }),
 
   // find user cart with token to implement pay for others feature
@@ -110,6 +122,17 @@ export default defineSchema({
         price: v.number(), // lets save the static price becuase we dont want changes in price if we link it by product id
       })
     ),
+    fulfilledItems: v.optional(
+      v.array(
+        v.object({
+          productId: v.id("products"),
+          sizeId: v.optional(v.string()),
+          quantity: v.number(),
+          price: v.number(),
+        })
+      )
+    ),
+    fulfilledAmount: v.optional(v.number()),
     totalAmount: v.number(),
     status: OrderStatus,
     reference: v.optional(v.string()),
@@ -130,6 +153,51 @@ export default defineSchema({
     token: v.optional(v.string()),
     tokenExpiry: v.optional(v.number()),
 
+    // Fulfillment details
+    fulfillmentStatus: v.optional(FulfillmentStatus),
+    shortages: v.optional(
+      v.array(
+        v.object({
+          productId: v.id("products"),
+          sizeId: v.optional(v.string()),
+          requested: v.number(),
+          available: v.number(),
+          shortBy: v.number(),
+          refund: v.number(),
+        })
+      )
+    ),
+    refundDue: v.optional(v.number()),
+    refundProcessed: v.optional(v.boolean()), // default false
+    refundProcessedAt: v.optional(v.number()),
+
+    // Refund workflow state
+    refundStatus: v.optional(
+      v.union(
+        v.literal("none"),
+        v.literal("pending"),
+        v.literal("processed"),
+        v.literal("failed")
+      )
+    ),
+    refundAttempts: v.optional(v.number()),
+    lastRefundAttemptAt: v.optional(v.number()),
+    lastRefundError: v.optional(v.string()),
+    refundReason: v.optional(v.string()),
+    refundProviderId: v.optional(v.string()),
+    nextRefundAt: v.optional(v.number()),
+
+    // Payment verification workflow (used by cron + completion guard)
+    paymentVerifyStatus: v.optional(v.string()), // e.g., "pending", "failed_temp", "verified", provider terminal codes
+    paymentVerifyAttempts: v.optional(v.number()),
+    nextPaymentVerifyAt: v.optional(v.number()),
+    paymentVerifiedAt: v.optional(v.number()),
+
+    // Structured refund error fields (captured from provider on failures)
+    lastRefundHttpStatus: v.optional(v.number()),
+    lastRefundErrorCode: v.optional(v.string()),
+    lastRefundPayload: v.optional(v.any()),
+
     // paymentId: v.string(),
     // paymentMethod: v.optional(v.string()), // e.g. "paystack", "card", "bank transfer"
     // paymentStatus: v.optional(v.string()), // e.g. "pending", "paid", "failed"
@@ -137,7 +205,9 @@ export default defineSchema({
     // paymentGateway: v.optional(v.string()), // e.g. "paystack", "card", "bank transfer"
     // paymentGatewayReference: v.optional(v.string()), // e.g. "PAYSTACK_REFERENCE", "CARD_REFERENCE", "BANK_REFERENCE"
     // paymentGatewayStatus: v.optional(v.string()), // e.g. "pending", "paid", "failed"
-  }).index("by_token", ["token"]).index("by_reference", ["reference"]),
+  })
+    .index("by_token", ["token"])
+    .index("by_reference", ["reference"]),
 
   reviews: defineTable({
     userId: v.string(),

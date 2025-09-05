@@ -127,6 +127,7 @@ export default function CartModal() {
         },
         body: JSON.stringify({
           orderId,
+          userId: user._id,
           email: "ruro@email.com", // Use user's email for Paystack
           amount: totalAmount, // Total amount in Naira
           phone: "2348163136350",

@@ -1,6 +1,63 @@
+// Polyfill fetch for node if not available (Convex actions support fetch natively)
+// @ts-ignore
+const fetch_: typeof fetch =
+  typeof fetch !== "undefined" ? fetch : (globalThis as any).fetch;
+
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
-import { Country, OrderStatus } from "./schema";
+import {
+  mutation,
+  query,
+  action,
+  internalMutation,
+  internalAction,
+  internalQuery,
+} from "./_generated/server";
+import { api, internal } from "./_generated/api";
+import { Country } from "./schema";
+import { Id } from "./_generated/dataModel";
+import { Doc } from "./_generated/dataModel";
+import { generateToken } from "./_utils/utils";
+
+/**
+ * Verify Paystack payment using reference and expected amount.
+ * Returns { success, data } where success indicates verified and data is the raw API response.
+ */
+async function verifyPaystackPayment(
+  reference: string,
+  expectedAmount: number
+): Promise<{ success: boolean; data: any }> {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  if (!secretKey) {
+    throw new Error("PAYSTACK_SECRET_KEY is not set in environment");
+  }
+  // Paystack expects amount in kobo (NGN) or lowest currency unit
+  // Our order.totalAmount should match Paystack's charged amount (in kobo)
+  const url = `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`;
+  const resp = await fetch_(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      "Content-Type": "application/json",
+    },
+  });
+  let json: any;
+  try {
+    json = await resp.json();
+  } catch (e) {
+    return { success: false, data: { error: "Invalid JSON from Paystack" } };
+  }
+  if (!resp.ok || !json.status || !json.data) {
+    return { success: false, data: json };
+  }
+  // Check payment status and amount
+  const paystackStatus = json.data.status;
+  const paystackAmount = json.data.amount;
+  // Accept only "success" status and amount >= expectedAmount (allow overpayment)
+  if (paystackStatus === "success" && paystackAmount >= expectedAmount) {
+    return { success: true, data: json.data };
+  }
+  return { success: false, data: json.data };
+}
 
 export const initiateOrder = mutation({
   args: {
@@ -115,11 +172,300 @@ export const initiateOrder = mutation({
       country,
       streetAddress,
       deliveryNote,
+      refundProcessed: false,
     });
 
     return { success: true, orderId };
   },
 });
+
+// Internal query to get order by token (for token collision checking)
+export const _getOrderByToken = internalQuery({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    return await ctx.db
+      .query("orders")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .first();
+  },
+});
+
+// Internal mutation to create order with a provided token/tokenExpiry
+// export const createOrderWithToken = mutation({
+//   args: {
+//     userId: v.string(),
+//     address: v.string(),
+//     city: v.string(),
+//     state: v.string(),
+//     phone: v.string(),
+//     email: v.string(),
+//     firstName: v.string(),
+//     lastName: v.string(),
+//     companyName: v.optional(v.string()),
+//     country: Country,
+//     streetAddress: v.optional(v.string()),
+//     deliveryNote: v.optional(v.string()),
+//     token: v.string(),
+//     tokenExpiry: v.number(),
+//   },
+//   handler: async (
+//     ctx,
+//     {
+//       userId,
+//       address,
+//       city,
+//       state,
+//       phone,
+//       email,
+//       firstName,
+//       lastName,
+//       companyName,
+//       country,
+//       streetAddress,
+//       deliveryNote,
+//       token,
+//       tokenExpiry,
+//     }
+//   ) => {
+//     const cartItems = await ctx.db
+//       .query("carts")
+//       .filter((q) => q.eq(q.field("userId"), userId))
+//       .collect();
+
+//     if (cartItems.length === 0) {
+//       return { success: false, message: "Cart is empty", statusCode: 400 };
+//     }
+
+//     const discrepancies: Array<{
+//       cartId: string;
+//       productId: string;
+//       reason: string;
+//     }> = [];
+
+//     let totalAmount = 0;
+
+//     for (const item of cartItems) {
+//       const product = await ctx.db.get(item.productId);
+//       if (!product) throw new Error("Product not found");
+
+//       const sizeIndex = product.sizes?.findIndex((s) => s.id === item.sizeId);
+//       if (sizeIndex === -1 || sizeIndex === undefined) {
+//         throw new Error("Size not found");
+//       }
+//       if (product.sizes) {
+//         const size = product.sizes[sizeIndex];
+//         if (item.quantity > size.stock) {
+//           discrepancies.push({
+//             cartId: (item as any)._id,
+//             productId: (product as any)._id,
+//             reason: `Only ${size.stock} left in stock`,
+//           });
+//         } else {
+//           const price = (size.price || 0) - (size.discount || 0);
+//           totalAmount += price * item.quantity;
+//         }
+//       }
+//     }
+
+//     if (discrepancies.length > 0) {
+//       return {
+//         success: false,
+//         discrepancies,
+//         message: "One or more of your orders has an issue",
+//       } as any;
+//     }
+
+//     const orderItems = await Promise.all(
+//       cartItems.map(async (item) => {
+//         const product = await ctx.db.get(item.productId);
+//         const size = product?.sizes?.find((s) => s.id === item.sizeId);
+//         const price = (size?.price || 0) - (size?.discount || 0);
+//         return {
+//           productId: item.productId,
+//           sizeId: item.sizeId,
+//           quantity: item.quantity,
+//           price,
+//         };
+//       })
+//     );
+
+//     const orderId = await ctx.db.insert("orders", {
+//       userId,
+//       items: orderItems,
+//       totalAmount,
+//       status: "draft",
+//       createdAt: Date.now(),
+//       address,
+//       city,
+//       state,
+//       phone,
+//       email,
+//       firstName,
+//       lastName,
+//       companyName,
+//       country,
+//       streetAddress,
+//       deliveryNote,
+//       token,
+//       tokenExpiry,
+//       refundProcessed: false,
+//     });
+
+//     return { success: true, orderId, token, tokenExpiry };
+//   },
+// });
+
+// Public action that generates a unique order token and creates the order
+// export const generateOrderToken = mutation({
+//   args: {
+//     userId: v.string(),
+//     address: v.string(),
+//     city: v.string(),
+//     state: v.string(),
+//     phone: v.string(),
+//     email: v.string(),
+//     firstName: v.string(),
+//     lastName: v.string(),
+//     companyName: v.optional(v.string()),
+//     country: Country,
+//     streetAddress: v.optional(v.string()),
+//     deliveryNote: v.optional(v.string()),
+//   },
+//   handler: async (
+//     ctx,
+//     {
+//       userId,
+//       address,
+//       city,
+//       state,
+//       phone,
+//       email,
+//       firstName,
+//       lastName,
+//       companyName,
+//       country,
+//       streetAddress,
+//       deliveryNote,
+//     }
+//   ): Promise<
+//     | {
+//         success: true;
+//         orderId: Id<"orders">;
+//         token: string;
+//         tokenExpiry: number;
+//       }
+//     | {
+//         success: false;
+//         message: string;
+//         statusCode: number;
+//         discrepancies?: Array<{
+//           cartId: string;
+//           productId: string;
+//           reason: string;
+//         }>;
+//       }
+//   > => {
+//     // Generate a unique token (pure JS util, no Node-only APIs needed here)
+//     let token = generateToken();
+//     // Ensure uniqueness using DB index (mutations cannot use ctx.runQuery)
+//     for (let i = 0; i < 5; i++) {
+//       const existing = await ctx.db
+//         .query("orders")
+//         .withIndex("by_token", (q) => q.eq("token", token))
+//         .first();
+//       if (!existing) break;
+//       token = generateToken();
+//     }
+//     const tokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24h
+
+//     // Load cart
+//     const cartItems = await ctx.db
+//       .query("carts")
+//       .filter((q) => q.eq(q.field("userId"), userId))
+//       .collect();
+//     if (cartItems.length === 0) {
+//       return { success: false, message: "Cart is empty", statusCode: 400 };
+//     }
+
+//     // Validate and total
+//     const discrepancies: Array<{
+//       cartId: string;
+//       productId: string;
+//       reason: string;
+//     }> = [];
+
+//     let totalAmount = 0;
+//     for (const item of cartItems) {
+//       const product = await ctx.db.get(item.productId);
+//       if (!product) throw new Error("Product not found");
+//       const sizeIndex = product.sizes?.findIndex((s) => s.id === item.sizeId);
+//       if (sizeIndex === -1 || sizeIndex === undefined) {
+//         throw new Error("Size not found");
+//       }
+//       if (product.sizes) {
+//         const size = product.sizes[sizeIndex];
+//         if (item.quantity > size.stock) {
+//           discrepancies.push({
+//             cartId: item._id,
+//             productId: product._id,
+//             reason: `Only ${size.stock} left in stock`,
+//           });
+//         } else {
+//           const price = (size.price || 0) - (size.discount || 0);
+//           totalAmount += price * item.quantity;
+//         }
+//       }
+//     }
+//     if (discrepancies.length > 0) {
+//       return {
+//         success: false,
+//         discrepancies,
+//         message: "One or more of your orders has an issue",
+//         statusCode: 400,
+//       } as any;
+//     }
+
+//     // Build order items
+//     const orderItems = await Promise.all(
+//       cartItems.map(async (item) => {
+//         const product = await ctx.db.get(item.productId);
+//         const size = product?.sizes?.find((s) => s.id === item.sizeId);
+//         const price = (size?.price || 0) - (size?.discount || 0);
+//         return {
+//           productId: item.productId,
+//           sizeId: item.sizeId,
+//           quantity: item.quantity,
+//           price,
+//         };
+//       })
+//     );
+
+//     // Insert order with token
+//     const orderId = await ctx.db.insert("orders", {
+//       userId,
+//       items: orderItems,
+//       totalAmount,
+//       status: "draft",
+//       createdAt: Date.now(),
+//       address,
+//       city,
+//       state,
+//       phone,
+//       email,
+//       firstName,
+//       lastName,
+//       companyName,
+//       country,
+//       streetAddress,
+//       deliveryNote,
+//       token,
+//       tokenExpiry,
+//       refundProcessed: false,
+//     });
+
+//     return { success: true, orderId, token, tokenExpiry };
+//   },
+// });
 
 export const generateOrderToken = mutation({
   args: {
@@ -215,22 +561,14 @@ export const generateOrderToken = mutation({
       })
     );
 
-    // Generate a unique token and 24h expiry
-    const gen = () =>
-      (
-        Math.random().toString(36).slice(2) +
-        Math.random().toString(36).slice(2) +
-        Math.random().toString(36).slice(2)
-      ).slice(0, 36);
-
-    let token = gen();
+    let token = generateToken();
     for (let i = 0; i < 5; i++) {
       const existing = await ctx.db
         .query("orders")
         .withIndex("by_token", (q) => q.eq("token", token))
         .first();
       if (!existing) break;
-      token = gen();
+      token = generateToken();
     }
     const tokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24h
 
@@ -253,91 +591,50 @@ export const generateOrderToken = mutation({
       deliveryNote,
       token,
       tokenExpiry,
+      refundProcessed: false,
     });
 
     return { success: true, orderId, token, tokenExpiry };
   },
 });
-
+// Add userId to args and enforce order.reference and order.userId checks
 export const createOrderReference = mutation({
   args: {
     orderId: v.id("orders"),
     reference: v.string(),
+    userId: v.string(),
   },
-  handler: async (ctx, { orderId, reference }) => {
+  handler: async (ctx, { orderId, reference, userId }) => {
     const order = await ctx.db.get(orderId);
     if (!order) {
       return { success: false, message: "Order not found", statusCode: 404 };
     }
-
+    if (order.reference) {
+      return {
+        success: false,
+        message: "Order already has a reference",
+        statusCode: 400,
+      };
+    }
+    if (order.userId !== userId) {
+      return { success: false, message: "Forbidden", statusCode: 403 };
+    }
     await ctx.db.patch(orderId, { reference, status: "pending" });
-
+    await ctx.db.patch(orderId, {
+      paymentVerifyStatus: "pending",
+      paymentVerifyAttempts: 0,
+      nextPaymentVerifyAt: Date.now(),
+    } as any);
     return { success: true, message: "Order updated" };
   },
 });
 
-// DEPRECATED: Prefer completeOrderByReference(reference). Kept for backward compatibility.
-// export const completeOrder = mutation({
-//   args: {
-//     orderId: v.id("orders"),
-//     reference: v.string(),
-//   },
-//   handler: async (ctx, { orderId, reference }) => {
-//     const order = await ctx.db.get(orderId);
-//     if (!order) {
-//       return { success: false, message: "Order not found", statusCode: 404 };
-//     }
-
-//     // Update order status to 'paid' and set Paystack reference
-//     await ctx.db.patch(orderId, {
-//       status: "paid",
-//       reference,
-//     });
-
-//     // Deduct stock for each item in the order
-//     for (const orderItem of order.items) {
-//       const product = await ctx.db.get(orderItem.productId);
-//       if (!product || !product.sizes) {
-//         console.warn(
-//           `Product or sizes not found for productId: ${orderItem.productId}`
-//         );
-//         continue;
-//       }
-//       const sizeIndex = product.sizes.findIndex(
-//         (s) => s.id === orderItem.sizeId
-//       );
-//       if (sizeIndex === -1 || sizeIndex === undefined) {
-//         console.warn(
-//           `Size not found for sizeId: ${orderItem.sizeId} in product: ${product._id}`
-//         );
-//         continue;
-//       }
-//       product.sizes[sizeIndex].stock -= orderItem.quantity;
-//       await ctx.db.patch(product._id, { sizes: product.sizes });
-//     }
-
-//     // Clear the user's cart
-//     // First, find the user's cart items for this order
-//     const userCartItems = await ctx.db
-//       .query("carts")
-//       .filter((q) => q.eq(q.field("userId"), order.userId))
-//       .collect();
-
-//     // Then delete them
-//     await Promise.all(userCartItems.map((item) => ctx.db.delete(item._id)));
-
-//     // send the user a cofirmation email
-
-//     return { success: true, message: "Order completed and stock updated" };
-//   },
-// });
-
-export const completeOrder = mutation({
+export const completeOrder = internalMutation({
   args: {
     reference: v.string(),
   },
   handler: async (ctx, { reference }) => {
-    // Look up order by unique payment reference
+    // 1) Look up order by payment reference
     const order = await ctx.db
       .query("orders")
       .withIndex("by_reference", (q) => q.eq("reference", reference))
@@ -346,57 +643,284 @@ export const completeOrder = mutation({
     if (!order) {
       return {
         success: false,
-        message: "Order not found for this reference",
         statusCode: 404,
+        message: "Order not found for this reference.",
       } as const;
     }
 
-    // Idempotency: if already paid, exit early
+    // 2) Idempotency and status gates
     if (order.status === "paid") {
-      return { success: true, message: "Order already completed" } as const;
+      return {
+        success: true,
+        message: "Order already completed (paid).",
+      } as const;
+    }
+    if (order.status === "out_of_stock") {
+      return {
+        success: true,
+        message: "Order previously marked out of stock.",
+        shortages: (order as any).shortages ?? [],
+        refundDue: (order as any).refundDue ?? 0,
+      } as const;
+    }
+    if ((order as any).fulfillmentStatus === "partial") {
+      return {
+        success: true,
+        message: "Order already partially fulfilled.",
+        shortages: (order as any).shortages ?? [],
+        refundDue: (order as any).refundDue ?? 0,
+      } as const;
     }
 
-    // Mark as paid (do not overwrite reference here)
-    await ctx.db.patch(order._id, { status: "paid" });
+    // Only allow completion from "pending" status (not "draft" anymore)
+    if (order.status !== "pending") {
+      return {
+        success: false,
+        statusCode: 409,
+        message: `Cannot complete order from status '${order.status}'.`,
+      } as const;
+    }
 
-    // Deduct stock for each item in the order
-    for (const orderItem of order.items) {
-      const product = await ctx.db.get(orderItem.productId);
+    // Ensure payment was verified by an action before completing
+    if ((order as any).paymentVerifyStatus !== "verified") {
+      return {
+        success: false,
+        statusCode: 403,
+        message: "Payment not verified for this order.",
+      } as const;
+    }
+
+    // 3) Validate that the reference matches what we have on record (defensive)
+    if (!order.reference) {
+      // Extremely rare: reference not stored yet; never overwrite if it exists and differs
+      await ctx.db.patch(order._id, { reference });
+    } else if (order.reference !== reference) {
+      return {
+        success: false,
+        statusCode: 400,
+        message: "Reference mismatch for this order.",
+      } as const;
+    }
+
+    // 4) Calculate fulfillable quantities & shortages atomically by reading latest stock
+    type Shortage = {
+      productId: Id<"products">;
+      sizeId: string | undefined;
+      requested: number;
+      available: number;
+      shortBy: number;
+      refund: number;
+    };
+
+    const shortages: Shortage[] = [];
+    const fulfillPlan: Array<{
+      productId: Id<"products">;
+      productDocId: Id<"products">;
+      sizeIndex: number;
+      sizeId: string;
+      fulfillQty: number;
+      price: number;
+    }> = [];
+
+    for (const item of order.items) {
+      const product = await ctx.db.get(item.productId);
       if (!product || !product.sizes) {
-        console.warn(
-          `Product or sizes not found for productId: ${orderItem.productId}`
-        );
+        // If the product is gone or sizes missing, treat as full shortage for that line
+        const unitPrice = (item as any).price ?? 0;
+        shortages.push({
+          productId: item.productId,
+          sizeId: item.sizeId as any,
+          requested: item.quantity,
+          available: 0,
+          shortBy: item.quantity,
+          refund: unitPrice * item.quantity,
+        });
         continue;
       }
-      const sizeIndex = product.sizes.findIndex(
-        (s: any) => s.id === orderItem.sizeId
-      );
-      if (sizeIndex === -1 || sizeIndex === undefined) {
-        console.warn(
-          `Size not found for sizeId: ${orderItem.sizeId} in product: ${product._id}`
-        );
+
+      const idx = product.sizes.findIndex((s: any) => s.id === item.sizeId);
+      if (idx === -1 || idx === undefined) {
+        const unitPrice = (item as any).price ?? 0;
+        shortages.push({
+          productId: product._id,
+          sizeId: item.sizeId as any,
+          requested: item.quantity,
+          available: 0,
+          shortBy: item.quantity,
+          refund: unitPrice * item.quantity,
+        });
         continue;
       }
-      (product as any).sizes[sizeIndex].stock -= orderItem.quantity;
-      await ctx.db.patch(product._id, { sizes: (product as any).sizes });
+
+      const available = (product as any).sizes[idx].stock ?? 0;
+      const requested = item.quantity;
+      const fulfillQty = Math.min(available, requested);
+      const unitPrice = (item as any).price ?? 0;
+
+      if (fulfillQty < requested) {
+        shortages.push({
+          productId: product._id,
+          sizeId: item.sizeId as any,
+          requested,
+          available,
+          shortBy: requested - fulfillQty,
+          refund: (requested - fulfillQty) * unitPrice,
+        });
+      }
+
+      // Record what we plan to deduct now (could be 0)
+      fulfillPlan.push({
+        productId: item.productId,
+        productDocId: product._id,
+        sizeIndex: idx,
+        sizeId: item.sizeId as any,
+        fulfillQty,
+        price: unitPrice,
+      });
     }
 
-    // Clear the user's cart
+    // Build fulfilled items snapshot (what we can actually deliver now)
+    const fulfilledItems = fulfillPlan
+      .filter((p) => p.fulfillQty > 0)
+      .map((p) => ({
+        productId: p.productId,
+        sizeId: p.sizeId as any,
+        quantity: p.fulfillQty,
+        price: p.price,
+      }));
+
+    const fulfilledAmount = fulfilledItems.reduce(
+      (sum, li) => sum + li.price * li.quantity,
+      0
+    );
+
+    // 5) Apply deductions for fulfillable quantities (guarded by latest stock)
+    for (const step of fulfillPlan) {
+      if (step.fulfillQty <= 0) continue;
+      const prod = await ctx.db.get(step.productId);
+      if (!prod || !(prod as any).sizes || !(prod as any).sizes[step.sizeIndex])
+        continue;
+      const currentStock = (prod as any).sizes[step.sizeIndex].stock ?? 0;
+      const deduct = Math.min(currentStock, step.fulfillQty); // re-check to avoid over-deduct due to races
+      if (deduct <= 0) continue;
+      (prod as any).sizes[step.sizeIndex].stock = currentStock - deduct;
+      await ctx.db.patch(step.productDocId as any, {
+        sizes: (prod as any).sizes,
+      });
+    }
+
+    // 6) Compute refund and decide final status
+    const refundDue = shortages.reduce((sum, s) => sum + s.refund, 0);
+    const anyFulfilled = fulfillPlan.some((p) => p.fulfillQty > 0);
+
+    if (shortages.length > 0) {
+      // Partial or zero fulfillment
+      const fulfillmentStatus = anyFulfilled ? "partial" : "none";
+      await ctx.db.patch(order._id, {
+        status: anyFulfilled ? "paid" : "out_of_stock",
+        fulfillmentStatus,
+        shortages: shortages,
+        refundDue,
+        // initialize refund workflow
+        refundStatus: "pending",
+        refundProcessed: false,
+        refundAttempts: 0,
+        refundReason: anyFulfilled ? "partial_fulfillment" : "out_of_stock",
+        lastRefundAttemptAt: undefined,
+        lastRefundError: undefined,
+        refundProviderId: undefined,
+        nextRefundAt: Date.now(), // try immediately; cron/worker will respect this
+        // fulfillment snapshots
+        fulfilledItems,
+        fulfilledAmount,
+      } as any);
+
+      // NOTE: If TypeScript can't see internal.order.*, run 'npx convex dev' to regenerate types.
+      // Enqueue an immediate refund attempt (event-driven)
+      await ctx.scheduler.runAfter(0, internal.order.processRefund, {
+        orderId: order._id,
+      });
+
+      // Clear the user's cart regardless to avoid duplicate retries with old quantities
+      const userCartItems = await ctx.db
+        .query("carts")
+        .filter((q) => q.eq(q.field("userId"), order.userId))
+        .collect();
+      await Promise.all(userCartItems.map((ci) => ctx.db.delete(ci._id)));
+
+      return {
+        success: true,
+        message: anyFulfilled
+          ? "Order partially fulfilled. Refund due for unavailable items."
+          : "Insufficient stock. Order marked out of stock.",
+        fulfillmentStatus,
+        shortages,
+        refundDue,
+      } as const;
+    }
+
+    // 7) Full fulfillment path: mark as paid, clear cart
+    await ctx.db.patch(order._id, {
+      status: "paid",
+      fulfillmentStatus: "full",
+      fulfilledItems: order.items.map((it) => ({
+        productId: it.productId,
+        sizeId: it.sizeId as any,
+        quantity: it.quantity,
+        price: (it as any).price ?? 0,
+      })),
+      fulfilledAmount: order.totalAmount,
+      refundDue: 0,
+    } as any);
+
     const userCartItems = await ctx.db
       .query("carts")
       .filter((q) => q.eq(q.field("userId"), order.userId))
       .collect();
-
-    await Promise.all(userCartItems.map((item) => ctx.db.delete(item._id)));
-
-    // send user email that order has been accepted
+    await Promise.all(userCartItems.map((ci) => ctx.db.delete(ci._id)));
 
     return {
       success: true,
-      message: "Order completed and stock updated",
+      message: "Order completed and stock updated.",
     } as const;
   },
 });
+
+export const _setOrderVerified = internalMutation({
+  args: {
+    orderId: v.id("orders"),
+    // providerAmount: v.optional(v.number()),
+    // providerCurrency: v.optional(v.string()),
+    // providerStatus: v.optional(v.string()),
+    // providerTxnId: v.optional(v.string()),
+    // providerChannel: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (!order) {
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Order not found",
+      } as const;
+    }
+    if (order.status !== "pending") {
+      return { success: true } as const; // idempotent; no change if not pending
+    }
+    await ctx.db.patch(args.orderId, {
+      paymentVerifyStatus: "verified" as any,
+      paymentVerifiedAt: Date.now(),
+      // providerAmount: args.providerAmount,
+      // providerCurrency: args.providerCurrency,
+      // providerStatus: args.providerStatus,
+      // providerTxnId: args.providerTxnId,
+      // providerChannel: args.providerChannel,
+    } as any);
+    return { success: true } as const;
+  },
+});
+
+// we can run a cron job on orders that are marked as pending incase they fail in the webhook
 
 // updateOrder is limited to address/contact fields only.
 // Status and payment-related updates must go through dedicated mutations
@@ -447,7 +971,7 @@ export const getOrderByToken = query({
     if (!order.tokenExpiry || order.tokenExpiry < Date.now()) {
       return {
         success: false,
-        statusCode: 404,
+        statusCode: 400,
         message: "This link has expired",
       } as const;
     }
@@ -455,7 +979,7 @@ export const getOrderByToken = query({
     if (order.status !== "draft")
       return {
         success: false,
-        statusCode: 404,
+        statusCode: 400,
         message: "This link is no longer available.",
       } as const;
 
@@ -463,84 +987,453 @@ export const getOrderByToken = query({
   },
 });
 
-// export const updateOrderStatus = mutation({
-//   args: {
-//     orderId: v.id("orders"),
-//     to: OrderStatus,
-//   },
-//   handler: async (ctx, { orderId, to }) => {
-//     const order = await ctx.db.get(orderId);
-//     if (!order)
-//       return { success: false, message: "Order not found", statusCode: 404 };
+// not a public function end point
+export const updateRefundState = internalMutation({
+  args: {
+    orderId: v.id("orders"),
+    success: v.boolean(),
+    providerRefundId: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    lastRefundHttpStatus: v.optional(v.number()),
+    lastRefundErrorCode: v.optional(v.string()),
+    lastRefundPayload: v.optional(v.any()),
+  },
+  handler: async (
+    ctx,
+    {
+      orderId,
+      success,
+      providerRefundId,
+      errorMessage,
+      lastRefundHttpStatus,
+      lastRefundErrorCode,
+      lastRefundPayload,
+    }
+  ) => {
+    const order = await ctx.db.get(orderId);
+    if (!order)
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Order not found",
+      } as const;
 
-//     const from = order.status as string;
-//     const allowed: Record<string, string[]> = {
-//       draft: ["pending", "out_of_stock", "failed"],
-//       pending: ["paid", "failed", "out_of_stock"],
-//       paid: ["shipped", "refunded"],
-//       shipped: ["refunded"],
-//       failed: [],
-//       out_of_stock: [],
-//       refunded: [],
-//     };
+    if (success) {
+      // Mark refund as processed; set status heuristically
+      const newStatus =
+        (order as any).fulfillmentStatus === "partial" ? "paid" : "refunded";
+      await ctx.db.patch(orderId, {
+        refundProcessed: true,
+        refundStatus: "processed",
+        refundProcessedAt: Date.now(),
+        status: newStatus,
+        refundProviderId: providerRefundId,
+        nextRefundAt: undefined,
+        lastRefundError: undefined,
+        lastRefundHttpStatus: undefined,
+        lastRefundErrorCode: undefined,
+        lastRefundPayload: undefined,
+      } as any);
+      return { success: true } as const;
+    }
 
-//     if (!(allowed[from] || []).includes(to as string)) {
-//       return {
-//         success: false,
-//         message: `Invalid status transition from ${from} to ${to}`,
-//         statusCode: 400,
-//       };
-//     }
+    // Failure path: bump attempts and store last error for retries, with exponential backoff and jitter
+    const attempts = ((order as any).refundAttempts ?? 0) + 1;
 
-//     // Reserve the payment-capture path for completeOrder so we always run side-effects
-//     if (to === "paid") {
-//       return {
-//         success: false,
-//         message:
-//           "Use completeOrder to transition to 'paid' so side-effects run",
-//         statusCode: 400,
-//       };
-//     }
+    // exponential backoff schedule in ms
+    const steps = [
+      60_000,
+      5 * 60_000,
+      15 * 60_000,
+      60 * 60_000,
+      6 * 60 * 60_000,
+      24 * 60 * 60_000,
+    ];
+    const base = steps[Math.min(attempts - 1, steps.length - 1)];
+    const jitter = Math.floor(base * (0.1 + Math.random() * 0.2)); // +10%..+30%
+    const nextRefundAt = Date.now() + base + jitter;
 
-//     // For other transitions, patch status. (Add side-effects here if needed.)
-//     await ctx.db.patch(orderId, { status: to as any });
-//     return { success: true };
-//   },
-// });
+    // Patch with optional error details if provided
+    await ctx.db.patch(orderId, {
+      refundStatus: "failed",
+      refundAttempts: attempts,
+      lastRefundAttemptAt: Date.now(),
+      lastRefundError: errorMessage,
+      nextRefundAt,
+      ...(typeof lastRefundHttpStatus !== "undefined"
+        ? { lastRefundHttpStatus }
+        : {}),
+      ...(typeof lastRefundErrorCode !== "undefined"
+        ? { lastRefundErrorCode }
+        : {}),
+      ...(typeof lastRefundPayload !== "undefined"
+        ? { lastRefundPayload }
+        : {}),
+    } as any);
+    return { success: true } as const;
+  },
+});
 
-// export const issueOrderToken = mutation({
-//   args: {
-//     orderId: v.id("orders"),
-//     // default: 24 hours
-//     ttlMs: v.optional(v.number()),
-//   },
-//   handler: async (ctx, { orderId, ttlMs }) => {
-//     const order = await ctx.db.get(orderId);
-//     if (!order)
-//       return { success: false, message: "Order not found", statusCode: 404 };
+// this is a cron job
+export const processRefund = internalAction({
+  args: {
+    orderId: v.id("orders"),
+  },
+  handler: async (ctx, { orderId }) => {
+    // NOTE: If TypeScript can't see internal.order.*, run 'npx convex dev' to regenerate types.
+    // Fetch fresh order state (actions can't use ctx.db directly for writes; we'll use mutations)
+    const order: Doc<"orders"> | null = await ctx.runQuery(
+      internal.order._getOrderById,
+      { orderId }
+    );
+    if (!order) return;
+    if (!order.refundDue || order.refundProcessed) return; // nothing to do
+    if (
+      order.refundStatus &&
+      !["pending", "failed"].includes(order.refundStatus as any)
+    )
+      return; // only work pending/failed
+    if (order.nextRefundAt && order.nextRefundAt > Date.now()) return; // respect backoff schedule
 
-//     // helper to generate a random, URL‑safe-ish token
-//     const gen = () =>
-//       (
-//         Math.random().toString(36).slice(2) +
-//         Math.random().toString(36).slice(2) +
-//         Math.random().toString(36).slice(2)
-//       ).slice(0, 36);
+    // --- Prepare for refund attempt; ensure idempotency at provider using payment reference ---
+    const idempotencyKey = `refund-${order.reference}`;
+    try {
+      // Example placeholder logic (simulate provider success):
+      const providerRefundId = idempotencyKey;
+      // Call back into a mutation to update DB
+      await ctx.runMutation(internal.order.updateRefundState, {
+        orderId,
+        success: true,
+        providerRefundId,
+      });
+    } catch (e: any) {
+      // Pass through structured error info if available
+      const errObj = typeof e === "object" && e !== null ? e : {};
+      await ctx.runMutation(internal.order.updateRefundState, {
+        orderId,
+        success: false,
+        errorMessage: e?.message ?? "Refund error",
+        lastRefundHttpStatus:
+          errObj.lastRefundHttpStatus ?? errObj.httpStatus ?? undefined,
+        lastRefundErrorCode:
+          errObj.lastRefundErrorCode ?? errObj.code ?? undefined,
+        lastRefundPayload:
+          errObj.lastRefundPayload ?? errObj.payload ?? undefined,
+      });
+    }
+  },
+});
 
-//     // attempt a few times to avoid rare collisions
-//     let token = gen();
-//     for (let i = 0; i < 5; i++) {
-//       const existing = await ctx.db
-//         .query("orders")
-//         .withIndex("by_token", (q) => q.eq("token", token))
-//         .first();
-//       if (!existing) break;
-//       token = gen();
-//     }
+// we are marking it as failed in the verifyPendingPayment cron job that is for orders that payment is set to pending
+// verify payment mark it as paid else mark it has failed
+// we mark it as failed here
+// in processRefund
 
-//     const expiresAt = Date.now() + (ttlMs ?? 24 * 60 * 60 * 1000);
-//     await ctx.db.patch(orderId, { token, tokenExpiry: expiresAt });
+// cron job calls this
+export const verifyPendingPaymentsSweep = internalAction({
+  args: { limit: v.optional(v.number()) },
+  handler: async (
+    ctx,
+    { limit }
+  ): Promise<{ success: boolean; count: number }> => {
+    const ids: Id<"orders">[] = await ctx.runQuery(
+      api.order._listPendingOrdersForVerify,
+      { limit: limit ?? 50 }
+    );
+    for (const id of ids) {
+      await ctx.runAction(internal.order.verifyPaymentForOrder, {
+        orderId: id,
+      });
+    }
+    return { success: true, count: ids.length } as const;
+  },
+});
 
-//     return { success: true, token, tokenExpiry: expiresAt };
-//   },
-// });
+export const _listPendingOrdersForVerify = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    const now = Date.now();
+    const all = await ctx.db
+      .query("orders")
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .collect();
+
+    const eligible = all.filter((o: any) => {
+      if (!o.reference) return false;
+      if (
+        o.paymentVerifyStatus &&
+        !["pending", "failed_temp"].includes(o.paymentVerifyStatus)
+      )
+        return false;
+      if (!o.nextPaymentVerifyAt) return true;
+      return o.nextPaymentVerifyAt <= now;
+    });
+
+    return (limit ? eligible.slice(0, limit) : eligible).map((o) => o._id);
+  },
+});
+
+export const _markOrderPaymentFailed = internalMutation({
+  args: {
+    orderId: v.id("orders"),
+    providerStatus: v.string(),
+    message: v.optional(v.string()),
+  },
+  handler: async (ctx, { orderId, providerStatus, message }) => {
+    const order = await ctx.db.get(orderId);
+    if (!order)
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Order not found",
+      } as const;
+    if (order.status !== "pending") return { success: true } as const; // idempotent
+    await ctx.db.patch(orderId, {
+      status: "failed" as any,
+      paymentVerifyStatus: providerStatus,
+      nextPaymentVerifyAt: undefined,
+    } as any);
+    return { success: true } as const;
+  },
+});
+
+export const _bumpPaymentVerifyBackoff = internalMutation({
+  args: { orderId: v.id("orders"), errorMessage: v.optional(v.string()) },
+  handler: async (ctx, { orderId, errorMessage }) => {
+    const order = await ctx.db.get(orderId);
+    if (!order)
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Order not found",
+      } as const;
+    if (order.status !== "pending") return { success: true } as const;
+
+    const prev = (order as any).paymentVerifyAttempts ?? 0;
+    const attempts = Math.max(0, Number(prev)) + 1;
+    const steps = [
+      60_000,
+      5 * 60_000,
+      15 * 60_000,
+      60 * 60_000,
+      6 * 60 * 60_000,
+      24 * 60 * 60_000,
+    ];
+    const idx = Math.min(attempts - 1, steps.length - 1);
+    const base = steps[idx];
+    const jitter = Math.floor(base * (0.1 + Math.random() * 0.2));
+    const nextPaymentVerifyAt = Date.now() + base + jitter;
+
+    await ctx.db.patch(orderId, {
+      paymentVerifyStatus: "failed_temp",
+      paymentVerifyAttempts: attempts,
+      nextPaymentVerifyAt,
+    } as any);
+    return { success: true } as const;
+  },
+});
+
+export const verifyPaymentForOrder = internalAction({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, { orderId }) => {
+    const order = await ctx.runQuery(internal.order._getOrderById, { orderId });
+    if (!order) return;
+    if (order.status !== "pending" || !order.reference) return;
+
+    // Auto-fail very old pending orders (24h window)
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    if (Date.now() - order.createdAt > TWENTY_FOUR_HOURS) {
+      await ctx.runMutation(internal.order._markOrderPaymentFailed, {
+        orderId,
+        providerStatus: "expired",
+        message: "Pending > 24h without successful verification",
+      });
+      return;
+    }
+
+    const expected = order.totalAmount * 100;
+    try {
+      const result = await verifyPaystackPayment(order.reference, expected);
+      if (result.success) {
+        // Mark verification success (defense-in-depth) then run completion (idempotent)
+        await ctx.runMutation(internal.order._setOrderVerified, {
+          orderId,
+        });
+        await ctx.runMutation(internal.order.completeOrder, {
+          reference: order.reference,
+        });
+        return;
+      }
+
+      // Not verified. If provider returns an explicit terminal state, mark failed.
+      const providerStatus = (result as any)?.data?.status;
+      if (
+        providerStatus &&
+        ["failed", "abandoned", "reversed"].includes(providerStatus)
+      ) {
+        await ctx.runMutation(internal.order._markOrderPaymentFailed, {
+          orderId,
+          providerStatus,
+          message: (result as any)?.data?.message,
+        });
+        return;
+      }
+
+      // Else, schedule another verify attempt with backoff
+      await ctx.runMutation(internal.order._bumpPaymentVerifyBackoff, {
+        orderId,
+        errorMessage:
+          (result as any)?.data?.message || providerStatus || "Unverified",
+      });
+    } catch (e: any) {
+      await ctx.runMutation(internal.order._bumpPaymentVerifyBackoff, {
+        orderId,
+        errorMessage: e?.message ?? "Verify error",
+      });
+    }
+  },
+});
+
+// Lookup order by payment reference (internal-only so actions can call it)
+export const _getOrderByReference = internalQuery({
+  args: { reference: v.string() },
+  handler: async (ctx, { reference }) => {
+    return await ctx.db
+      .query("orders")
+      .withIndex("by_reference", (q) => q.eq("reference", reference))
+      .first();
+  },
+});
+
+// Public action that Paystack webhook (or client) can call by reference:
+// verifies with Paystack, stamps verification, then runs the internal completion mutation.
+export const verifyAndCompleteByReference = action({
+  args: { reference: v.string() },
+  handler: async (ctx, { reference }) => {
+    const order = await ctx.runQuery(internal.order._getOrderByReference, {
+      reference,
+    });
+    if (!order) {
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Order not found",
+      } as const;
+    }
+    if (order.status !== "pending") {
+      return {
+        success: true,
+        message: "Order not pending; nothing to do.",
+      } as const;
+    }
+
+    // Ensure units match Paystack (kobo). If your `totalAmount` is in naira, multiply by 100.
+    const expected = order.totalAmount * 100;
+
+    try {
+      const result = await verifyPaystackPayment(reference, expected);
+      if (result.success) {
+        await ctx.runMutation(internal.order._setOrderVerified, {
+          orderId: order._id,
+        });
+        await ctx.runMutation(internal.order.completeOrder, { reference });
+        return { success: true } as const;
+      }
+
+      const providerStatus = (result as any)?.data?.status;
+      if (
+        providerStatus &&
+        ["failed", "abandoned", "reversed"].includes(providerStatus)
+      ) {
+        await ctx.runMutation(internal.order._markOrderPaymentFailed, {
+          orderId: order._id,
+          providerStatus,
+          message: (result as any)?.data?.message,
+        });
+        return {
+          success: false,
+          statusCode: 400,
+          message: "Payment failed",
+          providerStatus,
+        } as const;
+      }
+
+      await ctx.runMutation(internal.order._bumpPaymentVerifyBackoff, {
+        orderId: order._id,
+        errorMessage:
+          (result as any)?.data?.message || providerStatus || "Unverified",
+      });
+      return {
+        success: false,
+        statusCode: 202,
+        message: "Verification deferred",
+      } as const;
+    } catch (e: any) {
+      await ctx.runMutation(internal.order._bumpPaymentVerifyBackoff, {
+        orderId: order._id,
+        errorMessage: e?.message ?? "Verify error",
+      });
+      return {
+        success: false,
+        statusCode: 500,
+        message: "Verification error",
+      } as const;
+    }
+  },
+});
+
+// Internal helper query so actions can read an order
+export const _getOrderById = internalQuery({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, { orderId }) => {
+    return (await ctx.db.get(orderId)) as Doc<"orders"> | null;
+  },
+});
+
+// Internal action to sweep for orders needing refund processing
+export const _sweepPendingRefunds = internalAction({
+  args: { limit: v.optional(v.number()) },
+  handler: async (
+    ctx,
+    { limit }
+  ): Promise<{ success: boolean; count: number }> => {
+    const now = Date.now();
+    const eligibleOrderIds = await ctx.runQuery(
+      internal.order._listRefundEligibleOrders,
+      { limit: limit ?? 50 }
+    );
+
+    for (const orderId of eligibleOrderIds) {
+      await ctx.runAction(internal.order.processRefund, { orderId });
+    }
+
+    return { success: true, count: eligibleOrderIds.length };
+  },
+});
+
+// Internal query to list orders eligible for refund processing
+export const _listRefundEligibleOrders = internalQuery({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }): Promise<Id<"orders">[]> => {
+    const now = Date.now();
+    const all = await ctx.db
+      .query("orders")
+      .filter((q) =>
+        q.and(
+          q.neq(q.field("refundDue"), undefined),
+          q.gt(q.field("refundDue"), 0),
+          q.or(
+            q.eq(q.field("refundStatus"), "pending"),
+            q.eq(q.field("refundStatus"), "failed")
+          ),
+          q.or(
+            q.eq(q.field("nextRefundAt"), undefined),
+            q.lte(q.field("nextRefundAt"), now)
+          )
+        )
+      )
+      .collect();
+
+    return (limit ? all.slice(0, limit) : all).map((o) => o._id);
+  },
+});

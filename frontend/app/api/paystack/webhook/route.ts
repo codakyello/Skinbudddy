@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchMutation } from "convex/nextjs";
+import { fetchAction } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import crypto from "crypto";
 
@@ -14,75 +14,70 @@ export async function POST(req: NextRequest) {
     if (!signature) {
       return NextResponse.json(
         { success: false, message: "No signature provided" },
-        { status: 400 }
+        { status: 400 } // let Paystack retry
       );
     }
 
     const body = await req.text();
 
     const hash = crypto.createHmac("sha512", secret).update(body).digest("hex");
-
     if (hash !== signature) {
       return NextResponse.json(
         { success: false, message: "Invalid signature" },
-        { status: 400 }
+        { status: 400 } // let Paystack retry
       );
     }
 
     const event = JSON.parse(body);
 
-    // Handle only successful transactions
     if (event.event === "charge.success") {
       const { reference } = event.data;
 
       if (!reference) {
         return NextResponse.json(
-          {
-            success: false,
-            message: "Missing reference in event data",
-          },
-          { status: 400 }
+          { success: false, message: "Missing reference in event data" },
+          { status: 400 } // let Paystack retry
         );
       }
 
-      // Call Convex mutation to complete the order by reference
-      const completeOrderResponse = await fetchMutation(api.order.completeOrder, {
-        reference,
-      });
+      // ✅ Acknowledge Paystack immediately
+      const res = NextResponse.json(
+        { success: true, message: "Webhook received" },
+        { status: 200 }
+      );
 
-      if (!completeOrderResponse?.success) {
-        console.error(
-          "Convex completeOrder mutation failed:",
-          completeOrderResponse
-        );
-        return NextResponse.json(
-          {
-            success: false,
-            message:
-              completeOrderResponse?.message || "Failed to complete order",
-          },
-          { status: 500 }
-        );
-      }
+      // ⏳ Do business logic in background
+      (async () => {
+        try {
+          await fetchAction(api.order.verifyAndCompleteByReference, {
+            reference,
+          });
+        } catch (err) {
+          console.error("Failed to complete order:", err);
+          // Save to DB or trigger retry logic in your own system
+        }
+      })();
 
-      return NextResponse.json({
-        success: true,
-        message: "Order completed successfully",
-      });
+      return res;
     }
 
-    return NextResponse.json({ success: true, message: "Event not handled" });
+    // Ignore unrelated events, still return 200
+    return NextResponse.json(
+      { success: true, message: "Event ignored" },
+      { status: 200 }
+    );
   } catch (error: unknown) {
     console.error("Error in Paystack webhook API:", error);
+
+    // ❌ Only return 400 if the webhook itself is invalid
+    // ✅ For app-side failures, always return 200 to stop retries
     return NextResponse.json(
       {
-        success: false,
+        success: true,
         message:
-          error instanceof Error
-            ? error.message
-            : "An unexpected error occurred",
+          error instanceof Error ? error.message : "Unexpected error occurred",
       },
-      { status: 500 }
+      { status: 200 }
     );
   }
 }
