@@ -58,19 +58,18 @@ export async function POST(req: NextRequest) {
     const { authorization_url, reference } = paystackData.data;
 
     // Call Convex mutation to update the order with Paystack reference
-    const updateOrderResponse = await fetchMutation(api.order.updateOrder, {
+    const res = await fetchMutation(api.order.createOrderReference, {
       orderId,
       reference,
     });
 
-    if (!updateOrderResponse?.success) {
-      console.error("Convex updateOrder mutation failed:", updateOrderResponse);
+    if (!res?.success) {
+      console.error("Convex updateOrder mutation failed:", res);
       return NextResponse.json(
         {
           success: false,
           message:
-            updateOrderResponse?.message ||
-            "Failed to update order with Paystack reference",
+            res?.message || "Failed to update order with Paystack reference",
         },
         { status: 500 }
       );

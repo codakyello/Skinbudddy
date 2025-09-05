@@ -39,6 +39,7 @@ export default function CartModal() {
   const updateCartQuantity = useMutation(api.cart.updateCartQuantity);
   const removeFromCart = useMutation(api.cart.removeFromCart);
   const initiateOrder = useMutation(api.order.initiateOrder);
+  const generateOrderToken = useMutation(api.order.generateOrderToken);
   const [orderDiscrepancies, setOrderDiscrepancies] = useState<
     Record<string, string>
   >({});
@@ -109,7 +110,6 @@ export default function CartModal() {
 
       if (!res.success) throw new AppError(res.message as string);
 
-      //2. initiate the payment transaction and get the authorization url
       if (!orderId) {
         throw new AppError("Order ID not found after creation");
       }
@@ -119,6 +119,7 @@ export default function CartModal() {
         0
       );
 
+      //2. initiate the payment transaction and get the authorization url
       const paystackRes = await fetch("/api/paystack/init", {
         method: "POST",
         headers: {
@@ -145,6 +146,69 @@ export default function CartModal() {
       window.location.href = paystackData.authorization_url;
 
       toast.success("order created successfully");
+    } catch (err) {
+      if (err instanceof AppError) toast.error(err.message);
+      // else if (err instanceof Error) toast.error(err.message);
+      else toast.error("Something went wrong");
+    } finally {
+      setIsInitiating(false);
+    }
+  };
+
+  const handleGenerateOrderToken = async function () {
+    console.log("Called generate order token");
+    try {
+      setIsInitiating(true);
+      const res = await generateOrderToken({
+        userId: user._id as string,
+        email: "ruro@email.com",
+        phone: "+2348163136350",
+        address: "123 Main St",
+        city: "Lagos",
+        state: "Lagos",
+        country: "Nigeria",
+        firstName: user.name?.split(" ")[0] || "John",
+        lastName: user.name?.split(" ")[1] || "Doe",
+        companyName: "", // Optional, providing an empty string for dummy data
+        streetAddress: "Apt 4B", // Optional
+        deliveryNote: "Leave at door", // Optional
+      });
+
+      const discrepancies = res?.discrepancies;
+
+      const obj: Record<string, string> = {};
+
+      if (discrepancies)
+        discrepancies.forEach((d: { cartId: string; reason: string }) => {
+          obj[d.cartId] = d.reason;
+        });
+
+      console.log(res, "response");
+
+      if (Object.keys(obj).length > 0) setOrderDiscrepancies(obj);
+
+      if (!res.success) throw new AppError(res.message);
+
+      toast.success("Token generated successfully");
+
+      // Build a shareable URL from the returned token and show it to the user
+      if (!res.token) throw new AppError("Token was not returned");
+
+      const shareUrl = `${window.location.origin}/pay/${res.token}`;
+
+      // Attempt to copy to clipboard for convenience
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success("Link copied to clipboard");
+      } catch {
+        // Fallback: ignore clipboard errors and continue to prompt
+      }
+
+      // Show a prompt so the user can see/copy the link even if clipboard fails
+      window.prompt(
+        "Shareable payment link (press ⌘/Ctrl+C to copy)",
+        shareUrl
+      );
     } catch (err) {
       if (err instanceof AppError) toast.error(err.message);
       // else if (err instanceof Error) toast.error(err.message);
@@ -265,6 +329,13 @@ export default function CartModal() {
             className="bg-blue-600 text-white font-semibold py-2 px-6 rounded-md hover:bg-blue-700 transition"
           >
             Order
+          </button>
+
+          <button
+            className="ml-4 bg-black text-white font-semibold py-2 px-6 rounded-md transition"
+            onClick={handleGenerateOrderToken}
+          >
+            Generate link
           </button>
         </>
       ) : (

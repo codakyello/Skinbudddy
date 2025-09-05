@@ -4,7 +4,6 @@ import { api } from "@/convex/_generated/api";
 import crypto from "crypto";
 
 export async function POST(req: NextRequest) {
-  console.log("Paystack webhook secret:", process.env.PAYSTACK_SECRET_KEY);
   try {
     const secret = process.env.PAYSTACK_SECRET_KEY;
     if (!secret) {
@@ -34,27 +33,22 @@ export async function POST(req: NextRequest) {
 
     // Handle only successful transactions
     if (event.event === "charge.success") {
-      const { reference, metadata } = event.data;
-      const orderId = metadata.orderId;
+      const { reference } = event.data;
 
-      if (!orderId || !reference) {
+      if (!reference) {
         return NextResponse.json(
           {
             success: false,
-            message: "Missing orderId or reference in metadata",
+            message: "Missing reference in event data",
           },
           { status: 400 }
         );
       }
 
-      // Call Convex mutation to complete the order
-      const completeOrderResponse = await fetchMutation(
-        api.order.completeOrder,
-        {
-          orderId,
-          reference,
-        }
-      );
+      // Call Convex mutation to complete the order by reference
+      const completeOrderResponse = await fetchMutation(api.order.completeOrder, {
+        reference,
+      });
 
       if (!completeOrderResponse?.success) {
         console.error(

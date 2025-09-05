@@ -7,11 +7,13 @@ export const Country = v.union(
 );
 
 export const OrderStatus = v.union(
+  v.literal("draft"),
   v.literal("pending"),
   v.literal("paid"),
   v.literal("failed"), //payment error status
   v.literal("out_of_stock"), //failed due to insufficient inventory
-  v.literal("shipped")
+  v.literal("shipped"),
+  v.literal("refunded")
 );
 
 export default defineSchema({
@@ -105,7 +107,7 @@ export default defineSchema({
         productId: v.id("products"),
         sizeId: v.optional(v.string()), // For size variants
         quantity: v.number(),
-        price: v.number(), // lets save the price becuase of changes in price if we link it to the product
+        price: v.number(), // lets save the static price becuase we dont want changes in price if we link it by product id
       })
     ),
     totalAmount: v.number(),
@@ -124,6 +126,10 @@ export default defineSchema({
     streetAddress: v.optional(v.string()),
     deliveryNote: v.optional(v.string()),
 
+    // access token for sharing order details
+    token: v.optional(v.string()),
+    tokenExpiry: v.optional(v.number()),
+
     // paymentId: v.string(),
     // paymentMethod: v.optional(v.string()), // e.g. "paystack", "card", "bank transfer"
     // paymentStatus: v.optional(v.string()), // e.g. "pending", "paid", "failed"
@@ -131,7 +137,7 @@ export default defineSchema({
     // paymentGateway: v.optional(v.string()), // e.g. "paystack", "card", "bank transfer"
     // paymentGatewayReference: v.optional(v.string()), // e.g. "PAYSTACK_REFERENCE", "CARD_REFERENCE", "BANK_REFERENCE"
     // paymentGatewayStatus: v.optional(v.string()), // e.g. "pending", "paid", "failed"
-  }),
+  }).index("by_token", ["token"]).index("by_reference", ["reference"]),
 
   reviews: defineTable({
     userId: v.string(),
