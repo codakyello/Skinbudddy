@@ -18,7 +18,7 @@ import type * as _utils_utils from "../_utils/utils.js";
 import type * as brands from "../brands.js";
 import type * as cart from "../cart.js";
 import type * as convex from "../convex.js";
-import type * as cron from "../cron.js";
+import type * as crons from "../crons.js";
 import type * as order from "../order.js";
 import type * as products from "../products.js";
 import type * as users from "../users.js";
@@ -37,7 +37,7 @@ declare const fullApi: ApiFromModules<{
   brands: typeof brands;
   cart: typeof cart;
   convex: typeof convex;
-  cron: typeof cron;
+  crons: typeof crons;
   order: typeof order;
   products: typeof products;
   users: typeof users;

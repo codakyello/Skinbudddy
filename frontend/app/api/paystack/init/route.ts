@@ -7,8 +7,6 @@ export async function POST(req: NextRequest) {
     const { orderId, email, amount, phone, fullName, userId } =
       await req.json();
 
-    console.log(req.json());
-
     if (!orderId || !email || !amount || !userId) {
       return NextResponse.json(
         { success: false, message: "Missing required fields" },

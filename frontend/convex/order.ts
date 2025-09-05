@@ -172,7 +172,6 @@ export const initiateOrder = mutation({
       country,
       streetAddress,
       deliveryNote,
-      refundProcessed: false,
     });
 
     return { success: true, orderId };
@@ -591,7 +590,6 @@ export const generateOrderToken = mutation({
       deliveryNote,
       token,
       tokenExpiry,
-      refundProcessed: false,
     });
 
     return { success: true, orderId, token, tokenExpiry };
@@ -823,7 +821,6 @@ export const completeOrder = internalMutation({
         refundDue,
         // initialize refund workflow
         refundStatus: "pending",
-        refundProcessed: false,
         refundAttempts: 0,
         refundReason: anyFulfilled ? "partial_fulfillment" : "out_of_stock",
         lastRefundAttemptAt: undefined,
@@ -1313,6 +1310,7 @@ export const verifyAndCompleteByReference = action({
     const order = await ctx.runQuery(internal.order._getOrderByReference, {
       reference,
     });
+    console.log("Called", reference, "This is reference");
     if (!order) {
       return {
         success: false,
@@ -1332,6 +1330,8 @@ export const verifyAndCompleteByReference = action({
 
     try {
       const result = await verifyPaystackPayment(reference, expected);
+
+      console.log(result, "This is paystack result");
       if (result.success) {
         await ctx.runMutation(internal.order._setOrderVerified, {
           orderId: order._id,
@@ -1369,6 +1369,8 @@ export const verifyAndCompleteByReference = action({
         message: "Verification deferred",
       } as const;
     } catch (e: any) {
+      console.log(e.message);
+      console.log("encountered an error");
       await ctx.runMutation(internal.order._bumpPaymentVerifyBackoff, {
         orderId: order._id,
         errorMessage: e?.message ?? "Verify error",
