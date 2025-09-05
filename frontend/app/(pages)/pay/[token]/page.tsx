@@ -14,7 +14,11 @@ export default function Page() {
     convexQuery(api.order.getOrderByToken, { token })
   );
 
+  // setting the link to expirty to early
+
   const order = data?.success ? data.order : null;
+
+  console.log(order, "This is the Order");
   const [isInit, setIsInit] = useState(false);
 
   const fullName = useMemo(() => {
@@ -37,6 +41,7 @@ export default function Page() {
           amount: order.totalAmount,
           phone: order.phone,
           fullName,
+          userId: order.userId,
         }),
       });
       const json = await res.json();

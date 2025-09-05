@@ -4,6 +4,7 @@ import { api } from "@/convex/_generated/api";
 import crypto from "crypto";
 
 export async function POST(req: NextRequest) {
+  console.log("Webhook called");
   try {
     const secret = process.env.PAYSTACK_SECRET_KEY;
     if (!secret) {

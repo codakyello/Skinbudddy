@@ -976,7 +976,7 @@ export const getOrderByToken = query({
       } as const;
     }
 
-    if (order.status !== "draft")
+    if (order.status === "paid")
       return {
         success: false,
         statusCode: 400,
