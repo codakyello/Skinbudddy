@@ -26,12 +26,16 @@ export const createCart = mutation({
 
       const product = await ctx.db.get(productId);
 
+      if (!product || !product.sizes) {
+        throw new Error("Product or sizes not found");
+      }
+
       const size = product?.sizes?.find((s) => s.id === sizeId);
 
       if (!size) throw new Error("Size not found");
 
       if (existingCartItem) {
-        if (size?.stock >= quantity)
+        if (size?.stock >= quantity && size.stock >= 1)
           if (quantity > existingCartItem.quantity) {
             await ctx.db.patch(existingCartItem._id, {
               quantity,
@@ -44,6 +48,14 @@ export const createCart = mutation({
           }
         return { success: true, message: "Cart item updated", statusCode: 200 };
       } else {
+        if (!size || size.stock < 1 || quantity > size.stock) {
+          return {
+            success: false,
+            message: `Only ${size?.stock || 0} left in stock`,
+            statusCode: 400,
+          };
+        }
+
         const cartId = await ctx.db.insert("carts", {
           userId,
           sizeId,
