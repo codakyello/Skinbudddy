@@ -38,8 +38,8 @@ export default function CartModal() {
   const [isInitiating, setIsInitiating] = useState(false);
   const updateCartQuantity = useMutation(api.cart.updateCartQuantity);
   const removeFromCart = useMutation(api.cart.removeFromCart);
-  const initiateOrder = useMutation(api.order.initiateOrder);
-  const generateOrderToken = useMutation(api.order.generateOrderToken);
+  const createOrder = useMutation(api.order.createOrder);
+  // const generateOrderToken = useMutation(api.order.generateOrderToken);
   const [orderDiscrepancies, setOrderDiscrepancies] = useState<
     Record<string, string>
   >({});
@@ -79,7 +79,7 @@ export default function CartModal() {
     //1. initiate the order, get the orderId
     try {
       setIsInitiating(true);
-      const res = await initiateOrder({
+      const res = await createOrder({
         userId: user._id as string,
         email: "ruro@email.com",
         phone: "+2348163136350",
@@ -101,7 +101,7 @@ export default function CartModal() {
       const obj: Record<string, string> = {};
 
       if (discrepancies)
-        discrepancies.forEach((d) => {
+        discrepancies.forEach((d: { cartId: string; reason: string }) => {
           obj[d.cartId] = d.reason;
         });
 
@@ -160,7 +160,8 @@ export default function CartModal() {
     console.log("Called generate order token");
     try {
       setIsInitiating(true);
-      const res = await generateOrderToken({
+      const res = await createOrder({
+        orderType: "pay_for_me",
         userId: user._id as string,
         email: "ruro@email.com",
         phone: "+2348163136350",

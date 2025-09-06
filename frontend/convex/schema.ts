@@ -6,6 +6,8 @@ export const Country = v.union(
   // Add other countries here if needed
 );
 
+export const OrderType = v.union(v.literal("normal"), v.literal("pay_for_me"));
+
 export const OrderStatus = v.union(
   v.literal("draft"),
   v.literal("pending"),
@@ -17,12 +19,18 @@ export const OrderStatus = v.union(
 );
 
 // should the status and payment status be together
-// it can be because is only when the payment and the order status are tightly coupled
+// it can be because the payment and the order status are tightly coupled
 // it is only when payment is verified that we update status
 export const FulfillmentStatus = v.union(
   v.literal("none"),
   v.literal("partial"),
   v.literal("full")
+);
+
+export const ReferenceStatus = v.union(
+  v.literal("paid"),
+  v.literal("pending"),
+  v.literal("refunded")
 );
 
 export default defineSchema({
@@ -66,6 +74,7 @@ export default defineSchema({
     routineId: v.optional(v.string()),
     fragranceFree: v.optional(v.boolean()),
     alcoholFree: v.optional(v.boolean()),
+    stockAlertEmails: v.optional(v.array(v.string())),
 
     sizes: v.optional(
       v.array(
@@ -135,7 +144,7 @@ export default defineSchema({
     fulfilledAmount: v.optional(v.number()),
     totalAmount: v.number(),
     status: OrderStatus,
-    reference: v.optional(v.string()),
+    // reference: v.optional(v.array(v.string())),
     address: v.string(),
     city: v.string(),
     state: v.string(),
@@ -148,6 +157,7 @@ export default defineSchema({
     createdAt: v.number(),
     streetAddress: v.optional(v.string()),
     deliveryNote: v.optional(v.string()),
+    orderType: v.optional(v.string()),
 
     // access token for sharing order details
     token: v.optional(v.string()),
@@ -205,9 +215,15 @@ export default defineSchema({
     // paymentGateway: v.optional(v.string()), // e.g. "paystack", "card", "bank transfer"
     // paymentGatewayReference: v.optional(v.string()), // e.g. "PAYSTACK_REFERENCE", "CARD_REFERENCE", "BANK_REFERENCE"
     // paymentGatewayStatus: v.optional(v.string()), // e.g. "pending", "paid", "failed"
+  }).index("by_token", ["token"]),
+
+  orderReferences: defineTable({
+    orderId: v.id("orders"),
+    reference: v.string(),
+    status: ReferenceStatus,
   })
-    .index("by_token", ["token"])
-    .index("by_reference", ["reference"]),
+    .index("by_reference", ["reference"])
+    .index("by_orderId", ["orderId"]),
 
   reviews: defineTable({
     userId: v.string(),

@@ -49,16 +49,15 @@ export async function POST(req: NextRequest) {
 
       // ⏳ Do business logic in background
       // lets see if it will run if we dont await it
-      (() => {
-        try {
-          fetchAction(api.order.verifyAndCompleteByReference, {
-            reference,
-          });
-        } catch (err) {
-          console.error("Failed to complete order:", err);
-          // Save to DB or trigger retry logic in your own system
-        }
-      })();
+
+      try {
+        fetchAction(api.order.verifyAndCompleteByReference, {
+          reference,
+        });
+      } catch (err) {
+        console.error("Failed to complete order:", err);
+        // Save to DB or trigger retry logic in your own system
+      }
 
       return res;
     }

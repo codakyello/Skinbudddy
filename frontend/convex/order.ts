@@ -59,7 +59,9 @@ async function verifyPaystackPayment(
   return { success: false, data: json.data };
 }
 
-export const initiateOrder = mutation({
+const OrderType = v.union(v.literal("normal"), v.literal("pay_for_me"));
+
+export const createOrder = mutation({
   args: {
     userId: v.string(),
     address: v.string(),
@@ -73,6 +75,7 @@ export const initiateOrder = mutation({
     country: Country,
     streetAddress: v.optional(v.string()),
     deliveryNote: v.optional(v.string()),
+    orderType: v.optional(OrderType), // defaults to "normal"
   },
   handler: async (
     ctx,
@@ -89,413 +92,7 @@ export const initiateOrder = mutation({
       country,
       streetAddress,
       deliveryNote,
-    }
-  ) => {
-    const cartItems = await ctx.db
-      .query("carts")
-      .filter((q) => q.eq(q.field("userId"), userId))
-      .collect();
-
-    if (cartItems.length === 0) {
-      return { success: false, message: "Cart is empty", statusCode: 400 };
-    }
-
-    const discrepancies: Array<{
-      cartId: string;
-      productId: string;
-      reason: string;
-    }> = [];
-
-    let totalAmount = 0;
-
-    for (const item of cartItems) {
-      const product = await ctx.db.get(item.productId);
-      if (!product) {
-        throw new Error("Product not found");
-      }
-
-      const sizeIndex = product.sizes?.findIndex((s) => s.id === item.sizeId);
-      if (sizeIndex === -1 || sizeIndex === undefined) {
-        throw new Error("Size not found");
-      }
-      if (product.sizes) {
-        const size = product?.sizes[sizeIndex];
-        if (item.quantity > size.stock) {
-          discrepancies.push({
-            cartId: item._id,
-            productId: product._id,
-            reason: `Only ${size.stock} left in stock`,
-          });
-        } else {
-          const price = (size.price || 0) - (size.discount || 0);
-          totalAmount += price * item.quantity;
-        }
-      }
-    }
-
-    if (discrepancies.length > 0) {
-      return {
-        success: false,
-        discrepancies,
-        message: "One or more of your orders has an issue",
-      };
-    }
-
-    const orderItems = await Promise.all(
-      cartItems.map(async (item) => {
-        const product = await ctx.db.get(item.productId);
-        const size = product?.sizes?.find((s) => s.id === item.sizeId);
-        const price = (size?.price || 0) - (size?.discount || 0);
-        return {
-          productId: item.productId,
-          sizeId: item.sizeId,
-          quantity: item.quantity,
-          price,
-        };
-      })
-    );
-
-    const orderId = await ctx.db.insert("orders", {
-      userId,
-      items: orderItems,
-      totalAmount,
-      status: "draft",
-      createdAt: Date.now(),
-      address,
-      city,
-      state,
-      phone,
-      email,
-      firstName,
-      lastName,
-      companyName,
-      country,
-      streetAddress,
-      deliveryNote,
-    });
-
-    return { success: true, orderId };
-  },
-});
-
-// Internal query to get order by token (for token collision checking)
-export const _getOrderByToken = internalQuery({
-  args: { token: v.string() },
-  handler: async (ctx, { token }) => {
-    return await ctx.db
-      .query("orders")
-      .withIndex("by_token", (q) => q.eq("token", token))
-      .first();
-  },
-});
-
-// Internal mutation to create order with a provided token/tokenExpiry
-// export const createOrderWithToken = mutation({
-//   args: {
-//     userId: v.string(),
-//     address: v.string(),
-//     city: v.string(),
-//     state: v.string(),
-//     phone: v.string(),
-//     email: v.string(),
-//     firstName: v.string(),
-//     lastName: v.string(),
-//     companyName: v.optional(v.string()),
-//     country: Country,
-//     streetAddress: v.optional(v.string()),
-//     deliveryNote: v.optional(v.string()),
-//     token: v.string(),
-//     tokenExpiry: v.number(),
-//   },
-//   handler: async (
-//     ctx,
-//     {
-//       userId,
-//       address,
-//       city,
-//       state,
-//       phone,
-//       email,
-//       firstName,
-//       lastName,
-//       companyName,
-//       country,
-//       streetAddress,
-//       deliveryNote,
-//       token,
-//       tokenExpiry,
-//     }
-//   ) => {
-//     const cartItems = await ctx.db
-//       .query("carts")
-//       .filter((q) => q.eq(q.field("userId"), userId))
-//       .collect();
-
-//     if (cartItems.length === 0) {
-//       return { success: false, message: "Cart is empty", statusCode: 400 };
-//     }
-
-//     const discrepancies: Array<{
-//       cartId: string;
-//       productId: string;
-//       reason: string;
-//     }> = [];
-
-//     let totalAmount = 0;
-
-//     for (const item of cartItems) {
-//       const product = await ctx.db.get(item.productId);
-//       if (!product) throw new Error("Product not found");
-
-//       const sizeIndex = product.sizes?.findIndex((s) => s.id === item.sizeId);
-//       if (sizeIndex === -1 || sizeIndex === undefined) {
-//         throw new Error("Size not found");
-//       }
-//       if (product.sizes) {
-//         const size = product.sizes[sizeIndex];
-//         if (item.quantity > size.stock) {
-//           discrepancies.push({
-//             cartId: (item as any)._id,
-//             productId: (product as any)._id,
-//             reason: `Only ${size.stock} left in stock`,
-//           });
-//         } else {
-//           const price = (size.price || 0) - (size.discount || 0);
-//           totalAmount += price * item.quantity;
-//         }
-//       }
-//     }
-
-//     if (discrepancies.length > 0) {
-//       return {
-//         success: false,
-//         discrepancies,
-//         message: "One or more of your orders has an issue",
-//       } as any;
-//     }
-
-//     const orderItems = await Promise.all(
-//       cartItems.map(async (item) => {
-//         const product = await ctx.db.get(item.productId);
-//         const size = product?.sizes?.find((s) => s.id === item.sizeId);
-//         const price = (size?.price || 0) - (size?.discount || 0);
-//         return {
-//           productId: item.productId,
-//           sizeId: item.sizeId,
-//           quantity: item.quantity,
-//           price,
-//         };
-//       })
-//     );
-
-//     const orderId = await ctx.db.insert("orders", {
-//       userId,
-//       items: orderItems,
-//       totalAmount,
-//       status: "draft",
-//       createdAt: Date.now(),
-//       address,
-//       city,
-//       state,
-//       phone,
-//       email,
-//       firstName,
-//       lastName,
-//       companyName,
-//       country,
-//       streetAddress,
-//       deliveryNote,
-//       token,
-//       tokenExpiry,
-//       refundProcessed: false,
-//     });
-
-//     return { success: true, orderId, token, tokenExpiry };
-//   },
-// });
-
-// Public action that generates a unique order token and creates the order
-// export const generateOrderToken = mutation({
-//   args: {
-//     userId: v.string(),
-//     address: v.string(),
-//     city: v.string(),
-//     state: v.string(),
-//     phone: v.string(),
-//     email: v.string(),
-//     firstName: v.string(),
-//     lastName: v.string(),
-//     companyName: v.optional(v.string()),
-//     country: Country,
-//     streetAddress: v.optional(v.string()),
-//     deliveryNote: v.optional(v.string()),
-//   },
-//   handler: async (
-//     ctx,
-//     {
-//       userId,
-//       address,
-//       city,
-//       state,
-//       phone,
-//       email,
-//       firstName,
-//       lastName,
-//       companyName,
-//       country,
-//       streetAddress,
-//       deliveryNote,
-//     }
-//   ): Promise<
-//     | {
-//         success: true;
-//         orderId: Id<"orders">;
-//         token: string;
-//         tokenExpiry: number;
-//       }
-//     | {
-//         success: false;
-//         message: string;
-//         statusCode: number;
-//         discrepancies?: Array<{
-//           cartId: string;
-//           productId: string;
-//           reason: string;
-//         }>;
-//       }
-//   > => {
-//     // Generate a unique token (pure JS util, no Node-only APIs needed here)
-//     let token = generateToken();
-//     // Ensure uniqueness using DB index (mutations cannot use ctx.runQuery)
-//     for (let i = 0; i < 5; i++) {
-//       const existing = await ctx.db
-//         .query("orders")
-//         .withIndex("by_token", (q) => q.eq("token", token))
-//         .first();
-//       if (!existing) break;
-//       token = generateToken();
-//     }
-//     const tokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24h
-
-//     // Load cart
-//     const cartItems = await ctx.db
-//       .query("carts")
-//       .filter((q) => q.eq(q.field("userId"), userId))
-//       .collect();
-//     if (cartItems.length === 0) {
-//       return { success: false, message: "Cart is empty", statusCode: 400 };
-//     }
-
-//     // Validate and total
-//     const discrepancies: Array<{
-//       cartId: string;
-//       productId: string;
-//       reason: string;
-//     }> = [];
-
-//     let totalAmount = 0;
-//     for (const item of cartItems) {
-//       const product = await ctx.db.get(item.productId);
-//       if (!product) throw new Error("Product not found");
-//       const sizeIndex = product.sizes?.findIndex((s) => s.id === item.sizeId);
-//       if (sizeIndex === -1 || sizeIndex === undefined) {
-//         throw new Error("Size not found");
-//       }
-//       if (product.sizes) {
-//         const size = product.sizes[sizeIndex];
-//         if (item.quantity > size.stock) {
-//           discrepancies.push({
-//             cartId: item._id,
-//             productId: product._id,
-//             reason: `Only ${size.stock} left in stock`,
-//           });
-//         } else {
-//           const price = (size.price || 0) - (size.discount || 0);
-//           totalAmount += price * item.quantity;
-//         }
-//       }
-//     }
-//     if (discrepancies.length > 0) {
-//       return {
-//         success: false,
-//         discrepancies,
-//         message: "One or more of your orders has an issue",
-//         statusCode: 400,
-//       } as any;
-//     }
-
-//     // Build order items
-//     const orderItems = await Promise.all(
-//       cartItems.map(async (item) => {
-//         const product = await ctx.db.get(item.productId);
-//         const size = product?.sizes?.find((s) => s.id === item.sizeId);
-//         const price = (size?.price || 0) - (size?.discount || 0);
-//         return {
-//           productId: item.productId,
-//           sizeId: item.sizeId,
-//           quantity: item.quantity,
-//           price,
-//         };
-//       })
-//     );
-
-//     // Insert order with token
-//     const orderId = await ctx.db.insert("orders", {
-//       userId,
-//       items: orderItems,
-//       totalAmount,
-//       status: "draft",
-//       createdAt: Date.now(),
-//       address,
-//       city,
-//       state,
-//       phone,
-//       email,
-//       firstName,
-//       lastName,
-//       companyName,
-//       country,
-//       streetAddress,
-//       deliveryNote,
-//       token,
-//       tokenExpiry,
-//       refundProcessed: false,
-//     });
-
-//     return { success: true, orderId, token, tokenExpiry };
-//   },
-// });
-
-export const generateOrderToken = mutation({
-  args: {
-    userId: v.string(),
-    address: v.string(),
-    city: v.string(),
-    state: v.string(),
-    phone: v.string(),
-    email: v.string(),
-    firstName: v.string(),
-    lastName: v.string(),
-    companyName: v.optional(v.string()),
-    country: Country,
-    streetAddress: v.optional(v.string()),
-    deliveryNote: v.optional(v.string()),
-  },
-  handler: async (
-    ctx,
-    {
-      userId,
-      address,
-      city,
-      state,
-      phone,
-      email,
-      firstName,
-      lastName,
-      companyName,
-      country,
-      streetAddress,
-      deliveryNote,
+      orderType,
     }
   ) => {
     const cartItems = await ctx.db
@@ -524,7 +121,7 @@ export const generateOrderToken = mutation({
         throw new Error("Size not found");
       }
       if (product.sizes) {
-        const size = product.sizes[sizeIndex];
+        const size = product.sizes[sizeIndex]!;
         if (item.quantity > size.stock) {
           discrepancies.push({
             cartId: (item as any)._id,
@@ -560,16 +157,23 @@ export const generateOrderToken = mutation({
       })
     );
 
-    let token = generateToken();
-    for (let i = 0; i < 5; i++) {
-      const existing = await ctx.db
-        .query("orders")
-        .withIndex("by_token", (q) => q.eq("token", token))
-        .first();
-      if (!existing) break;
+    const effectiveType = orderType ?? "normal";
+
+    // Optional token generation for pay-for-me flow
+    let token: string | undefined;
+    let tokenExpiry: number | undefined;
+    if (effectiveType === "pay_for_me") {
       token = generateToken();
+      for (let i = 0; i < 5; i++) {
+        const existing = await ctx.db
+          .query("orders")
+          .withIndex("by_token", (q) => q.eq("token", token!))
+          .first();
+        if (!existing) break;
+        token = generateToken();
+      }
+      tokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24h
     }
-    const tokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24h
 
     const orderId = await ctx.db.insert("orders", {
       userId,
@@ -588,11 +192,25 @@ export const generateOrderToken = mutation({
       country,
       streetAddress,
       deliveryNote,
-      token,
-      tokenExpiry,
+      orderType: effectiveType,
+      ...(effectiveType === "pay_for_me" ? { token, tokenExpiry } : {}),
     });
 
-    return { success: true, orderId, token, tokenExpiry };
+    return {
+      success: true,
+      orderId,
+      ...(effectiveType === "pay_for_me" ? { token, tokenExpiry } : {}),
+    } as const;
+  },
+});
+
+export const _getOrderByToken = internalQuery({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    return await ctx.db
+      .query("orders")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .first();
   },
 });
 // Add userId to args and enforce order.reference and order.userId checks
@@ -607,17 +225,22 @@ export const createOrderReference = mutation({
     if (!order) {
       return { success: false, message: "Order not found", statusCode: 404 };
     }
-    if (order.reference) {
-      return {
-        success: false,
-        message: "Order already has a reference",
-        statusCode: 400,
-      };
-    }
+    // if (order.reference) {
+    //   return {
+    //     success: false,
+    //     message: "Order already has a reference",
+    //     statusCode: 400,
+    //   };
+    // }
     if (order.userId !== userId) {
       return { success: false, message: "Forbidden", statusCode: 403 };
     }
-    await ctx.db.patch(orderId, { reference, status: "pending" });
+    await ctx.db.patch(orderId, { status: "pending" });
+    await ctx.db.insert("orderReferences", {
+      orderId: order._id,
+      reference,
+      status: "pending",
+    });
     await ctx.db.patch(orderId, {
       paymentVerifyStatus: "pending",
       paymentVerifyAttempts: 0,
@@ -632,11 +255,20 @@ export const completeOrder = internalMutation({
     reference: v.string(),
   },
   handler: async (ctx, { reference }) => {
-    // 1) Look up order by payment reference
-    const order = await ctx.db
-      .query("orders")
+    const ref = await ctx.db
+      .query("orderReferences")
       .withIndex("by_reference", (q) => q.eq("reference", reference))
       .first();
+
+    if (!ref) {
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Reference not found.",
+      } as const;
+    }
+    const order = await ctx.db.get(ref.orderId);
+    // 1) Look up order by payment reference
 
     if (!order) {
       return {
@@ -688,19 +320,19 @@ export const completeOrder = internalMutation({
       } as const;
     }
 
-    // 3) Validate that the reference matches what we have on record (defensive)
-    if (!order.reference) {
-      // Extremely rare: reference not stored yet; never overwrite if it exists and differs
-      await ctx.db.patch(order._id, { reference });
-    } else if (order.reference !== reference) {
-      return {
-        success: false,
-        statusCode: 400,
-        message: "Reference mismatch for this order.",
-      } as const;
-    }
+    // // 3) Validate that the reference matches what we have on record (defensive)
+    // if (!reference) {
+    //   // Extremely rare: reference not stored yet; never overwrite if it exists and differs
+    //   await ctx.db.patch(order._id, { reference });
+    // } else if (order.reference !== reference) {
+    //   return {
+    //     success: false,
+    //     statusCode: 400,
+    //     message: "Reference mismatch for this order.",
+    //   } as const;
+    // }
 
-    // 4) Calculate fulfillable quantities & shortages atomically by reading latest stock
+    // 3) Calculate fulfillable quantities & shortages atomically by reading latest stock
     type Shortage = {
       productId: Id<"products">;
       sizeId: string | undefined;
@@ -792,7 +424,7 @@ export const completeOrder = internalMutation({
       0
     );
 
-    // 5) Apply deductions for fulfillable quantities (guarded by latest stock)
+    // 4) Apply deductions for fulfillable quantities (guarded by latest stock)
     for (const step of fulfillPlan) {
       if (step.fulfillQty <= 0) continue;
       const prod = await ctx.db.get(step.productId);
@@ -807,7 +439,7 @@ export const completeOrder = internalMutation({
       });
     }
 
-    // 6) Compute refund and decide final status
+    // 5) Compute refund and decide final status
     const refundDue = shortages.reduce((sum, s) => sum + s.refund, 0);
     const anyFulfilled = fulfillPlan.some((p) => p.fulfillQty > 0);
 
@@ -832,8 +464,8 @@ export const completeOrder = internalMutation({
         fulfilledAmount,
       } as any);
 
-      // NOTE: If TypeScript can't see internal.order.*, run 'npx convex dev' to regenerate types.
       // Enqueue an immediate refund attempt (event-driven)
+      // Hack: Mutations cannot call actions or external apis
       await ctx.scheduler.runAfter(0, internal.order.processRefund, {
         orderId: order._id,
       });
@@ -856,7 +488,7 @@ export const completeOrder = internalMutation({
       } as const;
     }
 
-    // 7) Full fulfillment path: mark as paid, clear cart
+    // 6) Full fulfillment path: mark as paid, clear cart
     await ctx.db.patch(order._id, {
       status: "paid",
       fulfillmentStatus: "full",
@@ -916,8 +548,6 @@ export const _setOrderVerified = internalMutation({
     return { success: true } as const;
   },
 });
-
-// we can run a cron job on orders that are marked as pending incase they fail in the webhook
 
 // updateOrder is limited to address/contact fields only.
 // Status and payment-related updates must go through dedicated mutations
@@ -984,7 +614,7 @@ export const getOrderByToken = query({
   },
 });
 
-// not a public function end point
+// not a public function endpoint
 export const updateRefundState = internalMutation({
   args: {
     orderId: v.id("orders"),
@@ -1092,8 +722,15 @@ export const processRefund = internalAction({
       return; // only work pending/failed
     if (order.nextRefundAt && order.nextRefundAt > Date.now()) return; // respect backoff schedule
 
+    const references = await ctx.runQuery(internal.order._getOrderReferences, {
+      orderId: order._id,
+    });
+
     // --- Prepare for refund attempt; ensure idempotency at provider using payment reference ---
-    const idempotencyKey = `refund-${order.reference}`;
+    // const idempotencyKey = `refund-${order.reference}`;
+
+    const idempotencyKey = `refund-${references.at}`;
+
     try {
       // Example placeholder logic (simulate provider success):
       const providerRefundId = idempotencyKey;
@@ -1235,7 +872,12 @@ export const verifyPaymentForOrder = internalAction({
   handler: async (ctx, { orderId }) => {
     const order = await ctx.runQuery(internal.order._getOrderById, { orderId });
     if (!order) return;
-    if (order.status !== "pending" || !order.reference) return;
+    const references = await ctx.runQuery(internal.order._getOrderReferences, {
+      orderId: order._id,
+    });
+
+    const reference = references.at(0);
+    if (order.status !== "pending" || !reference) return;
 
     // Auto-fail very old pending orders (24h window)
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
@@ -1250,14 +892,17 @@ export const verifyPaymentForOrder = internalAction({
 
     const expected = order.totalAmount * 100;
     try {
-      const result = await verifyPaystackPayment(order.reference, expected);
+      const result = await verifyPaystackPayment(reference, expected);
       if (result.success) {
         // Mark verification success (defense-in-depth) then run completion (idempotent)
         await ctx.runMutation(internal.order._setOrderVerified, {
           orderId,
         });
+        // await ctx.runMutation(internal.order.completeOrder, {
+        //   reference: order.reference,
+        // });
         await ctx.runMutation(internal.order.completeOrder, {
-          reference: order.reference,
+          reference,
         });
         return;
       }
@@ -1295,13 +940,29 @@ export const verifyPaymentForOrder = internalAction({
 export const _getOrderByReference = internalQuery({
   args: { reference: v.string() },
   handler: async (ctx, { reference }) => {
-    return await ctx.db
-      .query("orders")
+    const ref = await ctx.db
+      .query("orderReferences")
       .withIndex("by_reference", (q) => q.eq("reference", reference))
       .first();
+
+    if (!ref) {
+      return null;
+    }
+    return await ctx.db.get(ref.orderId);
   },
 });
 
+export const _getOrderReferences = internalQuery({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, { orderId }) => {
+    const refs = await ctx.db
+      .query("orderReferences")
+      .withIndex("by_orderId", (q) => q.eq("orderId", orderId))
+      .collect();
+
+    return refs.map((ref) => ref.reference);
+  },
+});
 // Public action that Paystack webhook (or client) can call by reference:
 // verifies with Paystack, stamps verification, then runs the internal completion mutation.
 export const verifyAndCompleteByReference = action({
@@ -1310,7 +971,7 @@ export const verifyAndCompleteByReference = action({
     const order = await ctx.runQuery(internal.order._getOrderByReference, {
       reference,
     });
-    console.log("Called", reference, "This is reference");
+
     if (!order) {
       return {
         success: false,
@@ -1318,6 +979,13 @@ export const verifyAndCompleteByReference = action({
         message: "Order not found",
       } as const;
     }
+
+    const references = await ctx.runQuery(internal.order._getOrderReferences, {
+      orderId: order._id,
+    });
+
+    console.log(references, "This are all the references");
+
     if (order.status !== "pending") {
       return {
         success: true,
@@ -1329,45 +997,59 @@ export const verifyAndCompleteByReference = action({
     const expected = order.totalAmount * 100;
 
     try {
-      const result = await verifyPaystackPayment(reference, expected);
+      await Promise.all(
+        references.map(async (ref) => {
+          const result = await verifyPaystackPayment(ref, expected);
 
-      console.log(result, "This is paystack result");
-      if (result.success) {
-        await ctx.runMutation(internal.order._setOrderVerified, {
-          orderId: order._id,
-        });
-        await ctx.runMutation(internal.order.completeOrder, { reference });
-        return { success: true } as const;
-      }
+          console.log(result, "This is paystack result");
 
-      const providerStatus = (result as any)?.data?.status;
-      if (
-        providerStatus &&
-        ["failed", "abandoned", "reversed"].includes(providerStatus)
-      ) {
-        await ctx.runMutation(internal.order._markOrderPaymentFailed, {
-          orderId: order._id,
-          providerStatus,
-          message: (result as any)?.data?.message,
-        });
-        return {
-          success: false,
-          statusCode: 400,
-          message: "Payment failed",
-          providerStatus,
-        } as const;
-      }
+          if (order.status === "paid" && result.success && reference === ref) {
+            // refund that reference here
+            return console.log(
+              "Reference with ref number: " +
+                ref +
+                " has succesfully been refunded becuase the order was already paid for "
+            );
+          }
+          if (result.success) {
+            await ctx.runMutation(internal.order._setOrderVerified, {
+              orderId: order._id,
+            });
+            await ctx.runMutation(internal.order.completeOrder, { reference });
+            return { success: true } as const;
+          }
 
-      await ctx.runMutation(internal.order._bumpPaymentVerifyBackoff, {
-        orderId: order._id,
-        errorMessage:
-          (result as any)?.data?.message || providerStatus || "Unverified",
-      });
-      return {
-        success: false,
-        statusCode: 202,
-        message: "Verification deferred",
-      } as const;
+          const providerStatus = (result as any)?.data?.status;
+          if (
+            providerStatus &&
+            ["failed", "abandoned", "reversed"].includes(providerStatus)
+          ) {
+            await ctx.runMutation(internal.order._markOrderPaymentFailed, {
+              orderId: order._id,
+              providerStatus,
+              message: (result as any)?.data?.message,
+            });
+            return {
+              success: false,
+              statusCode: 400,
+              message: "Payment failed",
+              providerStatus,
+            } as const;
+          }
+
+          // all above failed bump the payment verifcation by some time
+          await ctx.runMutation(internal.order._bumpPaymentVerifyBackoff, {
+            orderId: order._id,
+            errorMessage:
+              (result as any)?.data?.message || providerStatus || "Unverified",
+          });
+          return {
+            success: false,
+            statusCode: 202,
+            message: "Verification deferred",
+          } as const;
+        })
+      );
     } catch (e: any) {
       console.log(e.message);
       console.log("encountered an error");
