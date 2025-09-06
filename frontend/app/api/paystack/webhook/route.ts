@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       // lets see if it will run if we dont await it
 
       try {
-        fetchAction(api.order.verifyAndCompleteByReference, {
+        await fetchAction(api.order.verifyAndCompleteByReference, {
           reference,
         });
       } catch (err) {
