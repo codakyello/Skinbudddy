@@ -30,7 +30,8 @@ export const FulfillmentStatus = v.union(
 export const ReferenceStatus = v.union(
   v.literal("paid"),
   v.literal("pending"),
-  v.literal("refunded")
+  v.literal("refunded"),
+  v.literal("to_be_refunded")
 );
 
 export default defineSchema({

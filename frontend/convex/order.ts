@@ -987,7 +987,17 @@ export const verifyAndCompleteByReference = action({
 
     console.log(references, "This are all the references");
 
-    if (order.status !== "pending") {
+    // it will return here
+    // not equal so paid, refund return
+
+    const disallowed = [
+      "draft",
+      "failed",
+      "out_of_stock",
+      "shipped",
+      "refunded",
+    ] as const;
+    if (disallowed.includes(order.status as any)) {
       return {
         success: true,
         message: "Order not pending; nothing to do.",
