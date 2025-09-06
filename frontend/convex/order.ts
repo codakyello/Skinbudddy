@@ -489,6 +489,7 @@ export const completeOrder = internalMutation({
     }
 
     // 6) Full fulfillment path: mark as paid, clear cart
+    await ctx.db.patch(ref._id, { status: "paid" });
     await ctx.db.patch(order._id, {
       status: "paid",
       fulfillmentStatus: "full",
