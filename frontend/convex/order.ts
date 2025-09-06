@@ -13,7 +13,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { api, internal } from "./_generated/api";
-import { Country } from "./schema";
+import { Country, ReferenceStatus } from "./schema";
 import { Id } from "./_generated/dataModel";
 import { Doc } from "./_generated/dataModel";
 import { generateToken } from "./_utils/utils";
@@ -964,6 +964,26 @@ export const _getOrderReferences = internalQuery({
     return refs.map((ref) => ref.reference);
   },
 });
+
+export const _setOrderReferenceStatus = internalMutation({
+  args: {
+    reference: v.string(), // <-- this is the actual reference string
+    status: ReferenceStatus,
+  },
+  handler: async (ctx, { reference, status }) => {
+    const refDoc = await ctx.db
+      .query("orderReferences")
+      .withIndex("by_reference", (q) => q.eq("reference", reference))
+      .first();
+
+    if (!refDoc) {
+      throw new Error("Reference not found");
+    }
+
+    await ctx.db.patch(refDoc._id, { status });
+  },
+});
+
 // Public action that Paystack webhook (or client) can call by reference:
 // verifies with Paystack, stamps verification, then runs the internal completion mutation.
 export const verifyAndCompleteByReference = action({
@@ -1016,6 +1036,11 @@ export const verifyAndCompleteByReference = action({
 
           if (order.status === "paid" && result.success && reference === ref) {
             // refund that reference here
+            // set reference to to_be_refunded
+            await ctx.runMutation(internal.order._setOrderReferenceStatus, {
+              reference: ref,
+              status: "to_be_refunded",
+            });
             return console.log(
               "Reference with ref number: " +
                 ref +
@@ -1023,6 +1048,7 @@ export const verifyAndCompleteByReference = action({
             );
           }
           if (result.success) {
+            console.log("completed order");
             await ctx.runMutation(internal.order._setOrderVerified, {
               orderId: order._id,
             });
