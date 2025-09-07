@@ -31,6 +31,8 @@ export const ReferenceStatus = v.union(
   v.literal("paid"),
   v.literal("pending"),
   v.literal("refunded"),
+  v.literal("partial_refund"),
+  v.literal("failed"),
   v.literal("to_be_refunded")
 );
 
@@ -222,8 +224,10 @@ export default defineSchema({
     orderId: v.id("orders"),
     reference: v.string(),
     status: ReferenceStatus,
+    createdAt: v.number(),
   })
     .index("by_reference", ["reference"])
+    .index("by_status", ["status"])
     .index("by_orderId", ["orderId"]),
 
   reviews: defineTable({

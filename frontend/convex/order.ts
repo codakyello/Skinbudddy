@@ -13,7 +13,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { api, internal } from "./_generated/api";
-import { Country, ReferenceStatus } from "./schema";
+import { Country, OrderStatus, ReferenceStatus } from "./schema";
 import { Id } from "./_generated/dataModel";
 import { Doc } from "./_generated/dataModel";
 import { generateToken } from "./_utils/utils";
@@ -240,6 +240,7 @@ export const createOrderReference = mutation({
       orderId: order._id,
       reference,
       status: "pending",
+      createdAt: Date.now(),
     });
     await ctx.db.patch(orderId, {
       paymentVerifyStatus: "pending",
@@ -466,6 +467,7 @@ export const completeOrder = internalMutation({
 
       // Enqueue an immediate refund attempt (event-driven)
       // Hack: Mutations cannot call actions or external apis
+      //we have to know the reference to process a refund too
       await ctx.scheduler.runAfter(0, internal.order.processRefund, {
         orderId: order._id,
       });
@@ -486,6 +488,8 @@ export const completeOrder = internalMutation({
         shortages,
         refundDue,
       } as const;
+
+      // mark that reference as partial refund
     }
 
     // 6) Full fulfillment path: mark as paid, clear cart
@@ -771,38 +775,91 @@ export const verifyPendingPaymentsSweep = internalAction({
     ctx,
     { limit }
   ): Promise<{ success: boolean; count: number }> => {
-    const ids: Id<"orders">[] = await ctx.runQuery(
-      api.order._listPendingOrdersForVerify,
-      { limit: limit ?? 50 }
-    );
+    const ids = await ctx.runQuery(api.order._listPendingReferencesForVerify, {
+      limit: limit ?? 50,
+    });
+
+    console.log(ids);
+
     for (const id of ids) {
-      await ctx.runAction(internal.order.verifyPaymentForOrder, {
-        orderId: id,
+      await ctx.runAction(internal.order.verifyPaymentForReference, {
+        referenceId: id,
       });
     }
-    return { success: true, count: ids.length } as const;
+    return { success: true, count: ids.length };
   },
 });
 
-export const _listPendingOrdersForVerify = query({
+export const verifyPendingPaymentsSwee = action({
+  args: { limit: v.optional(v.number()) },
+  handler: async (
+    ctx,
+    { limit }
+  ): Promise<{ success: boolean; count: number }> => {
+    const ids = await ctx.runQuery(api.order._listPendingReferencesForVerify, {
+      limit: limit ?? 50,
+    });
+
+    console.log(ids);
+
+    for (const id of ids) {
+      await ctx.runAction(internal.order.verifyPaymentForReference, {
+        referenceId: id,
+      });
+    }
+    return { success: true, count: ids.length };
+  },
+});
+
+export const _listPendingReferencesForVerify = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
-    const now = Date.now();
-    const all = await ctx.db
-      .query("orders")
+    // const now = Date.now();
+    // const all = await ctx.db
+    //   .query("orders")
+    //   .filter((q) => q.eq(q.field("status"), "pending"))
+    //   .collect();
+
+    //lets look for all pending references
+    const eligible = await ctx.db
+      .query("orderReferences")
       .filter((q) => q.eq(q.field("status"), "pending"))
       .collect();
 
-    const eligible = all.filter((o: any) => {
-      if (!o.reference) return false;
-      if (
-        o.paymentVerifyStatus &&
-        !["pending", "failed_temp"].includes(o.paymentVerifyStatus)
-      )
-        return false;
-      if (!o.nextPaymentVerifyAt) return true;
-      return o.nextPaymentVerifyAt <= now;
-    });
+    // orderReference: v.object({
+    //   orderId: v.id("orders"),
+    //   reference: v.string(),
+    //   refStatus: ReferenceStatus,
+    //   orderStatus: OrderStatus,
+    // }),
+
+    // const eligibleRaw = await Promise.all(
+    //   pendingReferences.map(async (ref) => {
+    //     const order = await ctx.db.get(ref.orderId);
+    //     if (!order) return null;
+    //     return {
+    //       orderId: ref.orderId,
+    //       reference: ref.reference,
+    //       refStatus: ref.status,
+    //       orderStatus: order.status,
+    //     };
+    //   })
+    // );
+
+    // const eligible = eligibleRaw.filter(
+    //   (x): x is NonNullable<typeof x> => x !== null
+    // );
+
+    // const eligible = all.filter((o: any) => {
+    //   if (!o.reference) return false;
+    //   if (
+    //     o.paymentVerifyStatus &&
+    //     !["pending", "failed_temp"].includes(o.paymentVerifyStatus)
+    //   )
+    //     return false;
+    //   if (!o.nextPaymentVerifyAt) return true;
+    //   return o.nextPaymentVerifyAt <= now;
+    // });
 
     return (limit ? eligible.slice(0, limit) : eligible).map((o) => o._id);
   },
@@ -868,44 +925,87 @@ export const _bumpPaymentVerifyBackoff = internalMutation({
   },
 });
 
-export const verifyPaymentForOrder = internalAction({
-  args: { orderId: v.id("orders") },
-  handler: async (ctx, { orderId }) => {
-    const order = await ctx.runQuery(internal.order._getOrderById, { orderId });
-    if (!order) return;
-    const references = await ctx.runQuery(internal.order._getOrderReferences, {
-      orderId: order._id,
+// const ref = await ctx.db
+//   .query("orderReferences")
+//   .withIndex("by_reference", (q) => q.eq("reference", reference))
+//   .first();
+
+export const _getOrderReferenceById = internalQuery({
+  args: { referenceId: v.id("orderReferences") },
+  handler: async (ctx, { referenceId }) => {
+    return await ctx.db.get(referenceId);
+  },
+});
+
+export const verifyPaymentForReference = internalAction({
+  args: {
+    referenceId: v.id("orderReferences"),
+  },
+  handler: async (ctx, { referenceId }) => {
+    // const orderReference = await ctx.runQuery(
+    //   internal.order._getOrderReference,
+    //   {
+    //     reference,
+    //   }
+    // );
+
+    const orderReference = await ctx.runQuery(
+      internal.order._getOrderReferenceById,
+      {
+        referenceId,
+      }
+    );
+
+    if (!orderReference) return;
+
+    const reference = orderReference.reference;
+
+    const order = await ctx.runQuery(internal.order._getOrderById, {
+      orderId: orderReference.orderId,
     });
 
-    const reference = references.at(0);
-    if (order.status !== "pending" || !reference) return;
+    if (!order) return;
+
+    // if (!orderReference) return;
 
     // Auto-fail very old pending orders (24h window)
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-    if (Date.now() - order.createdAt > TWENTY_FOUR_HOURS) {
+    if (Date.now() - orderReference.createdAt > TWENTY_FOUR_HOURS) {
       await ctx.runMutation(internal.order._markOrderPaymentFailed, {
-        orderId,
+        orderId: order._id,
         providerStatus: "expired",
         message: "Pending > 24h without successful verification",
       });
+
+      await ctx.runMutation(internal.order._setOrderReferenceStatus, {
+        status: "failed",
+        reference,
+      });
+
       return;
     }
-
+    const paid = order.status === "paid";
     const expected = order.totalAmount * 100;
     try {
       const result = await verifyPaystackPayment(reference, expected);
       if (result.success) {
         // Mark verification success (defense-in-depth) then run completion (idempotent)
-        await ctx.runMutation(internal.order._setOrderVerified, {
-          orderId,
-        });
-        // await ctx.runMutation(internal.order.completeOrder, {
-        //   reference: order.reference,
-        // });
-        await ctx.runMutation(internal.order.completeOrder, {
-          reference,
-        });
-        return;
+        if (!paid) {
+          await ctx.runMutation(internal.order._setOrderVerified, {
+            orderId: order._id,
+          });
+
+          await ctx.runMutation(internal.order.completeOrder, {
+            reference: orderReference.reference,
+          });
+          return;
+        } else {
+          // if paid lets refund that reference
+          await ctx.runMutation(internal.order._setOrderReferenceStatus, {
+            status: "to_be_refunded",
+            reference,
+          });
+        }
       }
 
       // Not verified. If provider returns an explicit terminal state, mark failed.
@@ -915,7 +1015,7 @@ export const verifyPaymentForOrder = internalAction({
         ["failed", "abandoned", "reversed"].includes(providerStatus)
       ) {
         await ctx.runMutation(internal.order._markOrderPaymentFailed, {
-          orderId,
+          orderId: orderReference.orderId,
           providerStatus,
           message: (result as any)?.data?.message,
         });
@@ -924,13 +1024,13 @@ export const verifyPaymentForOrder = internalAction({
 
       // Else, schedule another verify attempt with backoff
       await ctx.runMutation(internal.order._bumpPaymentVerifyBackoff, {
-        orderId,
+        orderId: orderReference.orderId,
         errorMessage:
           (result as any)?.data?.message || providerStatus || "Unverified",
       });
     } catch (e: any) {
       await ctx.runMutation(internal.order._bumpPaymentVerifyBackoff, {
-        orderId,
+        orderId: orderReference.orderId,
         errorMessage: e?.message ?? "Verify error",
       });
     }
@@ -977,10 +1077,15 @@ export const _setOrderReferenceStatus = internalMutation({
       .first();
 
     if (!refDoc) {
+      console.log("reference not found");
       throw new Error("Reference not found");
     }
 
-    await ctx.db.patch(refDoc._id, { status });
+    // probably a fragile fix, think about a better solution later
+    if (refDoc.status === "pending") {
+      await ctx.db.patch(refDoc._id, { status });
+    }
+    // No explicit return here, let the async function complete.
   },
 });
 
@@ -1005,8 +1110,6 @@ export const verifyAndCompleteByReference = action({
       orderId: order._id,
     });
 
-    console.log(references, "This are all the references");
-
     // it will return here
     // not equal so paid, refund return
 
@@ -1028,65 +1131,75 @@ export const verifyAndCompleteByReference = action({
     const expected = order.totalAmount * 100;
 
     try {
-      await Promise.all(
-        references.map(async (ref) => {
-          const result = await verifyPaystackPayment(ref, expected);
+      let paid = order.status === "paid"; // snapshot; we'll also set this once we complete
+      let anyDeferred = false;
 
-          console.log(result, "This is paystack result");
+      for (const ref of references) {
+        // we are looping to look for one successful reference in the many references
 
-          if (order.status === "paid" && result.success && reference === ref) {
-            // refund that reference here
-            // set reference to to_be_refunded
-            await ctx.runMutation(internal.order._setOrderReferenceStatus, {
-              reference: ref,
-              status: "to_be_refunded",
-            });
-            return console.log(
-              "Reference with ref number: " +
-                ref +
-                " has succesfully been refunded becuase the order was already paid for "
-            );
-          }
-          if (result.success) {
-            console.log("completed order");
-            await ctx.runMutation(internal.order._setOrderVerified, {
-              orderId: order._id,
-            });
-            await ctx.runMutation(internal.order.completeOrder, { reference });
-            return { success: true } as const;
-          }
+        const result = await verifyPaystackPayment(ref, expected);
 
-          const providerStatus = (result as any)?.data?.status;
-          if (
-            providerStatus &&
-            ["failed", "abandoned", "reversed"].includes(providerStatus)
-          ) {
-            await ctx.runMutation(internal.order._markOrderPaymentFailed, {
-              orderId: order._id,
-              providerStatus,
-              message: (result as any)?.data?.message,
-            });
-            return {
-              success: false,
-              statusCode: 400,
-              message: "Payment failed",
-              providerStatus,
-            } as const;
-          }
+        if (paid && result.success && reference !== ref) {
+          console.log("already paid, refund the reference");
+          // successful but already paid for, refund order
 
-          // all above failed bump the payment verifcation by some time
-          await ctx.runMutation(internal.order._bumpPaymentVerifyBackoff, {
-            orderId: order._id,
-            errorMessage:
-              (result as any)?.data?.message || providerStatus || "Unverified",
+          await ctx.runMutation(internal.order._setOrderReferenceStatus, {
+            reference,
+            status: "to_be_refunded",
           });
-          return {
-            success: false,
-            statusCode: 202,
-            message: "Verification deferred",
-          } as const;
-        })
-      );
+          return;
+        }
+
+        console.log(result);
+        if (!result.success) console.log("payment not received");
+
+        // successful but not paid for, complete order and return
+        if (result.success && !paid) {
+          console.log("order complete");
+          // Mark verified then complete using the CURRENT ref that succeeded
+          await ctx.runMutation(internal.order._setOrderVerified, {
+            orderId: order._id,
+          });
+          await ctx.runMutation(internal.order.completeOrder, {
+            reference: ref,
+          });
+
+          // Mark the  reference as consumed (optional but useful)
+          await ctx.runMutation(internal.order._setOrderReferenceStatus, {
+            reference,
+            status: "paid",
+          });
+
+          return;
+        }
+
+        // only when not successful do we keep looping to look for the successful one
+        // Else, remember we deferred and continue checking other refs
+        await ctx.runMutation(internal.order._bumpPaymentVerifyBackoff, {
+          orderId: order._id,
+          errorMessage: (result as any)?.data?.message || "Unverified",
+        });
+        anyDeferred = true;
+      }
+
+      if (paid) {
+        return { success: true } as const;
+      }
+
+      if (anyDeferred) {
+        return {
+          success: false,
+          statusCode: 202,
+          message: "Verification deferred",
+        } as const;
+      }
+
+      // If we got here with no success and no explicit provider failure, treat as generic defer
+      return {
+        success: false,
+        statusCode: 202,
+        message: "Verification deferred",
+      } as const;
     } catch (e: any) {
       console.log(e.message);
       console.log("encountered an error");
