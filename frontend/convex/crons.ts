@@ -17,7 +17,7 @@ crons.interval(
 crons.interval(
   "verifyPendingPayments",
   {
-    minutes: 10,
+    minutes: 5,
   },
   internal.order.verifyPendingPaymentsSweep,
   {}

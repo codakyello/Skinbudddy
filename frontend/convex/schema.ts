@@ -36,6 +36,12 @@ export const ReferenceStatus = v.union(
   v.literal("to_be_refunded")
 );
 
+export const RefundItemStatus = v.union(
+  v.literal("pending"),
+  v.literal("processed"),
+  v.literal("failed")
+);
+
 export default defineSchema({
   users: defineTable({
     userId: v.string(),
@@ -180,7 +186,27 @@ export default defineSchema({
         })
       )
     ),
-    refundDue: v.optional(v.number()),
+    refundDue: v.optional(
+      v.array(
+        v.object({
+          reference: v.string(),
+          amount: v.number(),
+          reason: v.string(),
+          status: RefundItemStatus,
+          attempts: v.optional(v.number()),
+          nextRefundAt: v.optional(v.number()),
+          providerRefundId: v.optional(v.string()),
+          processedAt: v.optional(v.number()),
+          lastRefundError: v.optional(v.string()),
+          lastRefundHttpStatus: v.optional(v.number()),
+          lastRefundErrorCode: v.optional(v.string()),
+          lastRefundPayload: v.optional(v.any()),
+          lastRefundAttemptAt: v.optional(v.number()),
+        })
+      )
+    ),
+
+    // DEPRECATED: order-level refund fields kept for backwards-compatibility; use per-item fields inside refundDue[].
     refundProcessed: v.optional(v.boolean()), // default false
     refundProcessedAt: v.optional(v.number()),
 

@@ -256,6 +256,7 @@ export const completeOrder = internalMutation({
     reference: v.string(),
   },
   handler: async (ctx, { reference }) => {
+    console.log("entered complete order");
     const ref = await ctx.db
       .query("orderReferences")
       .withIndex("by_reference", (q) => q.eq("reference", reference))
@@ -276,39 +277,6 @@ export const completeOrder = internalMutation({
         success: false,
         statusCode: 404,
         message: "Order not found for this reference.",
-      } as const;
-    }
-
-    // 2) Idempotency and status gates
-    if (order.status === "paid") {
-      return {
-        success: true,
-        message: "Order already completed (paid).",
-      } as const;
-    }
-    if (order.status === "out_of_stock") {
-      return {
-        success: true,
-        message: "Order previously marked out of stock.",
-        shortages: (order as any).shortages ?? [],
-        refundDue: (order as any).refundDue ?? 0,
-      } as const;
-    }
-    if ((order as any).fulfillmentStatus === "partial") {
-      return {
-        success: true,
-        message: "Order already partially fulfilled.",
-        shortages: (order as any).shortages ?? [],
-        refundDue: (order as any).refundDue ?? 0,
-      } as const;
-    }
-
-    // Only allow completion from "pending" status (not "draft" anymore)
-    if (order.status !== "pending") {
-      return {
-        success: false,
-        statusCode: 409,
-        message: `Cannot complete order from status '${order.status}'.`,
       } as const;
     }
 
@@ -441,8 +409,19 @@ export const completeOrder = internalMutation({
     }
 
     // 5) Compute refund and decide final status
-    const refundDue = shortages.reduce((sum, s) => sum + s.refund, 0);
+    const refundAmount = shortages.reduce((sum, s) => sum + s.refund, 0);
     const anyFulfilled = fulfillPlan.some((p) => p.fulfillQty > 0);
+
+    const reason =
+      order.status === "paid"
+        ? "Order already paid for"
+        : anyFulfilled
+          ? "Some of the products are out of stock. Partial refund of " +
+            "₦" +
+            refundAmount
+          : "All products out of stock. Full refund of " + "₦" + refundAmount;
+
+    // for refundDue we will save a list of references and their correspondnig refund amount
 
     if (shortages.length > 0) {
       // Partial or zero fulfillment
@@ -451,7 +430,23 @@ export const completeOrder = internalMutation({
         status: anyFulfilled ? "paid" : "out_of_stock",
         fulfillmentStatus,
         shortages: shortages,
-        refundDue,
+        refundDue: [
+          ...(order.refundDue ?? []),
+          {
+            reference,
+            amount: refundAmount,
+            reason,
+            status: "pending",
+            attempts: 0,
+            nextRefundAt: Date.now(),
+            providerRefundId: undefined,
+            processedAt: undefined,
+            lastRefundError: undefined,
+            lastRefundHttpStatus: undefined,
+            lastRefundErrorCode: undefined,
+            lastRefundPayload: undefined,
+          },
+        ],
         // initialize refund workflow
         refundStatus: "pending",
         refundAttempts: 0,
@@ -468,9 +463,56 @@ export const completeOrder = internalMutation({
       // Enqueue an immediate refund attempt (event-driven)
       // Hack: Mutations cannot call actions or external apis
       //we have to know the reference to process a refund too
+
+      // lets update the orderReference
+      if (anyFulfilled) {
+        console.log("partial refunded");
+        // save as partial refunded
+        await ctx.db.patch(ref._id, { status: "partial_refund" });
+      } else {
+        // save as refunded
+        console.log("fully refunded");
+
+        await ctx.db.patch(ref._id, { status: "to_be_refunded" });
+      }
+
+      // run the refund function, for the reference
       await ctx.scheduler.runAfter(0, internal.order.processRefund, {
         orderId: order._id,
       });
+
+      // // 2) Idempotency and status gates
+      if (order.status === "paid") {
+        return {
+          success: true,
+          message: "Order already completed (paid).",
+        } as const;
+      }
+      if (order.status === "out_of_stock") {
+        return {
+          success: true,
+          message: "Order previously marked out of stock.",
+          shortages: (order as any).shortages ?? [],
+          refundDue: (order as any).refundDue ?? 0,
+        } as const;
+      }
+      if ((order as any).fulfillmentStatus === "partial") {
+        return {
+          success: true,
+          message: "Order already partially fulfilled.",
+          shortages: (order as any).shortages ?? [],
+          refundDue: (order as any).refundDue ?? 0,
+        } as const;
+      }
+
+      // Only allow completion from "pending" status (not "draft" anymore)
+      if (order.status !== "pending") {
+        return {
+          success: false,
+          statusCode: 409,
+          message: `Cannot complete order from status '${order.status}'.`,
+        } as const;
+      }
 
       // Clear the user's cart regardless to avoid duplicate retries with old quantities
       const userCartItems = await ctx.db
@@ -486,7 +528,7 @@ export const completeOrder = internalMutation({
           : "Insufficient stock. Order marked out of stock.",
         fulfillmentStatus,
         shortages,
-        refundDue,
+        refundAmount,
       } as const;
 
       // mark that reference as partial refund
@@ -504,7 +546,7 @@ export const completeOrder = internalMutation({
         price: (it as any).price ?? 0,
       })),
       fulfilledAmount: order.totalAmount,
-      refundDue: 0,
+      // refundDue: 0,
     } as any);
 
     const userCartItems = await ctx.db
@@ -615,6 +657,40 @@ export const getOrderByToken = query({
         message: "This link is no longer available.",
       } as const;
 
+    // Ensure at least one item is still in stock; otherwise treat link as unavailable
+    try {
+      const products = await Promise.all(
+        order.items.map((it) => ctx.db.get(it.productId))
+      );
+      let anyInStock = false;
+      for (let i = 0; i < order.items.length; i++) {
+        const it = order.items[i] as any;
+        const prod = products[i] as any;
+        if (!prod || !prod.sizes) continue;
+        const idx = prod.sizes.findIndex((s: any) => s.id === it.sizeId);
+        if (idx === -1 || idx === undefined) continue;
+        const stock = prod.sizes[idx]?.stock ?? 0;
+        if (stock > 0) {
+          anyInStock = true;
+          break;
+        }
+      }
+      if (!anyInStock) {
+        return {
+          success: false,
+          statusCode: 404,
+          message: "This link is invalid or no longer available.",
+        } as const;
+      }
+    } catch {
+      // If stock check fails unexpectedly, be conservative and hide link
+      return {
+        success: false,
+        statusCode: 404,
+        message: "This link is invalid or no longer available.",
+      } as const;
+    }
+
     return { success: true, order } as const;
   },
 });
@@ -623,6 +699,7 @@ export const getOrderByToken = query({
 export const updateRefundState = internalMutation({
   args: {
     orderId: v.id("orders"),
+    reference: v.string(),
     success: v.boolean(),
     providerRefundId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
@@ -634,6 +711,7 @@ export const updateRefundState = internalMutation({
     ctx,
     {
       orderId,
+      reference,
       success,
       providerRefundId,
       errorMessage,
@@ -650,58 +728,133 @@ export const updateRefundState = internalMutation({
         message: "Order not found",
       } as const;
 
+    const items = Array.isArray((order as any).refundDue)
+      ? (order as any).refundDue
+      : [];
+    const idx = items.findIndex((r: any) => r?.reference === reference);
+    if (idx === -1)
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Refund item not found",
+      } as const;
+
+    const current = items[idx] || {};
+
     if (success) {
-      // Mark refund as processed; set status heuristically
-      const newStatus =
-        (order as any).fulfillmentStatus === "partial" ? "paid" : "refunded";
-      await ctx.db.patch(orderId, {
-        refundProcessed: true,
-        refundStatus: "processed",
-        refundProcessedAt: Date.now(),
-        status: newStatus,
-        refundProviderId: providerRefundId,
+      items[idx] = {
+        ...current,
+        status: "processed",
+        providerRefundId,
+        processedAt: Date.now(),
         nextRefundAt: undefined,
         lastRefundError: undefined,
         lastRefundHttpStatus: undefined,
         lastRefundErrorCode: undefined,
         lastRefundPayload: undefined,
-      } as any);
-      return { success: true } as const;
+      };
+    } else {
+      const attempts = Math.max(0, Number(current?.attempts ?? 0)) + 1;
+      const steps = [
+        60_000,
+        5 * 60_000,
+        15 * 60_000,
+        60 * 60_000,
+        6 * 60 * 60_000,
+        24 * 60 * 60_000,
+      ];
+      const base = steps[Math.min(attempts - 1, steps.length - 1)];
+      const jitter = Math.floor(base * (0.1 + Math.random() * 0.2));
+      const nextRefundAt = Date.now() + base + jitter;
+      items[idx] = {
+        ...current,
+        status: "failed",
+        attempts,
+        lastRefundAttemptAt: Date.now(),
+        lastRefundError: errorMessage,
+        lastRefundHttpStatus,
+        lastRefundErrorCode,
+        lastRefundPayload,
+        nextRefundAt,
+      };
     }
 
-    // Failure path: bump attempts and store last error for retries, with exponential backoff and jitter
-    const attempts = ((order as any).refundAttempts ?? 0) + 1;
+    await ctx.db.patch(orderId, { refundDue: items } as any);
+    return { success: true } as const;
+  },
+});
 
-    // exponential backoff schedule in ms
-    const steps = [
-      60_000,
-      5 * 60_000,
-      15 * 60_000,
-      60 * 60_000,
-      6 * 60 * 60_000,
-      24 * 60 * 60_000,
-    ];
-    const base = steps[Math.min(attempts - 1, steps.length - 1)];
-    const jitter = Math.floor(base * (0.1 + Math.random() * 0.2)); // +10%..+30%
-    const nextRefundAt = Date.now() + base + jitter;
+// Enqueue a refund item for a given reference on an order (idempotent-ish)
+export const _enqueueRefundItem = internalMutation({
+  args: {
+    orderId: v.id("orders"),
+    reference: v.string(),
+    amount: v.number(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, { orderId, reference, amount, reason }) => {
+    const order = (await ctx.db.get(orderId)) as Doc<"orders"> | null;
+    if (!order)
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Order not found",
+      } as const;
 
-    // Patch with optional error details if provided
+    const items: Array<any> = Array.isArray((order as any).refundDue)
+      ? (order as any).refundDue
+      : [];
+
+    const idx = items.findIndex((r: any) => r?.reference === reference);
+    if (idx !== -1) {
+      const current = items[idx] || {};
+      if (current?.status === "processed") {
+        return { success: true } as const; // already processed; no-op
+      }
+      items[idx] = {
+        ...current,
+        reference,
+        amount,
+        reason: reason ?? current?.reason ?? "duplicate_payment",
+        status: current?.status ?? "pending",
+        attempts: current?.attempts ?? 0,
+        nextRefundAt: Date.now(),
+        providerRefundId: current?.providerRefundId,
+        processedAt: current?.processedAt,
+        lastRefundError: undefined,
+        lastRefundHttpStatus: undefined,
+        lastRefundErrorCode: undefined,
+        lastRefundPayload: undefined,
+      };
+    } else {
+      items.push({
+        reference,
+        amount,
+        reason: reason ?? "duplicate_payment",
+        status: "pending",
+        attempts: 0,
+        nextRefundAt: Date.now(),
+        providerRefundId: undefined,
+        processedAt: undefined,
+        lastRefundError: undefined,
+        lastRefundHttpStatus: undefined,
+        lastRefundErrorCode: undefined,
+        lastRefundPayload: undefined,
+      });
+    }
+
     await ctx.db.patch(orderId, {
-      refundStatus: "failed",
-      refundAttempts: attempts,
-      lastRefundAttemptAt: Date.now(),
-      lastRefundError: errorMessage,
-      nextRefundAt,
-      ...(typeof lastRefundHttpStatus !== "undefined"
-        ? { lastRefundHttpStatus }
-        : {}),
-      ...(typeof lastRefundErrorCode !== "undefined"
-        ? { lastRefundErrorCode }
-        : {}),
-      ...(typeof lastRefundPayload !== "undefined"
-        ? { lastRefundPayload }
-        : {}),
+      refundDue: items,
+      refundStatus: "pending",
+      refundAttempts: (order as any).refundAttempts ?? 0,
+      refundReason:
+        reason ?? (order as any).refundReason ?? "duplicate_payment",
+      lastRefundAttemptAt: undefined,
+      lastRefundError: undefined,
+      refundProviderId: undefined,
+      nextRefundAt: Date.now(),
     } as any);
+
     return { success: true } as const;
   },
 });
@@ -712,44 +865,45 @@ export const processRefund = internalAction({
     orderId: v.id("orders"),
   },
   handler: async (ctx, { orderId }) => {
-    // NOTE: If TypeScript can't see internal.order.*, run 'npx convex dev' to regenerate types.
-    // Fetch fresh order state (actions can't use ctx.db directly for writes; we'll use mutations)
     const order: Doc<"orders"> | null = await ctx.runQuery(
       internal.order._getOrderById,
       { orderId }
     );
     if (!order) return;
-    if (!order.refundDue || order.refundProcessed) return; // nothing to do
-    if (
-      order.refundStatus &&
-      !["pending", "failed"].includes(order.refundStatus as any)
-    )
-      return; // only work pending/failed
-    if (order.nextRefundAt && order.nextRefundAt > Date.now()) return; // respect backoff schedule
 
-    const references = await ctx.runQuery(internal.order._getOrderReferences, {
-      orderId: order._id,
-    });
+    const items: Array<any> = Array.isArray((order as any).refundDue)
+      ? (order as any).refundDue
+      : [];
+    if (items.length === 0) return;
 
-    // --- Prepare for refund attempt; ensure idempotency at provider using payment reference ---
-    // const idempotencyKey = `refund-${order.reference}`;
+    const now = Date.now();
+    const eligible = items.find(
+      (it) =>
+        (it?.amount ?? 0) > 0 &&
+        ["pending", "failed"].includes(it?.status ?? "pending") &&
+        (typeof it?.nextRefundAt === "undefined" || it?.nextRefundAt <= now)
+    );
+    if (!eligible) return;
 
-    const idempotencyKey = `refund-${references.at}`;
+    const reference = eligible.reference;
+    if (!reference) return;
+
+    const idempotencyKey = `refund-${reference}`;
 
     try {
-      // Example placeholder logic (simulate provider success):
+      // TODO: call PSP refund API here using `reference` and `eligible.amount`
       const providerRefundId = idempotencyKey;
-      // Call back into a mutation to update DB
       await ctx.runMutation(internal.order.updateRefundState, {
         orderId,
+        reference,
         success: true,
         providerRefundId,
       });
     } catch (e: any) {
-      // Pass through structured error info if available
       const errObj = typeof e === "object" && e !== null ? e : {};
       await ctx.runMutation(internal.order.updateRefundState, {
         orderId,
+        reference,
         success: false,
         errorMessage: e?.message ?? "Refund error",
         lastRefundHttpStatus:
@@ -762,11 +916,6 @@ export const processRefund = internalAction({
     }
   },
 });
-
-// we are marking it as failed in the verifyPendingPayment cron job that is for orders that payment is set to pending
-// verify payment mark it as paid else mark it has failed
-// we mark it as failed here
-// in processRefund
 
 // cron job calls this
 export const verifyPendingPaymentsSweep = internalAction({
@@ -970,7 +1119,7 @@ export const verifyPaymentForReference = internalAction({
 
     // Auto-fail very old pending orders (24h window)
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-    if (Date.now() - orderReference.createdAt > TWENTY_FOUR_HOURS) {
+    if (Date.now() - orderReference.createdAt! > TWENTY_FOUR_HOURS) {
       await ctx.runMutation(internal.order._markOrderPaymentFailed, {
         orderId: order._id,
         providerStatus: "expired",
@@ -1113,13 +1262,7 @@ export const verifyAndCompleteByReference = action({
     // it will return here
     // not equal so paid, refund return
 
-    const disallowed = [
-      "draft",
-      "failed",
-      "out_of_stock",
-      "shipped",
-      "refunded",
-    ] as const;
+    const disallowed = ["draft", "failed", "shipped", "refunded"] as const;
     if (disallowed.includes(order.status as any)) {
       return {
         success: true,
@@ -1132,25 +1275,42 @@ export const verifyAndCompleteByReference = action({
 
     try {
       let paid = order.status === "paid"; // snapshot; we'll also set this once we complete
+      let outOfStock = order.status === "out_of_stock"; // a payment went through but product is out_of_stock
+      let refunded = order.status === "refunded"; //test: a payment went through but product is out_of_stock
       let anyDeferred = false;
 
       for (const ref of references) {
-        // we are looping to look for one successful reference in the many references
+        // we are looping to look for one successful other reference in the many references
 
         const result = await verifyPaystackPayment(ref, expected);
 
-        if (paid && result.success && reference !== ref) {
-          console.log("already paid, refund the reference");
+        if ((paid || outOfStock) && result.success && reference !== ref) {
+          console.log(
+            "already fulfilled, paid or outofstock, refund the reference"
+          );
           // successful but already paid for, refund order
 
           await ctx.runMutation(internal.order._setOrderReferenceStatus, {
             reference,
             status: "to_be_refunded",
           });
+
+          // Enqueue refund item via internal mutation (actions cannot patch DB)
+          await ctx.runMutation(internal.order._enqueueRefundItem, {
+            orderId: order._id,
+            reference,
+            amount: order.totalAmount,
+            reason: "duplicate_payment",
+          });
+
+          // Trigger immediate refund processing
+          await ctx.runAction(internal.order.processRefund, {
+            orderId: order._id,
+          });
+
           return;
         }
 
-        console.log(result);
         if (!result.success) console.log("payment not received");
 
         // successful but not paid for, complete order and return
@@ -1250,16 +1410,20 @@ export const _listRefundEligibleOrders = internalQuery({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }): Promise<Id<"orders">[]> => {
     const now = Date.now();
-    const all = await ctx.db
+
+    // First, do coarse filtering server-side on fields Convex can index/filter directly
+    const coarse = await ctx.db
       .query("orders")
       .filter((q) =>
         q.and(
+          // refundDue must exist (we'll inspect contents below)
           q.neq(q.field("refundDue"), undefined),
-          q.gt(q.field("refundDue"), 0),
+          // Only process when status is pending or previously failed
           q.or(
             q.eq(q.field("refundStatus"), "pending"),
             q.eq(q.field("refundStatus"), "failed")
           ),
+          // Respect backoff: run if nextRefundAt is unset or due
           q.or(
             q.eq(q.field("nextRefundAt"), undefined),
             q.lte(q.field("nextRefundAt"), now)
@@ -1268,6 +1432,20 @@ export const _listRefundEligibleOrders = internalQuery({
       )
       .collect();
 
-    return (limit ? all.slice(0, limit) : all).map((o) => o._id);
+    // Refine in application code: at least one entry with (amount > 0) AND (status is 'pending' or 'failed') AND (nextRefundAt unset or due)
+    const eligible = coarse.filter((o: any) => {
+      const arr = Array.isArray(o.refundDue) ? o.refundDue : [];
+      const nowLocal = Date.now();
+      return arr.some(
+        (r: any) =>
+          (r?.amount ?? 0) > 0 &&
+          ["pending", "failed"].includes(r?.status ?? "pending") &&
+          (typeof r?.nextRefundAt === "undefined" ||
+            r?.nextRefundAt <= nowLocal)
+      );
+    });
+
+    const sliced = limit ? eligible.slice(0, limit) : eligible;
+    return sliced.map((o: any) => o._id as Id<"orders">);
   },
 });
