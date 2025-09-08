@@ -1,10 +1,10 @@
-import { fetchAction } from "convex/nextjs";
-import { api } from "@/convex/_generated/api";
+// import { fetchAction } from "convex/nextjs";
+// import { api } from "@/convex/_generated/api";
 import { NextResponse } from "next/server";
 
 export async function POST() {
   try {
-    await fetchAction(api.order.verifyPendingPaymentsSwee, {});
+    // await fetchAction(api.order.verifyPendingPaymentsSweepTest, {});
 
     return NextResponse.json({
       success: true,

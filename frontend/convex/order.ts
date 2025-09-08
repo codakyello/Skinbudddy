@@ -939,26 +939,26 @@ export const verifyPendingPaymentsSweep = internalAction({
   },
 });
 
-export const verifyPendingPaymentsSwee = action({
-  args: { limit: v.optional(v.number()) },
-  handler: async (
-    ctx,
-    { limit }
-  ): Promise<{ success: boolean; count: number }> => {
-    const ids = await ctx.runQuery(api.order._listPendingReferencesForVerify, {
-      limit: limit ?? 50,
-    });
+// export const verifyPendingPaymentsSweepTest = action({
+//   args: { limit: v.optional(v.number()) },
+//   handler: async (
+//     ctx,
+//     { limit }
+//   ): Promise<{ success: boolean; count: number }> => {
+//     const ids = await ctx.runQuery(api.order._listPendingReferencesForVerify, {
+//       limit: limit ?? 50,
+//     });
 
-    console.log(ids);
+//     console.log(ids);
 
-    for (const id of ids) {
-      await ctx.runAction(internal.order.verifyPaymentForReference, {
-        referenceId: id,
-      });
-    }
-    return { success: true, count: ids.length };
-  },
-});
+//     for (const id of ids) {
+//       await ctx.runAction(internal.order.verifyPaymentForReference, {
+//         referenceId: id,
+//       });
+//     }
+//     return { success: true, count: ids.length };
+//   },
+// });
 
 export const _listPendingReferencesForVerify = query({
   args: { limit: v.optional(v.number()) },
