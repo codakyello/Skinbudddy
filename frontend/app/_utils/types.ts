@@ -44,7 +44,7 @@ export type Product = {
   isTrending?: boolean;
   discount?: number;
   size?: number;
-  sizes?: Size[];
+  sizes: Size[];
   slug?: string;
   unit?: string;
 };

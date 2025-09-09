@@ -1,0 +1,2243 @@
+[
+  {
+    "name": "Olay Regenerist Micro-Sculpting Cream",
+    "slug": "olay-regenerist-micro-sculpting-cream",
+    "description": "Olay Regenerist Micro-Sculpting Cream is a popular skincare product from Olay.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9791sb9naprkfy2jp87jpsanh7q7e06"],
+    "images": [
+      "https://picsum.photos/seed/apgtxj/300/300",
+      "https://picsum.photos/seed/zwlnjp/300/300",
+      "https://picsum.photos/seed/fqlrts/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/ezfaex/600/400",
+    "createdAt": 1757277401,
+    "isNew": true,
+    "isBestseller": false,
+    "isTrending": false,
+    "discount": 11,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": false,
+    "skinType": ["combination", "mature", "sensitive"],
+    "concerns": ["redness", "dryness", "sun-damage"],
+    "ingredients": [
+      "Lactic Acid",
+      "Vitamin C",
+      "Panthenol",
+      "Glycerin",
+      "Salicylic Acid"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_0",
+        "size": 86,
+        "price": 53382.0,
+        "discount": 6406,
+        "stock": 59,
+        "unit": "ml",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_0",
+        "size": 106,
+        "price": 76725.0,
+        "discount": 9207,
+        "stock": 17,
+        "unit": "g",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "Aveeno Daily Moisturizing Lotion",
+    "slug": "aveeno-daily-moisturizing-lotion",
+    "description": "Aveeno Daily Moisturizing Lotion is a popular skincare product from Aveeno.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9791sb9naprkfy2jp87jpsanh7q7e06"],
+    "images": [
+      "https://picsum.photos/seed/ktzpap/300/300",
+      "https://picsum.photos/seed/xztkkg/300/300",
+      "https://picsum.photos/seed/jruoxb/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/btzamw/600/400",
+    "createdAt": 1757310468,
+    "isNew": false,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 30,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["mature", "oily", "combination"],
+    "concerns": ["acne"],
+    "ingredients": ["Vitamin C", "Ceramide NP", "Salicylic Acid"],
+    "sizes": [
+      {
+        "id": "size_0_1",
+        "size": 35,
+        "price": 83018.0,
+        "discount": 9962,
+        "stock": 44,
+        "unit": "g",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_1",
+        "size": 190,
+        "price": 87373.5,
+        "discount": 7864,
+        "stock": 57,
+        "unit": "kg",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "Murad Essential-C Day Moisture SPF 30",
+    "slug": "murad-essential-c-day-moisture-spf-30",
+    "description": "Murad Essential-C Day Moisture SPF 30 is a popular skincare product from Murad.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": [
+      "k9791sb9naprkfy2jp87jpsanh7q7e06",
+      "k976e86szq33vgg0yqxpbh2dgx7q7e8n"
+    ],
+    "images": [
+      "https://picsum.photos/seed/djvqdr/300/300",
+      "https://picsum.photos/seed/xmzncv/300/300",
+      "https://picsum.photos/seed/rbwytu/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/hbwlyy/600/400",
+    "createdAt": 1757285189,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": true,
+    "discount": 21,
+    "routineId": null,
+    "stockAlertEmails": [
+      "user0@example.com",
+      "user1@example.com",
+      "user2@example.com"
+    ],
+    "canBeInRoutine": false,
+    "skinType": ["combination"],
+    "concerns": ["sun-damage"],
+    "ingredients": ["Niacinamide", "Water"],
+    "sizes": [
+      {
+        "id": "size_0_2",
+        "size": 98,
+        "price": 74167.5,
+        "discount": 2225,
+        "stock": 96,
+        "unit": "oz",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_2",
+        "size": 100,
+        "price": 57939.0,
+        "discount": 8691,
+        "stock": 52,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "Youth to the People Superfood Antioxidant Cleanser",
+    "slug": "youth-to-the-people-superfood-antioxidant-cleanser",
+    "description": "Youth to the People Superfood Antioxidant Cleanser is a popular skincare product from Youth to the People.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k974xrrf6djwjkr600mk3hx9th7q6fmw"],
+    "images": [
+      "https://picsum.photos/seed/jbhhzw/300/300",
+      "https://picsum.photos/seed/ugblnr/300/300",
+      "https://picsum.photos/seed/zudlda/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/ieukym/600/400",
+    "createdAt": 1757259889,
+    "isNew": false,
+    "isBestseller": true,
+    "isTrending": true,
+    "discount": 20,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com"],
+    "canBeInRoutine": true,
+    "skinType": ["combination", "oily"],
+    "concerns": ["uneven-tone", "wrinkles", "sensitivity"],
+    "ingredients": [
+      "Niacinamide",
+      "Retinol",
+      "Salicylic Acid",
+      "Vitamin C",
+      "Water"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_3",
+        "size": 118,
+        "price": 116730.5,
+        "discount": 14008,
+        "stock": 12,
+        "unit": "ml",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_3",
+        "size": 179,
+        "price": 58326.5,
+        "discount": 583,
+        "stock": 60,
+        "unit": "g",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "Drunk Elephant C-Firma Fresh Day Serum",
+    "slug": "drunk-elephant-c-firma-fresh-day-serum",
+    "description": "Drunk Elephant C-Firma Fresh Day Serum is a popular skincare product from Drunk Elephant.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k97ahxa420sw2wr762dbznkmkh7q6y74"],
+    "images": [
+      "https://picsum.photos/seed/xnznwu/300/300",
+      "https://picsum.photos/seed/deoikg/300/300",
+      "https://picsum.photos/seed/mhurtq/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/hgigzj/600/400",
+    "createdAt": 1757340716,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": true,
+    "discount": 2,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": false,
+    "skinType": ["dry", "sensitive"],
+    "concerns": ["uneven-tone", "wrinkles"],
+    "ingredients": ["Water", "Vitamin C", "Glycerin", "Lactic Acid"],
+    "sizes": [
+      {
+        "id": "size_0_4",
+        "size": 150,
+        "price": 88365.5,
+        "discount": 7953,
+        "stock": 34,
+        "unit": "oz",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_4",
+        "size": 169,
+        "price": 70773.0,
+        "discount": 7785,
+        "stock": 35,
+        "unit": "g",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": true
+  },
+  {
+    "name": "CeraVe Resurfacing Retinol Serum",
+    "slug": "cerave-resurfacing-retinol-serum",
+    "description": "CeraVe Resurfacing Retinol Serum is a popular skincare product from CeraVe.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k97ahxa420sw2wr762dbznkmkh7q6y74"],
+    "images": [
+      "https://picsum.photos/seed/rgbmgl/300/300",
+      "https://picsum.photos/seed/zgjyim/300/300",
+      "https://picsum.photos/seed/atxsje/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/tymuvj/600/400",
+    "createdAt": 1757269004,
+    "isNew": false,
+    "isBestseller": true,
+    "isTrending": true,
+    "discount": 11,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com", "user1@example.com"],
+    "canBeInRoutine": false,
+    "skinType": ["combination", "all"],
+    "concerns": ["blackheads"],
+    "ingredients": ["Retinol", "Panthenol", "Salicylic Acid"],
+    "sizes": [
+      {
+        "id": "size_0_5",
+        "size": 66,
+        "price": 119474.0,
+        "discount": 10753,
+        "stock": 8,
+        "unit": "g",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": true
+  },
+  {
+    "name": "La Roche-Posay Effaclar Purifying Foaming Gel",
+    "slug": "la-roche-posay-effaclar-purifying-foaming-gel",
+    "description": "La Roche-Posay Effaclar Purifying Foaming Gel is a popular skincare product from La Roche-Posay.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k974xrrf6djwjkr600mk3hx9th7q6fmw"],
+    "images": [
+      "https://picsum.photos/seed/mjsies/300/300",
+      "https://picsum.photos/seed/fulmhe/300/300",
+      "https://picsum.photos/seed/fxgzec/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/icucwv/600/400",
+    "createdAt": 1757316998,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 30,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com", "user1@example.com"],
+    "canBeInRoutine": false,
+    "skinType": ["combination", "dry", "all"],
+    "concerns": ["hyperpigmentation"],
+    "ingredients": ["Vitamin C", "Glycerin", "Panthenol", "Niacinamide"],
+    "sizes": [
+      {
+        "id": "size_0_6",
+        "size": 195,
+        "price": 61457.5,
+        "discount": 4917,
+        "stock": 56,
+        "unit": "kg",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_6",
+        "size": 171,
+        "price": 88520.5,
+        "discount": 7967,
+        "stock": 3,
+        "unit": "g",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": true
+  },
+  {
+    "name": "Cetaphil Gentle Skin Cleanser",
+    "slug": "cetaphil-gentle-skin-cleanser",
+    "description": "Cetaphil Gentle Skin Cleanser is a popular skincare product from Cetaphil.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k974xrrf6djwjkr600mk3hx9th7q6fmw"],
+    "images": [
+      "https://picsum.photos/seed/uazbog/300/300",
+      "https://picsum.photos/seed/thcocs/300/300",
+      "https://picsum.photos/seed/bbyrxt/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/ljnevg/600/400",
+    "createdAt": 1757280081,
+    "isNew": false,
+    "isBestseller": true,
+    "isTrending": true,
+    "discount": 17,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["combination", "dry", "mature"],
+    "concerns": ["blackheads", "fine-lines", "sensitivity"],
+    "ingredients": ["Vitamin C", "Glycerin", "Retinol"],
+    "sizes": [
+      {
+        "id": "size_0_7",
+        "size": 40,
+        "price": 28752.5,
+        "discount": 4313,
+        "stock": 87,
+        "unit": "kg",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_7",
+        "size": 124,
+        "price": 123922.5,
+        "discount": 11153,
+        "stock": 88,
+        "unit": "kg",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": true
+  },
+  {
+    "name": "Glossier Milky Jelly Cleanser",
+    "slug": "glossier-milky-jelly-cleanser",
+    "description": "Glossier Milky Jelly Cleanser is a popular skincare product from Glossier.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k974xrrf6djwjkr600mk3hx9th7q6fmw"],
+    "images": [
+      "https://picsum.photos/seed/jjrvsv/300/300",
+      "https://picsum.photos/seed/qudmhw/300/300",
+      "https://picsum.photos/seed/xpfpgk/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/hbpitt/600/400",
+    "createdAt": 1757313949,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 26,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com", "user1@example.com"],
+    "canBeInRoutine": true,
+    "skinType": ["dry"],
+    "concerns": ["wrinkles", "fine-lines", "loss-of-firmness"],
+    "ingredients": ["Niacinamide", "Vitamin C", "Lactic Acid"],
+    "sizes": [
+      {
+        "id": "size_0_8",
+        "size": 198,
+        "price": 121380.5,
+        "discount": 2428,
+        "stock": 61,
+        "unit": "oz",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_8",
+        "size": 42,
+        "price": 46779.0,
+        "discount": 468,
+        "stock": 24,
+        "unit": "oz",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "La Roche-Posay Toleriane Double Repair Face Moisturizer",
+    "slug": "la-roche-posay-toleriane-double-repair-face-moisturizer",
+    "description": "La Roche-Posay Toleriane Double Repair Face Moisturizer is a popular skincare product from La Roche-Posay.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9791sb9naprkfy2jp87jpsanh7q7e06"],
+    "images": [
+      "https://picsum.photos/seed/ttznrt/300/300",
+      "https://picsum.photos/seed/ihoptl/300/300",
+      "https://picsum.photos/seed/nxefdu/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/quxxor/600/400",
+    "createdAt": 1757268796,
+    "isNew": true,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 2,
+    "routineId": null,
+    "stockAlertEmails": [
+      "user0@example.com",
+      "user1@example.com",
+      "user2@example.com"
+    ],
+    "canBeInRoutine": true,
+    "skinType": ["dry", "normal"],
+    "concerns": ["loss-of-firmness", "redness", "dullness"],
+    "ingredients": [
+      "Water",
+      "Salicylic Acid",
+      "Sodium Hyaluronate",
+      "Niacinamide",
+      "Glycerin"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_9",
+        "size": 172,
+        "price": 63162.5,
+        "discount": 6316,
+        "stock": 97,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": true
+  },
+  {
+    "name": "Murad Rapid Age Spot and Pigment Lightening Serum",
+    "slug": "murad-rapid-age-spot-and-pigment-lightening-serum",
+    "description": "Murad Rapid Age Spot and Pigment Lightening Serum is a popular skincare product from Murad.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k97ahxa420sw2wr762dbznkmkh7q6y74"],
+    "images": [
+      "https://picsum.photos/seed/bgsejg/300/300",
+      "https://picsum.photos/seed/diljte/300/300",
+      "https://picsum.photos/seed/yihypl/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/kpjhcv/600/400",
+    "createdAt": 1757273789,
+    "isNew": true,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 0,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["combination", "dry"],
+    "concerns": ["redness", "fine-lines"],
+    "ingredients": ["Ceramide NP", "Water", "Retinol", "Glycerin"],
+    "sizes": [
+      {
+        "id": "size_0_10",
+        "size": 176,
+        "price": 71780.5,
+        "discount": 10767,
+        "stock": 41,
+        "unit": "oz",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "Innisfree Jeju Orchid Eye Cream",
+    "slug": "innisfree-jeju-orchid-eye-cream",
+    "description": "Innisfree Jeju Orchid Eye Cream is a popular skincare product from Innisfree.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": [
+      "k97fd92hse18z0zs4x2cy6kx157q7hv7",
+      "k9791sb9naprkfy2jp87jpsanh7q7e06"
+    ],
+    "images": [
+      "https://picsum.photos/seed/pqxmep/300/300",
+      "https://picsum.photos/seed/zvfmya/300/300",
+      "https://picsum.photos/seed/erpfgl/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/qmtszh/600/400",
+    "createdAt": 1757268046,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": false,
+    "discount": 0,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com"],
+    "canBeInRoutine": true,
+    "skinType": ["acne-prone", "combination", "mature"],
+    "concerns": ["sensitivity", "all"],
+    "ingredients": [
+      "Vitamin C",
+      "Sodium Hyaluronate",
+      "Salicylic Acid",
+      "Retinol"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_11",
+        "size": 51,
+        "price": 71966.5,
+        "discount": 10075,
+        "stock": 79,
+        "unit": "oz",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_11",
+        "size": 157,
+        "price": 106857.0,
+        "discount": 3206,
+        "stock": 51,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": true
+  },
+  {
+    "name": "CeraVe Hydrating Mineral Sunscreen SPF 30",
+    "slug": "cerave-hydrating-mineral-sunscreen-spf-30",
+    "description": "CeraVe Hydrating Mineral Sunscreen SPF 30 is a popular skincare product from CeraVe.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k976e86szq33vgg0yqxpbh2dgx7q7e8n"],
+    "images": [
+      "https://picsum.photos/seed/pieotg/300/300",
+      "https://picsum.photos/seed/stoyhg/300/300",
+      "https://picsum.photos/seed/ocetay/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/cstctv/600/400",
+    "createdAt": 1757318194,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 29,
+    "routineId": null,
+    "stockAlertEmails": [
+      "user0@example.com",
+      "user1@example.com",
+      "user2@example.com"
+    ],
+    "canBeInRoutine": true,
+    "skinType": ["all", "combination", "normal"],
+    "concerns": ["fine-lines", "redness"],
+    "ingredients": [
+      "Panthenol",
+      "Sodium Hyaluronate",
+      "Retinol",
+      "Water",
+      "Glycerin"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_12",
+        "size": 93,
+        "price": 117381.5,
+        "discount": 1174,
+        "stock": 6,
+        "unit": "ml",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_12",
+        "size": 32,
+        "price": 43911.5,
+        "discount": 3074,
+        "stock": 50,
+        "unit": "kg",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "CeraVe Hydrating Cleanser",
+    "slug": "cerave-hydrating-cleanser",
+    "description": "CeraVe Hydrating Cleanser is a popular skincare product from CeraVe.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k974xrrf6djwjkr600mk3hx9th7q6fmw"],
+    "images": [
+      "https://picsum.photos/seed/hmrbel/300/300",
+      "https://picsum.photos/seed/ipwpue/300/300",
+      "https://picsum.photos/seed/ksuepc/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/xwnjce/600/400",
+    "createdAt": 1757260589,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 27,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com", "user1@example.com"],
+    "canBeInRoutine": false,
+    "skinType": ["dry"],
+    "concerns": ["wrinkles"],
+    "ingredients": [
+      "Glycerin",
+      "Vitamin C",
+      "Sodium Hyaluronate",
+      "Niacinamide",
+      "Salicylic Acid"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_13",
+        "size": 174,
+        "price": 60295.0,
+        "discount": 6632,
+        "stock": 73,
+        "unit": "g",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": true
+  },
+  {
+    "name": "Eucerin Advanced Repair Cream",
+    "slug": "eucerin-advanced-repair-cream",
+    "description": "Eucerin Advanced Repair Cream is a popular skincare product from Eucerin.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9791sb9naprkfy2jp87jpsanh7q7e06"],
+    "images": [
+      "https://picsum.photos/seed/ighhqx/300/300",
+      "https://picsum.photos/seed/pitbtm/300/300",
+      "https://picsum.photos/seed/yyhjbc/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/rtqlie/600/400",
+    "createdAt": 1757336497,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": false,
+    "discount": 2,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com", "user1@example.com"],
+    "canBeInRoutine": true,
+    "skinType": ["normal", "sensitive", "mature"],
+    "concerns": ["hyperpigmentation", "oiliness"],
+    "ingredients": [
+      "Salicylic Acid",
+      "Retinol",
+      "Ceramide NP",
+      "Panthenol",
+      "Water"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_14",
+        "size": 180,
+        "price": 102780.5,
+        "discount": 15417,
+        "stock": 40,
+        "unit": "ml",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_14",
+        "size": 78,
+        "price": 39711.0,
+        "discount": 4368,
+        "stock": 71,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "Drunk Elephant Beste No. 9 Jelly Cleanser",
+    "slug": "drunk-elephant-beste-no.-9-jelly-cleanser",
+    "description": "Drunk Elephant Beste No. 9 Jelly Cleanser is a popular skincare product from Drunk Elephant.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k974xrrf6djwjkr600mk3hx9th7q6fmw"],
+    "images": [
+      "https://picsum.photos/seed/wvhzsv/300/300",
+      "https://picsum.photos/seed/jvcspq/300/300",
+      "https://picsum.photos/seed/kzbllp/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/exgznq/600/400",
+    "createdAt": 1757258034,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": false,
+    "discount": 26,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com"],
+    "canBeInRoutine": false,
+    "skinType": ["sensitive"],
+    "concerns": ["acne", "all", "hyperpigmentation"],
+    "ingredients": [
+      "Retinol",
+      "Sodium Hyaluronate",
+      "Water",
+      "Vitamin C",
+      "Ceramide NP"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_15",
+        "size": 130,
+        "price": 46236.5,
+        "discount": 6011,
+        "stock": 63,
+        "unit": "ml",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_15",
+        "size": 120,
+        "price": 103710.5,
+        "discount": 10371,
+        "stock": 34,
+        "unit": "kg",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": true
+  },
+  {
+    "name": "Innisfree Green Tea Seed Serum",
+    "slug": "innisfree-green-tea-seed-serum",
+    "description": "Innisfree Green Tea Seed Serum is a popular skincare product from Innisfree.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k97ahxa420sw2wr762dbznkmkh7q6y74"],
+    "images": [
+      "https://picsum.photos/seed/kiqirr/300/300",
+      "https://picsum.photos/seed/rkirby/300/300",
+      "https://picsum.photos/seed/rfyhbk/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/xfpgrn/600/400",
+    "createdAt": 1757325339,
+    "isNew": false,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 10,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["oily"],
+    "concerns": ["wrinkles", "dryness"],
+    "ingredients": ["Panthenol", "Water", "Ceramide NP", "Retinol"],
+    "sizes": [
+      {
+        "id": "size_0_16",
+        "size": 146,
+        "price": 94658.5,
+        "discount": 5680,
+        "stock": 76,
+        "unit": "oz",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_16",
+        "size": 55,
+        "price": 24490.0,
+        "discount": 2204,
+        "stock": 5,
+        "unit": "kg",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "Vichy Mineral 89 Hyaluronic Acid Face Serum",
+    "slug": "vichy-mineral-89-hyaluronic-acid-face-serum",
+    "description": "Vichy Mineral 89 Hyaluronic Acid Face Serum is a popular skincare product from Vichy.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k97ahxa420sw2wr762dbznkmkh7q6y74"],
+    "images": [
+      "https://picsum.photos/seed/ebgghg/300/300",
+      "https://picsum.photos/seed/ucjlcy/300/300",
+      "https://picsum.photos/seed/nsmobs/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/ctanwn/600/400",
+    "createdAt": 1757283789,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 6,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com", "user1@example.com"],
+    "canBeInRoutine": true,
+    "skinType": ["mature"],
+    "concerns": ["wrinkles"],
+    "ingredients": [
+      "Vitamin C",
+      "Salicylic Acid",
+      "Panthenol",
+      "Lactic Acid",
+      "Retinol"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_17",
+        "size": 110,
+        "price": 74989.0,
+        "discount": 0,
+        "stock": 95,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "Kiehl's Calendula Herbal Extract Alcohol-Free Toner",
+    "slug": "kiehl's-calendula-herbal-extract-alcohol-free-toner",
+    "description": "Kiehl's Calendula Herbal Extract Alcohol-Free Toner is a popular skincare product from Kiehl's.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": [
+      "https://picsum.photos/seed/bvwxyf/300/300",
+      "https://picsum.photos/seed/xoyrhr/300/300",
+      "https://picsum.photos/seed/vietem/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/silyzh/600/400",
+    "createdAt": 1757273201,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": true,
+    "discount": 29,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com"],
+    "canBeInRoutine": false,
+    "skinType": ["sensitive", "mature", "combination"],
+    "concerns": ["fine-lines", "wrinkles", "acne"],
+    "ingredients": ["Water", "Salicylic Acid"],
+    "sizes": [
+      {
+        "id": "size_0_18",
+        "size": 162,
+        "price": 55753.5,
+        "discount": 2230,
+        "stock": 94,
+        "unit": "oz",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_18",
+        "size": 31,
+        "price": 32379.5,
+        "discount": 4209,
+        "stock": 72,
+        "unit": "oz",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": true
+  },
+  {
+    "name": "Neutrogena Hydro Boost Water Gel",
+    "slug": "neutrogena-hydro-boost-water-gel",
+    "description": "Neutrogena Hydro Boost Water Gel is a popular skincare product from Neutrogena.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9791sb9naprkfy2jp87jpsanh7q7e06"],
+    "images": [
+      "https://picsum.photos/seed/vaursl/300/300",
+      "https://picsum.photos/seed/zclrsz/300/300",
+      "https://picsum.photos/seed/wxqjit/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/ncvyor/600/400",
+    "createdAt": 1757297937,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 17,
+    "routineId": null,
+    "stockAlertEmails": [
+      "user0@example.com",
+      "user1@example.com",
+      "user2@example.com"
+    ],
+    "canBeInRoutine": true,
+    "skinType": ["mature"],
+    "concerns": ["wrinkles", "hyperpigmentation"],
+    "ingredients": ["Ceramide NP", "Salicylic Acid"],
+    "sizes": [
+      {
+        "id": "size_0_19",
+        "size": 53,
+        "price": 24955.0,
+        "discount": 2995,
+        "stock": 100,
+        "unit": "ml",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_19",
+        "size": 105,
+        "price": 52111.0,
+        "discount": 6253,
+        "stock": 85,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "Clinique Take The Day Off Cleansing Balm",
+    "slug": "clinique-take-the-day-off-cleansing-balm",
+    "description": "Clinique Take The Day Off Cleansing Balm is a popular skincare product from Clinique.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": [
+      "k97189rdd9ybxmdjytdgzx81hs7q6fer",
+      "k97cf7jz3zjfxzamhtf740y6ad7q6ym8"
+    ],
+    "images": [
+      "https://picsum.photos/seed/oeitcv/300/300",
+      "https://picsum.photos/seed/aprplv/300/300",
+      "https://picsum.photos/seed/fvthvu/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/zadvul/600/400",
+    "createdAt": 1757292644,
+    "isNew": true,
+    "isBestseller": false,
+    "isTrending": false,
+    "discount": 16,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com", "user1@example.com"],
+    "canBeInRoutine": false,
+    "skinType": ["oily"],
+    "concerns": ["fine-lines", "hyperpigmentation", "uneven-tone"],
+    "ingredients": ["Vitamin C", "Water"],
+    "sizes": [
+      {
+        "id": "size_0_20",
+        "size": 140,
+        "price": 116048.5,
+        "discount": 6963,
+        "stock": 66,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": true
+  },
+  {
+    "name": "The Ordinary Niacinamide 10% + Zinc 1%",
+    "slug": "the-ordinary-niacinamide-10pct-plus-zinc-1pct",
+    "description": "The Ordinary Niacinamide 10% + Zinc 1% is a popular skincare product from The Ordinary.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k97ahxa420sw2wr762dbznkmkh7q6y74"],
+    "images": [
+      "https://picsum.photos/seed/ghauaj/300/300",
+      "https://picsum.photos/seed/yqjcxc/300/300",
+      "https://picsum.photos/seed/qqeedq/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/firctu/600/400",
+    "createdAt": 1757294013,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": false,
+    "discount": 29,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com"],
+    "canBeInRoutine": true,
+    "skinType": ["acne-prone", "normal", "all"],
+    "concerns": ["dryness", "wrinkles"],
+    "ingredients": [
+      "Vitamin C",
+      "Glycerin",
+      "Niacinamide",
+      "Panthenol",
+      "Retinol"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_21",
+        "size": 123,
+        "price": 32116.0,
+        "discount": 321,
+        "stock": 43,
+        "unit": "oz",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": true
+  },
+  {
+    "name": "Paula's Choice Skin Perfecting 2% BHA Liquid Exfoliant",
+    "slug": "paula's-choice-skin-perfecting-2pct-bha-liquid-exfoliant",
+    "description": "Paula's Choice Skin Perfecting 2% BHA Liquid Exfoliant is a popular skincare product from Paula's Choice.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": [
+      "https://picsum.photos/seed/xhlcqv/300/300",
+      "https://picsum.photos/seed/iwgzzr/300/300",
+      "https://picsum.photos/seed/gkyihg/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/biyeqi/600/400",
+    "createdAt": 1757287412,
+    "isNew": true,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 15,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com", "user1@example.com"],
+    "canBeInRoutine": true,
+    "skinType": ["oily", "dry", "sensitive"],
+    "concerns": ["wrinkles", "sun-damage"],
+    "ingredients": ["Lactic Acid", "Niacinamide", "Vitamin C", "Retinol"],
+    "sizes": [
+      {
+        "id": "size_0_22",
+        "size": 194,
+        "price": 114188.5,
+        "discount": 9135,
+        "stock": 72,
+        "unit": "ml",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_22",
+        "size": 196,
+        "price": 27683.0,
+        "discount": 3045,
+        "stock": 61,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": true
+  },
+  {
+    "name": "The Ordinary Glycolic Acid 7% Toning Solution",
+    "slug": "the-ordinary-glycolic-acid-7pct-toning-solution",
+    "description": "The Ordinary Glycolic Acid 7% Toning Solution is a popular skincare product from The Ordinary.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": [
+      "https://picsum.photos/seed/tgxnqf/300/300",
+      "https://picsum.photos/seed/cehwnf/300/300",
+      "https://picsum.photos/seed/pmjesi/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/bahiea/600/400",
+    "createdAt": 1757345720,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 15,
+    "routineId": null,
+    "stockAlertEmails": [
+      "user0@example.com",
+      "user1@example.com",
+      "user2@example.com"
+    ],
+    "canBeInRoutine": true,
+    "skinType": ["combination"],
+    "concerns": ["acne"],
+    "ingredients": ["Lactic Acid", "Niacinamide", "Glycerin", "Salicylic Acid"],
+    "sizes": [
+      {
+        "id": "size_0_23",
+        "size": 77,
+        "price": 69703.5,
+        "discount": 4182,
+        "stock": 100,
+        "unit": "kg",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "Cetaphil Daily Hydrating Lotion",
+    "slug": "cetaphil-daily-hydrating-lotion",
+    "description": "Cetaphil Daily Hydrating Lotion is a popular skincare product from Cetaphil.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9791sb9naprkfy2jp87jpsanh7q7e06"],
+    "images": [
+      "https://picsum.photos/seed/eyprte/300/300",
+      "https://picsum.photos/seed/rjnkwf/300/300",
+      "https://picsum.photos/seed/jouqkk/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/lpxaoz/600/400",
+    "createdAt": 1757299308,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": false,
+    "discount": 1,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com"],
+    "canBeInRoutine": true,
+    "skinType": ["all"],
+    "concerns": ["sensitivity", "fine-lines"],
+    "ingredients": [
+      "Panthenol",
+      "Retinol",
+      "Niacinamide",
+      "Salicylic Acid",
+      "Vitamin C"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_24",
+        "size": 146,
+        "price": 18414.0,
+        "discount": 552,
+        "stock": 98,
+        "unit": "g",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "Aveeno Positively Radiant Daily Moisturizer SPF 30",
+    "slug": "aveeno-positively-radiant-daily-moisturizer-spf-30",
+    "description": "Aveeno Positively Radiant Daily Moisturizer SPF 30 is a popular skincare product from Aveeno.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": [
+      "k9791sb9naprkfy2jp87jpsanh7q7e06",
+      "k976e86szq33vgg0yqxpbh2dgx7q7e8n"
+    ],
+    "images": [
+      "https://picsum.photos/seed/qmxycc/300/300",
+      "https://picsum.photos/seed/krujsx/300/300",
+      "https://picsum.photos/seed/vrfldf/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/ryupgf/600/400",
+    "createdAt": 1757285069,
+    "isNew": true,
+    "isBestseller": false,
+    "isTrending": false,
+    "discount": 26,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["dry"],
+    "concerns": ["dryness", "oiliness", "redness"],
+    "ingredients": ["Salicylic Acid", "Niacinamide"],
+    "sizes": [
+      {
+        "id": "size_0_25",
+        "size": 132,
+        "price": 77887.5,
+        "discount": 4673,
+        "stock": 93,
+        "unit": "g",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "Youth to the People Superberry Hydrate + Glow Dream Mask",
+    "slug": "youth-to-the-people-superberry-hydrate-plus-glow-dream-mask",
+    "description": "Youth to the People Superberry Hydrate + Glow Dream Mask is a popular skincare product from Youth to the People.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k97fw0hr4ny0rgs9eh8kxr9pan7q6tqc"],
+    "images": [
+      "https://picsum.photos/seed/mrqpkg/300/300",
+      "https://picsum.photos/seed/ltmhre/300/300",
+      "https://picsum.photos/seed/bccdtp/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/evnbpc/600/400",
+    "createdAt": 1757326678,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": false,
+    "discount": 29,
+    "routineId": null,
+    "stockAlertEmails": [
+      "user0@example.com",
+      "user1@example.com",
+      "user2@example.com"
+    ],
+    "canBeInRoutine": true,
+    "skinType": ["oily", "normal"],
+    "concerns": ["oiliness"],
+    "ingredients": [
+      "Lactic Acid",
+      "Ceramide NP",
+      "Glycerin",
+      "Panthenol",
+      "Water"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_26",
+        "size": 200,
+        "price": 106454.0,
+        "discount": 5323,
+        "stock": 55,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "CeraVe Moisturizing Cream",
+    "slug": "cerave-moisturizing-cream",
+    "description": "CeraVe Moisturizing Cream is a popular skincare product from CeraVe.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9791sb9naprkfy2jp87jpsanh7q7e06"],
+    "images": [
+      "https://picsum.photos/seed/ryessq/300/300",
+      "https://picsum.photos/seed/vzdlgf/300/300",
+      "https://picsum.photos/seed/plikio/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/weebpm/600/400",
+    "createdAt": 1757318300,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 2,
+    "routineId": null,
+    "stockAlertEmails": [
+      "user0@example.com",
+      "user1@example.com",
+      "user2@example.com"
+    ],
+    "canBeInRoutine": false,
+    "skinType": ["combination", "all", "mature"],
+    "concerns": ["acne"],
+    "ingredients": ["Panthenol", "Retinol", "Ceramide NP", "Vitamin C"],
+    "sizes": [
+      {
+        "id": "size_0_27",
+        "size": 62,
+        "price": 43896.0,
+        "discount": 3073,
+        "stock": 68,
+        "unit": "ml",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_27",
+        "size": 147,
+        "price": 33433.5,
+        "discount": 4012,
+        "stock": 28,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": true
+  },
+  {
+    "name": "CeraVe Foaming Facial Cleanser",
+    "slug": "cerave-foaming-facial-cleanser",
+    "description": "CeraVe Foaming Facial Cleanser is a popular skincare product from CeraVe.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k974xrrf6djwjkr600mk3hx9th7q6fmw"],
+    "images": [
+      "https://picsum.photos/seed/fpzjgr/300/300",
+      "https://picsum.photos/seed/lldafb/300/300",
+      "https://picsum.photos/seed/abxlwd/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/autpzf/600/400",
+    "createdAt": 1757284952,
+    "isNew": false,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 3,
+    "routineId": null,
+    "stockAlertEmails": [
+      "user0@example.com",
+      "user1@example.com",
+      "user2@example.com"
+    ],
+    "canBeInRoutine": true,
+    "skinType": ["mature", "sensitive", "dry"],
+    "concerns": ["redness", "dryness", "loss-of-firmness"],
+    "ingredients": ["Vitamin C", "Salicylic Acid"],
+    "sizes": [
+      {
+        "id": "size_0_28",
+        "size": 129,
+        "price": 46670.5,
+        "discount": 5600,
+        "stock": 41,
+        "unit": "oz",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": true
+  },
+  {
+    "name": "COSRX Low pH Good Morning Gel Cleanser",
+    "slug": "cosrx-low-ph-good-morning-gel-cleanser",
+    "description": "COSRX Low pH Good Morning Gel Cleanser is a popular skincare product from COSRX.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k974xrrf6djwjkr600mk3hx9th7q6fmw"],
+    "images": [
+      "https://picsum.photos/seed/kcptfk/300/300",
+      "https://picsum.photos/seed/jemgrm/300/300",
+      "https://picsum.photos/seed/hvthxn/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/epojrz/600/400",
+    "createdAt": 1757312434,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": false,
+    "discount": 25,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com", "user1@example.com"],
+    "canBeInRoutine": false,
+    "skinType": ["normal"],
+    "concerns": ["loss-of-firmness", "dryness", "fine-lines"],
+    "ingredients": ["Niacinamide", "Retinol"],
+    "sizes": [
+      {
+        "id": "size_0_29",
+        "size": 87,
+        "price": 77066.0,
+        "discount": 9248,
+        "stock": 90,
+        "unit": "oz",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": true
+  },
+  {
+    "name": "Bioderma Sensibio H2O Micellar Water",
+    "slug": "bioderma-sensibio-h2o-micellar-water",
+    "description": "Bioderma Sensibio H2O Micellar Water is a popular skincare product from Bioderma.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k97cf7jz3zjfxzamhtf740y6ad7q6ym8"],
+    "images": [
+      "https://picsum.photos/seed/mabrtd/300/300",
+      "https://picsum.photos/seed/oyfler/300/300",
+      "https://picsum.photos/seed/bfygeh/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/pqippp/600/400",
+    "createdAt": 1757278767,
+    "isNew": false,
+    "isBestseller": true,
+    "isTrending": true,
+    "discount": 10,
+    "routineId": null,
+    "stockAlertEmails": [
+      "user0@example.com",
+      "user1@example.com",
+      "user2@example.com"
+    ],
+    "canBeInRoutine": false,
+    "skinType": ["acne-prone", "mature"],
+    "concerns": ["hyperpigmentation", "redness"],
+    "ingredients": ["Niacinamide", "Lactic Acid", "Water", "Vitamin C"],
+    "sizes": [
+      {
+        "id": "size_0_30",
+        "size": 81,
+        "price": 122868.5,
+        "discount": 11058,
+        "stock": 71,
+        "unit": "kg",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_30",
+        "size": 86,
+        "price": 29651.5,
+        "discount": 3262,
+        "stock": 45,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "Neutrogena Oil-Free Acne Wash",
+    "slug": "neutrogena-oil-free-acne-wash",
+    "description": "Neutrogena Oil-Free Acne Wash is a popular skincare product from Neutrogena.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": [
+      "k974xrrf6djwjkr600mk3hx9th7q6fmw",
+      "k973rc0h2pknwkkbyajhw0cpvn7q68ra"
+    ],
+    "images": [
+      "https://picsum.photos/seed/qjkhel/300/300",
+      "https://picsum.photos/seed/ugussh/300/300",
+      "https://picsum.photos/seed/eoeezz/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/xbdfwa/600/400",
+    "createdAt": 1757333063,
+    "isNew": true,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 4,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": false,
+    "skinType": ["combination", "oily"],
+    "concerns": ["dryness", "all", "wrinkles"],
+    "ingredients": ["Ceramide NP", "Glycerin", "Sodium Hyaluronate"],
+    "sizes": [
+      {
+        "id": "size_0_31",
+        "size": 54,
+        "price": 107647.5,
+        "discount": 3229,
+        "stock": 55,
+        "unit": "kg",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "La Roche-Posay Anthelios Melt-in Milk Sunscreen SPF 60",
+    "slug": "la-roche-posay-anthelios-melt-in-milk-sunscreen-spf-60",
+    "description": "La Roche-Posay Anthelios Melt-in Milk Sunscreen SPF 60 is a popular skincare product from La Roche-Posay.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k976e86szq33vgg0yqxpbh2dgx7q7e8n"],
+    "images": [
+      "https://picsum.photos/seed/koinoz/300/300",
+      "https://picsum.photos/seed/uaalxn/300/300",
+      "https://picsum.photos/seed/mirxds/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/xzqvbm/600/400",
+    "createdAt": 1757340680,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 30,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["oily", "combination", "normal"],
+    "concerns": ["loss-of-firmness", "oiliness"],
+    "ingredients": ["Salicylic Acid", "Sodium Hyaluronate", "Panthenol"],
+    "sizes": [
+      {
+        "id": "size_0_32",
+        "size": 35,
+        "price": 22242.5,
+        "discount": 222,
+        "stock": 18,
+        "unit": "g",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "Neutrogena Ultra Sheer Dry-Touch Sunscreen SPF 55",
+    "slug": "neutrogena-ultra-sheer-dry-touch-sunscreen-spf-55",
+    "description": "Neutrogena Ultra Sheer Dry-Touch Sunscreen SPF 55 is a popular skincare product from Neutrogena.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k976e86szq33vgg0yqxpbh2dgx7q7e8n"],
+    "images": [
+      "https://picsum.photos/seed/fftbrx/300/300",
+      "https://picsum.photos/seed/qlvyel/300/300",
+      "https://picsum.photos/seed/xssrco/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/cllvms/600/400",
+    "createdAt": 1757342859,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 15,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": false,
+    "skinType": ["oily", "all", "combination"],
+    "concerns": ["hyperpigmentation"],
+    "ingredients": ["Panthenol", "Ceramide NP", "Vitamin C", "Niacinamide"],
+    "sizes": [
+      {
+        "id": "size_0_33",
+        "size": 81,
+        "price": 92333.5,
+        "discount": 923,
+        "stock": 21,
+        "unit": "ml",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_33",
+        "size": 32,
+        "price": 111135.0,
+        "discount": 8891,
+        "stock": 47,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "First Aid Beauty Ultra Repair Cream",
+    "slug": "first-aid-beauty-ultra-repair-cream",
+    "description": "First Aid Beauty Ultra Repair Cream is a popular skincare product from First Aid Beauty.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9791sb9naprkfy2jp87jpsanh7q7e06"],
+    "images": [
+      "https://picsum.photos/seed/fibcye/300/300",
+      "https://picsum.photos/seed/okagtp/300/300",
+      "https://picsum.photos/seed/zsxebe/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/joigvm/600/400",
+    "createdAt": 1757322438,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": true,
+    "discount": 21,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com", "user1@example.com"],
+    "canBeInRoutine": false,
+    "skinType": ["all", "acne-prone", "normal"],
+    "concerns": ["redness", "dullness", "acne"],
+    "ingredients": [
+      "Retinol",
+      "Lactic Acid",
+      "Vitamin C",
+      "Niacinamide",
+      "Salicylic Acid"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_34",
+        "size": 95,
+        "price": 61535.0,
+        "discount": 3077,
+        "stock": 70,
+        "unit": "g",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_34",
+        "size": 41,
+        "price": 60512.0,
+        "discount": 6656,
+        "stock": 72,
+        "unit": "g",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": true
+  },
+  {
+    "name": "Clinique Dramatically Different Moisturizing Lotion+",
+    "slug": "clinique-dramatically-different-moisturizing-lotionplus",
+    "description": "Clinique Dramatically Different Moisturizing Lotion+ is a popular skincare product from Clinique.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9791sb9naprkfy2jp87jpsanh7q7e06"],
+    "images": [
+      "https://picsum.photos/seed/onmlin/300/300",
+      "https://picsum.photos/seed/rtkgxg/300/300",
+      "https://picsum.photos/seed/gtmpew/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/kgkiel/600/400",
+    "createdAt": 1757334135,
+    "isNew": true,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 14,
+    "routineId": null,
+    "stockAlertEmails": [
+      "user0@example.com",
+      "user1@example.com",
+      "user2@example.com"
+    ],
+    "canBeInRoutine": true,
+    "skinType": ["combination", "mature", "oily"],
+    "concerns": ["redness", "dryness"],
+    "ingredients": ["Vitamin C", "Sodium Hyaluronate"],
+    "sizes": [
+      {
+        "id": "size_0_35",
+        "size": 123,
+        "price": 120838.0,
+        "discount": 16917,
+        "stock": 5,
+        "unit": "g",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_35",
+        "size": 55,
+        "price": 106950.0,
+        "discount": 11764,
+        "stock": 75,
+        "unit": "oz",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "First Aid Beauty Pure Skin Face Cleanser",
+    "slug": "first-aid-beauty-pure-skin-face-cleanser",
+    "description": "First Aid Beauty Pure Skin Face Cleanser is a popular skincare product from First Aid Beauty.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k974xrrf6djwjkr600mk3hx9th7q6fmw"],
+    "images": [
+      "https://picsum.photos/seed/bdtaev/300/300",
+      "https://picsum.photos/seed/tbnwfk/300/300",
+      "https://picsum.photos/seed/pnobjj/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/chtnfb/600/400",
+    "createdAt": 1757300114,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 10,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com"],
+    "canBeInRoutine": true,
+    "skinType": ["dry", "oily", "sensitive"],
+    "concerns": ["sensitivity", "wrinkles", "loss-of-firmness"],
+    "ingredients": ["Lactic Acid", "Glycerin"],
+    "sizes": [
+      {
+        "id": "size_0_36",
+        "size": 149,
+        "price": 101354.5,
+        "discount": 1014,
+        "stock": 61,
+        "unit": "kg",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "Bioderma Atoderm Shower Oil",
+    "slug": "bioderma-atoderm-shower-oil",
+    "description": "Bioderma Atoderm Shower Oil is a popular skincare product from Bioderma.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k974qkca1t4w16q5j40gbv6q857q7f9d"],
+    "images": [
+      "https://picsum.photos/seed/ogpnwj/300/300",
+      "https://picsum.photos/seed/mdmiiw/300/300",
+      "https://picsum.photos/seed/llzsfz/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/xgjhpm/600/400",
+    "createdAt": 1757252783,
+    "isNew": true,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 10,
+    "routineId": null,
+    "stockAlertEmails": [
+      "user0@example.com",
+      "user1@example.com",
+      "user2@example.com"
+    ],
+    "canBeInRoutine": true,
+    "skinType": ["all", "combination"],
+    "concerns": ["fine-lines", "blackheads", "loss-of-firmness"],
+    "ingredients": [
+      "Ceramide NP",
+      "Sodium Hyaluronate",
+      "Glycerin",
+      "Lactic Acid"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_37",
+        "size": 184,
+        "price": 57536.0,
+        "discount": 0,
+        "stock": 2,
+        "unit": "oz",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "The Ordinary Hyaluronic Acid 2% + B5",
+    "slug": "the-ordinary-hyaluronic-acid-2pct-plus-b5",
+    "description": "The Ordinary Hyaluronic Acid 2% + B5 is a popular skincare product from The Ordinary.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k97ahxa420sw2wr762dbznkmkh7q6y74"],
+    "images": [
+      "https://picsum.photos/seed/powfge/300/300",
+      "https://picsum.photos/seed/zawvpr/300/300",
+      "https://picsum.photos/seed/kaqmap/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/zednsf/600/400",
+    "createdAt": 1757305463,
+    "isNew": false,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 4,
+    "routineId": null,
+    "stockAlertEmails": [
+      "user0@example.com",
+      "user1@example.com",
+      "user2@example.com"
+    ],
+    "canBeInRoutine": false,
+    "skinType": ["acne-prone"],
+    "concerns": ["dryness", "fine-lines"],
+    "ingredients": [
+      "Ceramide NP",
+      "Glycerin",
+      "Sodium Hyaluronate",
+      "Panthenol"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_38",
+        "size": 57,
+        "price": 27760.5,
+        "discount": 3331,
+        "stock": 96,
+        "unit": "kg",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_38",
+        "size": 68,
+        "price": 91760.0,
+        "discount": 4588,
+        "stock": 94,
+        "unit": "g",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "Kiehl's Ultra Facial Cream",
+    "slug": "kiehl's-ultra-facial-cream",
+    "description": "Kiehl's Ultra Facial Cream is a popular skincare product from Kiehl's.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9791sb9naprkfy2jp87jpsanh7q7e06"],
+    "images": [
+      "https://picsum.photos/seed/biknxe/300/300",
+      "https://picsum.photos/seed/oibwkm/300/300",
+      "https://picsum.photos/seed/duyihe/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/atlvbc/600/400",
+    "createdAt": 1757349103,
+    "isNew": false,
+    "isBestseller": true,
+    "isTrending": true,
+    "discount": 4,
+    "routineId": null,
+    "stockAlertEmails": ["user0@example.com"],
+    "canBeInRoutine": false,
+    "skinType": ["dry", "mature"],
+    "concerns": ["fine-lines", "acne", "redness"],
+    "ingredients": [
+      "Sodium Hyaluronate",
+      "Lactic Acid",
+      "Ceramide NP",
+      "Niacinamide"
+    ],
+    "sizes": [
+      {
+        "id": "size_0_39",
+        "size": 123,
+        "price": 72276.5,
+        "discount": 3614,
+        "stock": 36,
+        "unit": "oz",
+        "currency": "NGN"
+      },
+      {
+        "id": "size_1_39",
+        "size": 92,
+        "price": 22010.0,
+        "discount": 1321,
+        "stock": 80,
+        "unit": "kg",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": true,
+    "hasFragrance": false
+  },
+  {
+    "name": "The Inkey List Retinol Serum",
+    "slug": "the-inkey-list-retinol-serum",
+    "description": "A lightweight serum with slow-release retinol to help reduce wrinkles and improve skin tone.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k97ahxa420sw2wr762dbznkmkh7q6y74"],
+    "images": [
+      "https://picsum.photos/seed/inkeyretinol/300/300",
+      "https://picsum.photos/seed/inkeyretinol2/300/300"
+    ],
+    "promoImage": "https://picsum.photos/seed/inkeyretinolpromo/600/400",
+    "createdAt": 1757350000,
+    "isNew": true,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 12,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["mature", "all"],
+    "concerns": ["wrinkles", "uneven-tone"],
+    "ingredients": ["Retinol", "Squalane", "Glycerin"],
+    "sizes": [
+      {
+        "id": "size_0_40",
+        "size": 30,
+        "price": 15000.0,
+        "discount": 1800,
+        "stock": 50,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "COSRX Advanced Snail 96 Mucin Power Essence",
+    "slug": "cosrx-advanced-snail-96-mucin-power-essence",
+    "description": "Hydrating and repairing essence with 96% snail mucin for elasticity and moisture.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k974xrrf6djwjkr600mk3hx9th7q6fmw"],
+    "images": ["https://picsum.photos/seed/cosrxsnail/300/300"],
+    "promoImage": "https://picsum.photos/seed/cosrxsnailpromo/600/400",
+    "createdAt": 1757350100,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 10,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["all"],
+    "concerns": ["dryness", "sensitivity"],
+    "ingredients": ["Snail Secretion Filtrate", "Sodium Hyaluronate"],
+    "sizes": [
+      {
+        "id": "size_0_41",
+        "size": 100,
+        "price": 19000.0,
+        "discount": 1900,
+        "stock": 40,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "The Ordinary Glycolic Acid 7% Toning Solution (Extra)",
+    "slug": "the-ordinary-glycolic-acid-7-toning-solution-extra",
+    "description": "Exfoliating toner with 7% glycolic acid to brighten.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": ["https://picsum.photos/seed/toner1/300/300"],
+    "promoImage": "https://picsum.photos/seed/toner1p/600/400",
+    "createdAt": 1757353001,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 900,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["all"],
+    "concerns": ["uneven-tone", "hyperpigmentation"],
+    "ingredients": ["Glycolic Acid", "Aloe"],
+    "sizes": [
+      {
+        "id": "t01",
+        "size": 240,
+        "price": 18500.0,
+        "discount": 900,
+        "stock": 80,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "Pixi Glow Tonic (Extra)",
+    "slug": "pixi-glow-tonic-extra",
+    "description": "Glycolic acid toner to smooth and brighten.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": ["https://picsum.photos/seed/toner2/300/300"],
+    "promoImage": "https://picsum.photos/seed/toner2p/600/400",
+    "createdAt": 1757353002,
+    "isNew": false,
+    "isBestseller": true,
+    "isTrending": true,
+    "discount": 1200,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["all"],
+    "concerns": ["uneven-tone", "hyperpigmentation"],
+    "ingredients": ["Glycolic Acid"],
+    "sizes": [
+      {
+        "id": "t02",
+        "size": 250,
+        "price": 26000.0,
+        "discount": 1200,
+        "stock": 70,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "COSRX AHA/BHA Clarifying Treatment Toner (Extra)",
+    "slug": "cosrx-aha-bha-clarifying-treatment-toner-extra",
+    "description": "Gentle daily exfoliating toner.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": ["https://picsum.photos/seed/toner3/300/300"],
+    "promoImage": "https://picsum.photos/seed/toner3p/600/400",
+    "createdAt": 1757353003,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 700,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["all"],
+    "concerns": ["acne", "uneven-tone"],
+    "ingredients": ["Glycolic Acid", "Salicylic Acid"],
+    "sizes": [
+      {
+        "id": "t03",
+        "size": 150,
+        "price": 18000.0,
+        "discount": 700,
+        "stock": 55,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "Isntree Green Tea Fresh Toner",
+    "slug": "isntree-green-tea-fresh-toner",
+    "description": "Antioxidant toner for oil control and soothing.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": ["https://picsum.photos/seed/toner4/300/300"],
+    "promoImage": "https://picsum.photos/seed/toner4p/600/400",
+    "createdAt": 1757353004,
+    "isNew": true,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 600,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["oily", "combination", "all"],
+    "concerns": ["oiliness"],
+    "ingredients": ["Camellia Sinensis Leaf Extract", "Niacinamide"],
+    "sizes": [
+      {
+        "id": "t04",
+        "size": 200,
+        "price": 20000.0,
+        "discount": 600,
+        "stock": 62,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "Paula's Choice Skin Perfecting 8% AHA Gel",
+    "slug": "paulas-choice-skin-perfecting-8-aha-gel",
+    "description": "Leave-on AHA exfoliant to refine texture and tone.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": ["https://picsum.photos/seed/toner5/300/300"],
+    "promoImage": "https://picsum.photos/seed/toner5p/600/400",
+    "createdAt": 1757353005,
+    "isNew": false,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 1800,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["all"],
+    "concerns": ["hyperpigmentation", "uneven-tone"],
+    "ingredients": ["Glycolic Acid"],
+    "sizes": [
+      {
+        "id": "t05",
+        "size": 100,
+        "price": 34000.0,
+        "discount": 1800,
+        "stock": 38,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "By Wishtrend Mandelic Acid 5% Skin Prep Water",
+    "slug": "by-wishtrend-mandelic-acid-5-skin-prep-water",
+    "description": "Gentle mandelic acid exfoliating toner.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": ["https://picsum.photos/seed/toner6/300/300"],
+    "promoImage": "https://picsum.photos/seed/toner6p/600/400",
+    "createdAt": 1757353006,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": true,
+    "discount": 900,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["all", "sensitive"],
+    "concerns": ["hyperpigmentation", "acne"],
+    "ingredients": ["Mandelic Acid"],
+    "sizes": [
+      {
+        "id": "t06",
+        "size": 120,
+        "price": 22000.0,
+        "discount": 900,
+        "stock": 40,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "Some By Mi AHA BHA PHA 30 Days Miracle Toner",
+    "slug": "some-by-mi-aha-bha-pha-30-days-miracle-toner",
+    "description": "Multi-acid toner for acne and texture.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": ["https://picsum.photos/seed/toner7/300/300"],
+    "promoImage": "https://picsum.photos/seed/toner7p/600/400",
+    "createdAt": 1757353007,
+    "isNew": false,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 800,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["oily", "combination", "all"],
+    "concerns": ["acne", "oiliness"],
+    "ingredients": ["Glycolic Acid", "Salicylic Acid", "Gluconolactone"],
+    "sizes": [
+      {
+        "id": "t07",
+        "size": 150,
+        "price": 17000.0,
+        "discount": 800,
+        "stock": 90,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "KraveBeauty Kale-Lalu-yAHA",
+    "slug": "kravebeauty-kale-lalu-yaha",
+    "description": "AHA exfoliant with hydrating base.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": ["https://picsum.photos/seed/toner8/300/300"],
+    "promoImage": "https://picsum.photos/seed/toner8p/600/400",
+    "createdAt": 1757353008,
+    "isNew": true,
+    "isBestseller": false,
+    "isTrending": true,
+    "discount": 1500,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["all"],
+    "concerns": ["uneven-tone", "hyperpigmentation"],
+    "ingredients": ["Glycolic Acid"],
+    "sizes": [
+      {
+        "id": "t08",
+        "size": 200,
+        "price": 32000.0,
+        "discount": 1500,
+        "stock": 37,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "Naturium Mandelic Topical Acid 12%",
+    "slug": "naturium-mandelic-topical-acid-12",
+    "description": "Leave-on mandelic acid for resurfacing.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": ["https://picsum.photos/seed/toner9/300/300"],
+    "promoImage": "https://picsum.photos/seed/toner9p/600/400",
+    "createdAt": 1757353009,
+    "isNew": true,
+    "isBestseller": true,
+    "isTrending": true,
+    "discount": 1300,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["all"],
+    "concerns": ["hyperpigmentation", "acne"],
+    "ingredients": ["Mandelic Acid"],
+    "sizes": [
+      {
+        "id": "t09",
+        "size": 120,
+        "price": 25000.0,
+        "discount": 1300,
+        "stock": 40,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  },
+  {
+    "name": "Paula's Choice 2% BHA Liquid Exfoliant (Alt)",
+    "slug": "paulas-choice-2-bha-liquid-exfoliant-alt",
+    "description": "Classic BHA liquid for blackheads and acne.",
+    "brandId": "j5743zkf9j5rchb04jnfwn4x5n7hhr57",
+    "categories": ["k9740bhmgsd1r47n2tqzjvncxd7q647t"],
+    "images": ["https://picsum.photos/seed/toner10/300/300"],
+    "promoImage": "https://picsum.photos/seed/toner10p/600/400",
+    "createdAt": 1757353010,
+    "isNew": false,
+    "isBestseller": true,
+    "isTrending": false,
+    "discount": 2000,
+    "routineId": null,
+    "stockAlertEmails": [],
+    "canBeInRoutine": true,
+    "skinType": ["all"],
+    "concerns": ["acne", "blackheads"],
+    "ingredients": ["Salicylic Acid"],
+    "sizes": [
+      {
+        "id": "t10",
+        "size": 118,
+        "price": 36000.0,
+        "discount": 2000,
+        "stock": 58,
+        "unit": "ml",
+        "currency": "NGN"
+      }
+    ],
+    "hasAlcohol": false,
+    "hasFragrance": false
+  }
+]

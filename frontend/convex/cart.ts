@@ -8,7 +8,7 @@ export const createCart = mutation({
     userId: v.string(),
     productId: v.id("products") || v.string(),
     quantity: v.number(),
-    sizeId: v.optional(v.string()),
+    sizeId: v.string(),
   },
   handler: async (ctx, { userId, productId, quantity, sizeId }) => {
     try {
@@ -239,7 +239,7 @@ export const bulkAddCartItems = mutation({
       v.object({
         productId: v.id("products") || v.string(),
         quantity: v.number(),
-        sizeId: v.optional(v.string()),
+        sizeId: v.string(),
       })
     ),
   },
@@ -256,7 +256,7 @@ export const bulkAddCartItems = mutation({
       // 1) Normalize input: merge duplicates (same productId + sizeId)
       const mergedMap = new Map<
         string,
-        { productId: any; sizeId?: string; quantity: number }
+        { productId: any; sizeId: string; quantity: number }
       >();
       for (const it of items) {
         const key = `${String(it.productId)}::${it.sizeId ?? ""}`;
@@ -289,7 +289,7 @@ export const bulkAddCartItems = mutation({
       }> = [];
       type LinePlan = {
         productId: any;
-        sizeId?: string;
+        sizeId: string;
         requested: number;
         available: number;
         unitPrice: number;

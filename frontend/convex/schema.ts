@@ -42,6 +42,34 @@ export const RefundItemStatus = v.union(
   v.literal("failed")
 );
 
+export const SkinType = v.union(
+  v.literal("normal"),
+  v.literal("oily"),
+  v.literal("dry"),
+  v.literal("combination"),
+  v.literal("sensitive"),
+  v.literal("mature"),
+  v.literal("acne-prone"),
+  v.literal("all")
+);
+
+export const SkinConcern = v.union(
+  v.literal("acne"),
+  v.literal("blackheads"),
+  v.literal("hyperpigmentation"),
+  v.literal("uneven-tone"),
+  v.literal("dryness"),
+  v.literal("oiliness"),
+  v.literal("redness"),
+  v.literal("sensitivity"),
+  v.literal("fine-lines"),
+  v.literal("wrinkles"),
+  v.literal("loss-of-firmness"),
+  v.literal("dullness"),
+  v.literal("sun-damage"),
+  v.literal("all")
+);
+
 export default defineSchema({
   users: defineTable({
     userId: v.string(),
@@ -65,37 +93,39 @@ export default defineSchema({
 
   products: defineTable({
     name: v.string(),
-    slug: v.optional(v.string()),
+    slug: v.string(),
     description: v.string(),
-    price: v.number(),
-    stock: v.number(),
-    brandId: v.optional(v.id("brands")),
-    categories: v.optional(v.array(v.id("categories"))), // facewash, toner, serum
+    // price: v.number(),
+    // stock: v.number(),
+    brandId: v.id("brands"),
+    categories: v.array(v.id("categories")), // facewash, toner, serum
     images: v.array(v.string()),
     promoImage: v.optional(v.string()),
     createdAt: v.number(),
-    isNew: v.optional(v.boolean()),
-    isBestseller: v.optional(v.boolean()),
-    isTrending: v.optional(v.boolean()),
-    discount: v.optional(v.number()),
-    ingredients: v.optional(v.number()),
-    skinType: v.optional(v.array(v.string())),
-    routineId: v.optional(v.string()),
-    fragranceFree: v.optional(v.boolean()),
-    alcoholFree: v.optional(v.boolean()),
+    // let us calculate this ones
+    isNew: v.boolean(), //default to true for newly created
+    isBestseller: v.boolean(), // false initially
+    isTrending: v.boolean(), // false initially
+    discount: v.number(), // 0 if not set
+    routineId: v.optional(v.string()), // whats this for again?
+    hasFragrance: v.boolean(),
+    hasAlcohol: v.boolean(),
     stockAlertEmails: v.optional(v.array(v.string())),
+    canBeInRoutine: v.boolean(),
+    skinType: v.array(SkinType),
+    concerns: v.array(SkinConcern),
+    ingredients: v.array(v.string()),
 
-    sizes: v.optional(
-      v.array(
-        v.object({
-          id: v.string(),
-          size: v.number(),
-          price: v.number(),
-          discount: v.optional(v.number()),
-          stock: v.number(),
-          unit: v.string(),
-        })
-      )
+    sizes: v.array(
+      v.object({
+        id: v.string(),
+        size: v.number(),
+        price: v.number(),
+        discount: v.number(),
+        stock: v.number(),
+        unit: v.string(),
+        currency: v.string(),
+      })
     ),
   }),
 
@@ -110,19 +140,19 @@ export default defineSchema({
   carts: defineTable({
     userId: v.string(),
     productId: v.id("products"),
-    sizeId: v.optional(v.string()), // For size variants
+    sizeId: v.string(), // For size variants
     quantity: v.number(),
     createdAt: v.number(),
     recommended: v.optional(v.boolean()), // default to false
   }),
 
   // find user cart with token to implement pay for others feature
-  cartSessions: defineTable({
-    userId: v.string(),
-    token: v.string(),
-    expiresAt: v.optional(v.number()),
-    createdAt: v.number(),
-  }),
+  // cartSessions: defineTable({
+  //   userId: v.string(),
+  //   token: v.string(),
+  //   expiresAt: v.optional(v.number()),
+  //   createdAt: v.number(),
+  // }),
 
   wishlists: defineTable({
     userId: v.string(),
@@ -171,7 +201,6 @@ export default defineSchema({
     // access token for sharing order details
     token: v.optional(v.string()),
     tokenExpiry: v.optional(v.number()),
-
     // Fulfillment details
     fulfillmentStatus: v.optional(FulfillmentStatus),
     shortages: v.optional(
@@ -273,7 +302,7 @@ export default defineSchema({
 
   categories: defineTable({
     name: v.string(),
-    slug: v.optional(v.string()), // for SEO-friendly URLs
+    slug: v.string(), // for SEO-friendly URLs
     description: v.optional(v.string()),
     image: v.optional(v.string()), // category image for banners
     createdAt: v.number(),

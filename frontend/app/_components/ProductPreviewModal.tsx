@@ -18,7 +18,7 @@ export function ProductPreviewModal({
   product: Product;
   onClose?: () => void;
 }) {
-  const [selectedSize, setSelectedSize] = useState(product.sizes?.at(0));
+  const [selectedSize, setSelectedSize] = useState(product.sizes.at(0));
   const [isAdding, setIsAdding] = useState(false);
   const { user } = useUser();
   const addToCart = useMutation(api.cart.createCart);
@@ -38,9 +38,10 @@ export function ProductPreviewModal({
       console.log(user, "This is the user");
 
       if (!user._id) return;
+      if (!selectedSize?.id) return;
 
       const res = await addToCart({
-        sizeId: selectedSize?.id,
+        sizeId: selectedSize.id,
         userId: user._id,
         productId: product._id as Id<"products">,
         quantity,
