@@ -13,15 +13,28 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { api, internal } from "./_generated/api";
-import { Country, OrderStatus, ReferenceStatus } from "./schema";
+import { Country, ReferenceStatus } from "./schema";
 import { Id } from "./_generated/dataModel";
 import { Doc } from "./_generated/dataModel";
-import { generateToken } from "./_utils/utils";
+import { generateToken } from "./_utils/internalUtils";
 
 /**
  * Verify Paystack payment using reference and expected amount.
  * Returns { success, data } where success indicates verified and data is the raw API response.
  */
+type PendingAction = {
+  id: string;
+  prompt: string;
+  status: "pending" | "completed" | "dismissed";
+  type: "create_routine" | "update_routine";
+  data: {
+    productsToadd?: string[]; // or Id<"products">[] if you're using Convex Id type
+    routineId?: string;
+  };
+  createdAt: number;
+  expiresAt?: number;
+};
+
 async function verifyPaystackPayment(
   reference: string,
   expectedAmount: number
@@ -105,8 +118,8 @@ export const createOrder = mutation({
     }
 
     const discrepancies: Array<{
-      cartId: string;
-      productId: string;
+      cartId: Id<"carts">;
+      productId: Id<"products">;
       reason: string;
     }> = [];
 
@@ -124,9 +137,9 @@ export const createOrder = mutation({
         const size = product.sizes[sizeIndex]!;
         if (item.quantity > size.stock) {
           discrepancies.push({
-            cartId: (item as any)._id,
-            productId: (product as any)._id,
-            reason: `Only ${size.stock} left in stock`,
+            cartId: item._id,
+            productId: product._id,
+            reason: `Ordered ${item.quantity}, only ${size.stock} left in stock`,
           });
         } else {
           const price = (size.price || 0) - (size.discount || 0);
@@ -236,12 +249,23 @@ export const createOrderReference = mutation({
       return { success: false, message: "Forbidden", statusCode: 403 };
     }
     await ctx.db.patch(orderId, { status: "pending" });
-    await ctx.db.insert("orderReferences", {
-      orderId: order._id,
-      reference,
-      status: "pending",
-      createdAt: Date.now(),
-    });
+
+    // Idempotently create reference: avoid duplicates
+    const existingRef = await ctx.db
+      .query("orderReferences")
+      .withIndex("by_reference", (q) => q.eq("reference", reference))
+      .first();
+    if (!existingRef) {
+      await ctx.db.insert("orderReferences", {
+        orderId: order._id,
+        reference,
+        status: "pending",
+        createdAt: Date.now(),
+      });
+    } else if (existingRef.status === "pending") {
+      // ensure it's pending; otherwise, leave as-is
+      await ctx.db.patch(existingRef._id, { status: "pending" });
+    }
     await ctx.db.patch(orderId, {
       paymentVerifyStatus: "pending",
       paymentVerifyAttempts: 0,
@@ -270,6 +294,7 @@ export const completeOrder = internalMutation({
       } as const;
     }
     const order = await ctx.db.get(ref.orderId);
+
     // 1) Look up order by payment reference
 
     if (!order) {
@@ -549,11 +574,22 @@ export const completeOrder = internalMutation({
       // refundDue: 0,
     } as any);
 
+    // Clear the user's cart (synchronously) to finalize checkout
     const userCartItems = await ctx.db
       .query("carts")
       .filter((q) => q.eq(q.field("userId"), order.userId))
       .collect();
     await Promise.all(userCartItems.map((ci) => ctx.db.delete(ci._id)));
+
+    // Defer heavier post-completion side effects (building pendingActions, etc.)
+    // Run shortly after commit without blocking the mutation
+    await ctx.scheduler.runAfter(
+      0,
+      internal.order.postCompleteOrderSideEffects,
+      {
+        orderId: order._id,
+      }
+    );
 
     return {
       success: true,
@@ -1447,5 +1483,196 @@ export const _listRefundEligibleOrders = internalQuery({
 
     const sliced = limit ? eligible.slice(0, limit) : eligible;
     return sliced.map((o: any) => o._id as Id<"orders">);
+  },
+});
+
+// --- Helper queries and mutation for postCompleteOrderSideEffects ---
+export const _getUserByExternalId = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+  },
+});
+
+export const _getProductById = internalQuery({
+  args: { productId: v.id("products") },
+  handler: async (ctx, { productId }) => {
+    return (await ctx.db.get(productId)) as Doc<"products"> | null;
+  },
+});
+
+export const _getCategoryById = internalQuery({
+  args: { categoryId: v.id("categories") },
+  handler: async (ctx, { categoryId }) => {
+    return (await ctx.db.get(categoryId)) as Doc<"categories"> | null;
+  },
+});
+
+export const _appendUserPendingAction = internalMutation({
+  args: {
+    userDocId: v.id("users"),
+    action: v.any(),
+  },
+  handler: async (ctx, { userDocId, action }) => {
+    const doc = await ctx.db.get(userDocId);
+    if (!doc) return;
+    const existing = Array.isArray((doc as any).pendingActions)
+      ? (doc as any).pendingActions
+      : [];
+    await ctx.db.patch(userDocId, {
+      pendingActions: [...existing, action],
+    } as any);
+  },
+});
+
+export const postCompleteOrderSideEffects = internalAction({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, { orderId }) => {
+    const order: Doc<"orders"> | null = await ctx.runQuery(
+      internal.order._getOrderById,
+      { orderId }
+    );
+    console.log("postcompleteordersideeffect");
+    try {
+      if (!order) return;
+
+      console.log(order, "this is order");
+
+      // Look up the user document by external userId (not the Convex _id)
+      const userDoc = order?.userId
+        ? await ctx.runQuery(internal.order._getUserByExternalId, {
+            userId: order.userId,
+          })
+        : null;
+      if (!userDoc) return;
+
+      // Load products from the order items, not from cart (cart is already cleared)
+      const productDocsRaw = await Promise.all(
+        order.items.map((it) =>
+          ctx.runQuery(internal.order._getProductById, {
+            productId: it.productId,
+          })
+        )
+      );
+      const products: Doc<"products">[] = productDocsRaw.filter(
+        (p): p is Doc<"products"> => p !== null
+      );
+
+      // Build category map
+      const allCategoryIds = Array.from(
+        new Set(products.flatMap((p) => p.categories as Id<"categories">[]))
+      );
+      const categoryDocsRaw = await Promise.all(
+        allCategoryIds.map((cid) =>
+          ctx.runQuery(internal.order._getCategoryById, { categoryId: cid })
+        )
+      );
+      const categoryMap = new Map<Id<"categories">, Doc<"categories">>(
+        categoryDocsRaw
+          .filter((c): c is Doc<"categories"> => c !== null)
+          .map((c) => [c._id as Id<"categories">, c])
+      );
+
+      // Enrich products with populated categories
+      const enriched = products.map((p) => ({
+        ...p,
+        categories: (p.categories as Id<"categories">[])
+          .map((cid) => categoryMap.get(cid) || null)
+          .filter((c): c is Doc<"categories"> => c !== null),
+      }));
+
+      // Checks
+      const hasCategoryBySlug = (slug: string) =>
+        enriched.some((prod) =>
+          prod.categories.some(
+            (c) => (c.slug || c.name)?.toLowerCase() === slug
+          )
+        );
+
+      const productCanBeInRoutine = enriched.some(
+        (prod) => prod.canBeInRoutine
+      );
+      const hasCoreProducts = ["moisturiser", "cleanser", "sunscreen"].every(
+        (s) => hasCategoryBySlug(s)
+      );
+
+      // TODO: Replace with actual routine lookup per user
+      const hasRoutine = false;
+
+      // Create action to create a brand new routine if user has no routine but core products available
+      // Todo
+      // productCanBeInRoutine dosent work best this way. Fix later
+      if (!hasRoutine && productCanBeInRoutine && hasCoreProducts) {
+        console.log("here in create routine pending action");
+        const productIds = enriched.map((p) => p._id);
+        const action: PendingAction = {
+          id: generateToken(),
+          prompt:
+            "Would you like us to help you create a skincare routine with your recent purchase?",
+          status: "pending",
+          type: "create_routine",
+          data: { productsToadd: productIds as any },
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        };
+
+        console.log("action created");
+        await ctx.runMutation(internal.order._appendUserPendingAction, {
+          userDocId: userDoc._id,
+          action: action as any,
+        });
+      }
+
+      // Suggest complementary items to add to existing routine
+      const CORE = new Set(["moisturiser", "cleanser", "sunscreen"]);
+      const complementary = enriched.filter(
+        (prod) =>
+          prod.canBeInRoutine &&
+          !prod.categories.some((c) =>
+            CORE.has((c.slug || c.name).toLowerCase())
+          )
+      );
+
+      console.log(complementary, "This is complementary product");
+
+      if (hasRoutine && complementary.length > 1) {
+        console.log("here in updating routine pending action");
+        const names = complementary.map((p) => p.name);
+        const preview = names.slice(0, 2).join(", ");
+        const extra = Math.max(0, names.length - 2);
+        const prompt =
+          extra > 0
+            ? `Would you like us to add ${preview} and ${extra} other product(s) to your routine?`
+            : `Would you like us to add ${preview} to your routine?`;
+
+        const action: PendingAction = {
+          id: generateToken(),
+          prompt,
+          status: "pending",
+          type: "update_routine",
+          data: {
+            productsToadd: enriched.map((p) => p._id) as any,
+            routineId: "id_",
+          },
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        };
+        await ctx.runMutation(internal.order._appendUserPendingAction, {
+          userDocId: userDoc._id,
+          action: action as any,
+        });
+      }
+    } catch (err: any) {
+      console.error("postCompleteOrderSideEffects failed", {
+        orderId,
+        message: err?.message,
+        stack: err?.stack,
+      });
+      // swallow error to avoid scheduler retries
+      return;
+    }
   },
 });

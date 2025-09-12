@@ -1,0 +1,66 @@
+export const AHA_BHA_SET = new Set<string>([
+  "glycolic_acid",
+  "lactic_acid",
+  "mandelic_acid",
+  "tartaric_acid",
+  "citric_acid",
+  "malic_acid",
+  "salicylic_acid",
+]);
+
+export const DRYING_ALCOHOLS = new Set<string>([
+  // explicit names / INCI forms
+  "alcohol_denat",
+  "denatured`_alcohol",
+  "denat",
+  "ethanol",
+  "ethyl_alcohol",
+  "ethanol_denat",
+  "ethanol_(denat)",
+  "denatured_ethanol",
+  "isopropyl_alcohol",
+  "isopropanol",
+  "isopropyl_alcohol",
+  "2-propanol",
+  "propan-2-ol",
+  "isopropanol_denat",
+  "methanol",
+  "methyl_alcohol",
+  "benzyl_alcohol",
+  // SD alcohol variants (we also cover via regex but include common textual forms)
+  "sd_alcohol",
+  "sd_alcohol_40",
+  "sd_alcohol_40_denat",
+  "sd_alcohol_38",
+  "sd_alcohol_39",
+  "sd_alcohol_40_denat",
+  "sd_alcohol_40_(denat)",
+  "sd_alcohol_40",
+  "sd_alcohol_40_denat",
+  // other textual variants people sometimes use
+  "alcohol_(denat.)",
+  "alcohol_denat",
+]);
+
+export const FATTY_ALCOHOLS = new Set<string>([
+  "cetearyl alcohol",
+  "cetearyl_alcohol",
+  "cetyl alcohol",
+  "cetyl_alcohol",
+  "stearyl alcohol",
+  "stearyl_alcohol",
+  "cetostearyl alcohol",
+  "cetostearyl_alcohol",
+  "cetyl_stearyl_alcohol",
+  "behenyl alcohol",
+  "behenyl_alcohol",
+  "myristyl alcohol",
+  "myristyl_alcohol",
+  "lauryl alcohol",
+  "lauryl_alcohol",
+  "arachidyl alcohol",
+  "arachidyl_alcohol",
+  "isocetyl alcohol",
+  "isocetyl_alcohol",
+  "octyldodecanol", // common fatty alcohol-like emollient
+]);

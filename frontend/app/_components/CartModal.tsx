@@ -3,16 +3,19 @@ import { Box } from "@chakra-ui/react";
 import ClipLoader from "react-spinners/ClipLoader";
 import { useNavSticky } from "../_contexts/Sticky";
 import useUserCart from "../_hooks/useUserCart";
-import { Cart } from "../_utils/types";
+import { Cart, Product } from "../_utils/types";
 import { useUser } from "../_contexts/CreateConvexUser";
 import { X, Minus, Plus } from "lucide-react";
 import { useMutation } from "convex/react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
-import { formatPrice } from "../_utils/utils";
-import { useState } from "react";
+import { formatPrice, hasCategory } from "../_utils/utils";
+import { useMemo, useState } from "react";
 import AppError from "../_utils/appError";
+import { convexQuery } from "@convex-dev/react-query";
+import { useModal } from "./Modal";
 
 const images = [
   "/images/product/good-molecules.webp",
@@ -29,13 +32,14 @@ const images = [
   "/images/product/facefacts-moisturising-gel-cream.webp",
 ];
 
-export default function CartModal() {
+export default function CartModal({ skipped = false }: { skipped?: boolean }) {
   const { user } = useUser();
   const { cart, isPending } = useUserCart(user._id as string);
   const { isSticky } = useNavSticky();
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isInitiating, setIsInitiating] = useState(false);
+  const { open } = useModal();
   const updateCartQuantity = useMutation(api.cart.updateCartQuantity);
   const removeFromCart = useMutation(api.cart.removeFromCart);
   const createOrder = useMutation(api.order.createOrder);
@@ -43,6 +47,22 @@ export default function CartModal() {
   const [orderDiscrepancies, setOrderDiscrepancies] = useState<
     Record<string, string>
   >({});
+
+  // Build a stable list of selected product IDs from the cart
+  const selectedProductIds = useMemo(() => {
+    return (cart || [])
+      .map((item) => item.product?._id)
+      .filter(Boolean) as Id<"products">[];
+  }, [cart]);
+
+  // Prefetch essentials whenever the cart changes (top-level reactive query)
+  const { data: essentials } = useQuery(
+    convexQuery(api.products.getEssentialProducts, {
+      selectedProductIds,
+      perCategory: 10,
+      // fragranceFree: true, // uncomment if you want to force FF
+    })
+  );
 
   const handleUpdateCartQuantity = async function (
     quantity: number,
@@ -76,84 +96,142 @@ export default function CartModal() {
   };
 
   const handleOrder = async function () {
-    //1. initiate the order, get the orderId
-    try {
-      setIsInitiating(true);
-      const res = await createOrder({
-        userId: user._id as string,
-        email: "ruro@email.com",
-        phone: "+2348163136350",
-        address: "123 Main St",
-        city: "Lagos",
-        state: "Lagos",
-        country: "Nigeria",
-        firstName: user.name?.split(" ")[0] || "John",
-        lastName: user.name?.split(" ")[1] || "Doe",
-        companyName: "", // Optional, providing an empty string for dummy data
-        streetAddress: "Apt 4B", // Optional
-        deliveryNote: "Leave at door", // Optional
-      });
+    // Before processing an order lets;
 
-      const orderId = res?.orderId;
+    // 1. We check if the user dosent have a routine
+    // not implemented yet
 
-      const discrepancies = res?.discrepancies;
+    // 2. Check if at least one of the products can be included in a routine
+    // if(cart.) {}
+    console.log(cart);
+    // if (c) {
+    //   toast.error("can be included in routine");
+    //   return;
 
-      const obj: Record<string, string> = {};
+    // }
+    const products = cart
+      .map((item) => item.product)
+      .filter(Boolean) as Product[];
+    if (cart.length < 1) return;
 
-      if (discrepancies)
-        discrepancies.forEach((d: { cartId: string; reason: string }) => {
-          obj[d.cartId] = d.reason;
+    const productCanBeInRoutine = cart.some(
+      (item) => item.product?.canBeInRoutine
+    );
+
+    const hasCoreProducts = ["moisturiser", "cleanser", "sunscreen"].every(
+      (cat) => hasCategory(products, cat)
+    );
+
+    const hasSuggestions = Array.isArray(essentials)
+      ? essentials.length > 0
+      : essentials &&
+        Object.values(essentials).some(
+          (list) => Array.isArray(list) && list.length > 0
+        );
+
+    if (!skipped && productCanBeInRoutine && !hasCoreProducts) {
+      // We already prefetched essentials at the top via useQuery; use it here
+      if (hasSuggestions) {
+        console.log("recommend", essentials);
+        // open a modal and pass `essentials` to suggest items for missing steps
+        open("routine-suggestions");
+        return;
+      } else {
+        // take them to checkout
+      }
+      // If essentials is still loading (undefined) or no suggestions (false), you could optionally fall back
+      console.log("recommend: essentials not ready or none available");
+      return;
+    } else {
+      console.log("checkout");
+      try {
+        setIsInitiating(true);
+        const res = await createOrder({
+          userId: user._id as string,
+          email: "ruro@email.com",
+          phone: "+2348163136350",
+          address: "123 Main St",
+          city: "Lagos",
+          state: "Lagos",
+          country: "Nigeria",
+          firstName: user.name?.split(" ")[0] || "John",
+          lastName: user.name?.split(" ")[1] || "Doe",
+          companyName: "", // Optional, providing an empty string for dummy data
+          streetAddress: "Apt 4B", // Optional
+          deliveryNote: "Leave at door", // Optional
         });
 
-      if (Object.keys(obj).length > 0) setOrderDiscrepancies(obj);
-      // console.log(discrepancies, "This are the discrepancies");
+        const orderId = res?.orderId;
 
-      if (!res.success) throw new AppError(res.message as string);
+        const discrepancies = res?.discrepancies;
 
-      if (!orderId) {
-        throw new AppError("Order ID not found after creation");
-      }
+        const obj: Record<string, string> = {};
 
-      const totalAmount = cart.reduce(
-        (acc, item) => (item.product?.price ?? 0) * (item.quantity ?? 0) + acc,
-        0
-      );
+        if (discrepancies)
+          discrepancies.forEach((d: { cartId: string; reason: string }) => {
+            obj[d.cartId] = d.reason;
+          });
 
-      //2. initiate the payment transaction and get the authorization url
-      const paystackRes = await fetch("/api/paystack/init", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          orderId,
-          userId: user._id,
-          email: "ruro@email.com", // Use user's email for Paystack
-          amount: totalAmount, // Total amount in Naira
-          phone: "2348163136350",
-          fullName: "Olaoluwa Olorede",
-        }),
-      });
+        if (Object.keys(obj).length > 0) setOrderDiscrepancies(obj);
+        // console.log(discrepancies, "This are the discrepancies");
 
-      const paystackData = await paystackRes.json();
+        if (!res.success) throw new AppError(res.message as string);
 
-      if (!paystackRes.ok || !paystackData.success) {
-        throw new AppError(
-          paystackData.message || "Failed to initiate Paystack payment"
+        if (!orderId) {
+          throw new AppError("Order ID not found after creation");
+        }
+
+        const totalAmount = cart.reduce(
+          (acc, item) =>
+            (item.product?.price ?? 0) * (item.quantity ?? 0) + acc,
+          0
         );
+
+        //2. initiate the payment transaction and get the authorization url
+        const paystackRes = await fetch("/api/paystack/init", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            orderId,
+            userId: user._id,
+            email: "ruro@email.com", // Use user's email for Paystack
+            amount: totalAmount, // Total amount in Naira
+            phone: "2348163136350",
+            fullName: "Olaoluwa Olorede",
+          }),
+        });
+
+        const paystackData = await paystackRes.json();
+
+        if (!paystackRes.ok || !paystackData.success) {
+          throw new AppError(
+            paystackData.message || "Failed to initiate Paystack payment"
+          );
+        }
+
+        //3. Redirect user to the authorization url
+        window.location.href = paystackData.authorization_url;
+
+        toast.success("order created successfully");
+      } catch (err) {
+        if (err instanceof AppError) toast.error(err.message);
+        // else if (err instanceof Error) toast.error(err.message);
+        else toast.error("Something went wrong");
+      } finally {
+        setIsInitiating(false);
       }
-
-      //3. Redirect user to the authorization url
-      window.location.href = paystackData.authorization_url;
-
-      toast.success("order created successfully");
-    } catch (err) {
-      if (err instanceof AppError) toast.error(err.message);
-      // else if (err instanceof Error) toast.error(err.message);
-      else toast.error("Something went wrong");
-    } finally {
-      setIsInitiating(false);
     }
+
+    // we are checking if the products have moisturiser, clenser and sunscreen
+    // a list of products that has
+
+    // 3. Check if the products cannot complete a routine
+
+    // 4. Show recommendations to help users complete their routine
+
+    //1. initiate the order, get the orderId
   };
 
   const handleGenerateOrderToken = async function () {

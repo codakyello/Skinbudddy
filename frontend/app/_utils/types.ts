@@ -29,6 +29,15 @@ export type FilterObj = {
   filters: Filter[];
 };
 
+export type Category = {
+  _id?: Id<"categories"> | string;
+  name: string;
+  description?: string;
+  createdAt?: number;
+  slug?: string;
+  image?: string;
+};
+
 export type Product = {
   _id?: Id<"products"> | string; // or Id<"products"> if using Convex
   name?: string;
@@ -47,6 +56,9 @@ export type Product = {
   sizes: Size[];
   slug?: string;
   unit?: string;
+  // Convex returns category ids in DB docs, but queries often populate them.
+  // Allow both to avoid assignment errors at boundaries.
+  categories?: (Id<"categories"> | Category | null)[];
 };
 
 export type Cart = {
@@ -60,7 +72,7 @@ export type Cart = {
   size?: Size | null; // Optional populated size field, if you're including it via query
 
   // Optional populated product field, if you're including it via query
-  product?: Product | null;
+  product: Product | null;
 };
 
 export type Announcement = {

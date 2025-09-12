@@ -70,6 +70,32 @@ export const SkinConcern = v.union(
   v.literal("all")
 );
 
+export const ActionTypes = v.union(
+  v.literal("create_routine"),
+  v.literal("update_routine")
+  // v.literal("create_routine")
+);
+
+export const RoutineStatus = v.union(
+  v.literal("active"),
+  v.literal("archived")
+);
+
+export const DayPeriod = v.union(
+  v.literal("am"),
+  v.literal("pm"),
+  v.literal("either")
+);
+
+export const StepFrequency = v.union(
+  v.literal("daily"),
+  v.literal("every_other_day"),
+  v.literal("weekly"),
+  v.literal("biweekly"),
+  v.literal("monthly"),
+  v.literal("as_needed")
+);
+
 export default defineSchema({
   users: defineTable({
     userId: v.string(),
@@ -77,6 +103,25 @@ export default defineSchema({
     clerkId: v.optional(v.string()),
     name: v.optional(v.string()),
     phone: v.optional(v.string()),
+
+    // pending actions would usually show up as a modal during user session visits
+    pendingActions: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          prompt: v.string(),
+          status: v.union(
+            v.literal("pending"),
+            v.literal("completed"),
+            v.literal("dismissed")
+          ),
+          type: ActionTypes,
+          data: v.any(),
+          createdAt: v.number(),
+          expiresAt: v.optional(v.number()),
+        })
+      )
+    ),
     // after the first order, we will save the address, city, state, zip, country, companyName, firstName, lastName to the user
     address: v.optional(v.string()),
     city: v.optional(v.string()),
@@ -115,6 +160,7 @@ export default defineSchema({
     skinType: v.array(SkinType),
     concerns: v.array(SkinConcern),
     ingredients: v.array(v.string()),
+    isPrescription: v.optional(v.boolean()),
 
     sizes: v.array(
       v.object({
@@ -285,18 +331,83 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_orderId", ["orderId"]),
 
+  routines: defineTable({
+    userId: v.string(), // external user id
+    name: v.string(),
+    status: RoutineStatus, // active | archived
+    version: v.number(), // increment on change
+    previousVersionId: v.optional(v.id("routines")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+
+    // Ordered routine steps with AM/PM and frequency
+    steps: v.array(
+      v.object({
+        id: v.string(), // client uid (e.g., nanoid)
+        order: v.number(), // order within its period
+        categorySlug: v.string(), // e.g., "cleanser", "serum"
+        primaryProductId: v.id("products"),
+        alternateProductIds: v.optional(v.array(v.id("products"))),
+        period: DayPeriod, // am | pm | either
+        frequency: StepFrequency, // daily, weekly, etc.
+        notes: v.optional(v.string()),
+      })
+    ),
+
+    // Safety rails & constraints respected by editor/engine
+    constraints: v.object({
+      maxSerumsPerSession: v.number(), // e.g., 2
+      requireSunscreenForAM: v.boolean(), // e.g., true
+      conflictRules: v.optional(v.array(v.string())),
+    }),
+
+    // Snapshot of skin context at creation (for explainability)
+    skinSnapshot: v.object({
+      types: v.array(SkinType),
+      concerns: v.array(SkinConcern),
+      notes: v.optional(v.string()),
+    }),
+
+    // Provenance
+    source: v.object({
+      createdFromOrderId: v.optional(v.id("orders")),
+      createdBy: v.optional(v.string()), // "ai" | "user" | "blend"
+    }),
+
+    // Lightweight metrics for UI
+    metrics: v.object({
+      usageCount: v.number(),
+      lastUsedAt: v.optional(v.number()),
+    }),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_status", ["status"]),
+
+  routineRuns: defineTable({
+    routineId: v.id("routines"),
+    userId: v.string(),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    period: DayPeriod,
+    stepOutcomes: v.optional(
+      v.array(
+        v.object({
+          stepId: v.string(),
+          productId: v.id("products"),
+          status: v.union(v.literal("done"), v.literal("skipped")),
+          note: v.optional(v.string()),
+        })
+      )
+    ),
+  })
+    .index("by_routineId", ["routineId"])
+    .index("by_userId", ["userId"]),
+
   reviews: defineTable({
     userId: v.string(),
     productId: v.id("products"),
     rating: v.number(), // 1-5
     comment: v.optional(v.string()),
-    createdAt: v.number(),
-  }),
-
-  routines: defineTable({
-    userId: v.string(),
-    name: v.string(),
-    productIds: v.array(v.id("products")),
     createdAt: v.number(),
   }),
 

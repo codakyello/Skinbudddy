@@ -42,7 +42,11 @@ export default function ProductList() {
         {!error &&
           !isPending &&
           products?.map((product, i) => (
-            <ProductCard selectClassName="bg-[#fff]" key={i} product={product} />
+            <ProductCard
+              selectClassName="bg-[#fff]"
+              key={i}
+              product={product}
+            />
           ))}
 
         {error && (

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
+  console.log(body);
   // {
   //   skinConcern: body.skinConcern,
   //   skinType: "oily",
@@ -12,6 +13,7 @@ export async function POST(req: NextRequest) {
   // }
   try {
     const result = await fetchAction(api.products.recommend, body);
+    // const result = await fetchQuery(api.products.getEssentialProducts, body);
 
     // const res = await fetchMutation(api.products.seedProductsFromFile);
 

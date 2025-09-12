@@ -2,14 +2,17 @@
 import { Box } from "@chakra-ui/react";
 import { ModalOpen, ModalWindow } from "./Modal";
 import CartModal from "./CartModal";
+import { RoutineSuggestionsModal } from "./RoutineSuggestionsModal";
 import AuthModal from "./AuthModal";
 import Link from "next/link";
 import useUserCart from "../_hooks/useUserCart";
 import { useNavSticky } from "../_contexts/Sticky";
 import { useUser } from "../_contexts/CreateConvexUser";
+import { useState } from "react";
 
 export default function NavBar() {
   const { isSticky } = useNavSticky();
+  const [skipped, SetSkipped] = useState(false);
 
   const { user } = useUser();
 
@@ -22,10 +25,14 @@ export default function NavBar() {
       return acc + item.quantity;
     }, 0) || 0;
 
+  const handleSkip = function () {
+    SetSkipped(true);
+  };
+
   return (
     <>
       <nav
-        className={`group h-[8rem] hover:bg-white w-[100%] top-0 left-0 z-[99] px-[5.6rem] grid grid-cols-3 gap-x-[1.5rem] items-center transition-all duration-500 text-[#000] ${
+        className={`group h-[8rem] hover:bg-white w-[100%] top-0 left-0 z-[9] px-[5.6rem] grid grid-cols-3 gap-x-[1.5rem] items-center transition-all duration-500 text-[#000] ${
           isSticky
             ? " fixed top-0 left-0 w-full bg-white text-black"
             : "absolute"
@@ -209,7 +216,16 @@ export default function NavBar() {
         name="cart"
         position="right"
       >
-        <CartModal />
+        <CartModal skipped={skipped} />
+      </ModalWindow>
+
+      <ModalWindow
+        listenCapturing={true}
+        className="bg-black/25 z-[9]"
+        name="routine-suggestions"
+        position="center"
+      >
+        <RoutineSuggestionsModal handleSkip={handleSkip} />
       </ModalWindow>
     </>
   );

@@ -1,4 +1,4 @@
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 export const createUser = mutation({
@@ -78,5 +78,78 @@ export const transferGuestDataToUser = mutation({
     if (guestUser) {
       await ctx.db.delete(guestUser._id);
     }
+  },
+});
+
+// Get pending actions for a user by external userId
+export const getPendingActions = query({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    if (!userId)
+      return { success: false, actions: [], statusCode: 400 } as const;
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+
+    const raw = Array.isArray((user as any)?.pendingActions)
+      ? (user as any).pendingActions
+      : [];
+
+    const now = Date.now();
+    const actions = raw
+      .filter((a: any) => (a?.status ?? "pending") === "pending")
+      .filter(
+        (a: any) => typeof a?.expiresAt === "undefined" || a.expiresAt >= now
+      )
+      .sort(
+        (a: any, b: any) =>
+          Number(b?.createdAt ?? 0) - Number(a?.createdAt ?? 0)
+      );
+
+    return { success: true, actions } as const;
+  },
+});
+
+// Update the status of a specific pending action identified by action id
+export const setPendingActionStatus = mutation({
+  args: {
+    userId: v.string(),
+    actionId: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("completed"),
+      v.literal("dismissed")
+    ),
+  },
+  handler: async (ctx, { userId, actionId, status }) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+
+    if (!user)
+      return {
+        success: false,
+        statusCode: 404,
+        message: "User not found",
+      } as const;
+
+    const actions: Array<any> = Array.isArray((user as any).pendingActions)
+      ? (user as any).pendingActions
+      : [];
+    const idx = actions.findIndex((a) => String(a?.id) === actionId);
+    if (idx === -1)
+      return {
+        success: false,
+        statusCode: 404,
+        message: "Action not found",
+      } as const;
+
+    actions[idx] = { ...(actions[idx] || {}), status };
+    await ctx.db.patch(user._id, { pendingActions: actions } as any);
+
+    return { success: true } as const;
   },
 });

@@ -1,12 +1,13 @@
 // import { captureSentryError } from "./_utils/sentry";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
 
 // Create or update cart item
 export const createCart = mutation({
   args: {
     userId: v.string(),
-    productId: v.id("products") || v.string(),
+    productId: v.id("products"),
     quantity: v.number(),
     sizeId: v.string(),
   },
@@ -35,17 +36,34 @@ export const createCart = mutation({
       if (!size) throw new Error("Size not found");
 
       if (existingCartItem) {
-        if (size?.stock >= quantity && size.stock >= 1)
-          if (quantity > existingCartItem.quantity) {
-            await ctx.db.patch(existingCartItem._id, {
-              quantity,
-            });
-          } else {
-            if (existingCartItem.quantity + quantity <= size.stock)
-              await ctx.db.patch(existingCartItem._id, {
-                quantity: existingCartItem.quantity + quantity,
-              });
-          }
+        const available = size.stock ?? 0;
+        if (available < 1)
+          return {
+            success: false,
+            message: `Only ${available} left in stock`,
+            statusCode: 400,
+          };
+
+        // If the incoming quantity is greater than existing, treat as absolute set
+        if (quantity > existingCartItem.quantity) {
+          if (quantity > available)
+            return {
+              success: false,
+              message: `Only ${available} left in stock`,
+              statusCode: 400,
+            };
+          await ctx.db.patch(existingCartItem._id, { quantity });
+        } else {
+          // Otherwise, treat as incremental add
+          const newQty = existingCartItem.quantity + quantity;
+          if (newQty > available)
+            return {
+              success: false,
+              message: `Adding ${quantity} exceeds available (${available}) when combined with existing (${existingCartItem.quantity}).`,
+              statusCode: 400,
+            };
+          await ctx.db.patch(existingCartItem._id, { quantity: newQty });
+        }
         return { success: true, message: "Cart item updated", statusCode: 200 };
       } else {
         if (!size || size.stock < 1 || quantity > size.stock) {
@@ -111,6 +129,19 @@ export const getUserCart = query({
           const size =
             product?.sizes?.find((s) => s.id === item.sizeId) || null;
 
+          const categories =
+            product?.categories &&
+            Array.isArray(product.categories) &&
+            product.categories.length
+              ? (
+                  await Promise.all(
+                    product.categories.map((catId: Id<"categories">) =>
+                      ctx.db.get(catId)
+                    )
+                  )
+                ).filter(Boolean)
+              : [];
+
           const price = (size?.price || 0) - (size?.discount || 0);
 
           return {
@@ -118,11 +149,12 @@ export const getUserCart = query({
             product: product
               ? {
                   ...product,
-                  originalPrice: size?.price,
+                  originalPrice: size?.price, // price before discount
                   price,
                   size: size?.size,
                   unit: size?.unit,
                   stock: size?.stock,
+                  categories,
                 }
               : null,
           };
@@ -168,7 +200,7 @@ export const updateCartQuantity = mutation({
       if (quantity <= 0) {
         // Remove item if quantity is zero
         await ctx.db.delete(cartId);
-        return { removed: true, cartId };
+        return { success: true, removed: true, cartId };
       }
 
       if (quantity > size.stock) {
@@ -237,7 +269,7 @@ export const bulkAddCartItems = mutation({
     userId: v.string(),
     items: v.array(
       v.object({
-        productId: v.id("products") || v.string(),
+        productId: v.id("products"),
         quantity: v.number(),
         sizeId: v.string(),
       })

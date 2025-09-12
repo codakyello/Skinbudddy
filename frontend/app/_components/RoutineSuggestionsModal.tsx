@@ -1,0 +1,241 @@
+"use client";
+import { Box } from "@chakra-ui/react";
+import { IoCloseOutline } from "react-icons/io5";
+import { useUser } from "../_contexts/CreateConvexUser";
+import useUserCart from "../_hooks/useUserCart";
+import { useEffect, useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { convexQuery } from "@convex-dev/react-query";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+import { useMutation } from "convex/react";
+import { toast } from "sonner";
+import AppError from "../_utils/appError";
+import { formatPrice } from "../_utils/utils";
+import { useModal } from "./Modal";
+import { Product, Size, Brand } from "../_utils/types";
+
+// type Essentials =
+//   | false
+//   | {
+//       cleanser?: any[];
+//       moisturizer?: any[];
+//       sunscreen?: any[];
+//     };
+
+type EssentialsProduct = Product & { brand?: Brand | null };
+
+export function RoutineSuggestionsModal({
+  onClose,
+  handleSkip,
+}: {
+  onClose?: () => void;
+  handleSkip?: () => void;
+}) {
+  const { user } = useUser();
+  const { cart } = useUserCart(user._id as string);
+  // Build a stable list of selected product IDs from the cart
+  const selectedProductIds = useMemo(() => {
+    return (cart || [])
+      .map((item) => item.product?._id)
+      .filter(Boolean) as Id<"products">[];
+  }, [cart]);
+  const { data: essentials } = useQuery(
+    convexQuery(api.products.getEssentialProducts, {
+      selectedProductIds,
+      perCategory: 10,
+    })
+  );
+
+  const addToCart = useMutation(api.cart.createCart);
+  const { open } = useModal();
+  const [selectedSizeByProduct, setSelectedSizeByProduct] = useState<
+    Record<string, string | undefined>
+  >({});
+  const [addingId, setAddingId] = useState<string | null>(null);
+
+  const resolveSelectedSizeId = (p: EssentialsProduct) => {
+    const key = String(p?._id ?? "");
+    const explicit = selectedSizeByProduct[key];
+    if (explicit) return explicit;
+    const first = Array.isArray(p?.sizes) ? p.sizes[0]?.id : undefined;
+    return first;
+  };
+
+  const handleSizeChange = (pid: string, sid: string) => {
+    setSelectedSizeByProduct((m) => ({ ...m, [pid]: sid }));
+  };
+
+  const handleAdd = async (p: EssentialsProduct) => {
+    try {
+      const productId = String(p?._id ?? "");
+      const sizeId = resolveSelectedSizeId(p);
+      if (!user?._id) throw new AppError("You need to be signed in");
+      if (!productId || !sizeId) throw new AppError("Size unavailable");
+      setAddingId(productId);
+      const res = await addToCart({
+        sizeId,
+        userId: user._id,
+        productId: p._id as Id<"products">,
+        quantity: 1,
+      });
+      if (!res?.success) throw new AppError(res?.message as string);
+      toast.success("Added to cart");
+    } catch (err) {
+      if (err instanceof AppError) toast.error(err.message);
+      else toast.error("Something went wrong");
+    } finally {
+      setAddingId(null);
+    }
+  };
+
+  const sections = [
+    { key: "cleanser", title: "Cleanser" },
+    { key: "moisturizer", title: "Moisturizer" },
+    { key: "sunscreen", title: "Sunscreen" },
+  ] as const;
+
+  useEffect(() => {
+    if (!essentials) open("cart");
+  }, [essentials, open]);
+
+  if (essentials === false) return null;
+  if (!essentials) return null;
+  return (
+    <Box className="relative z-[20] w-[90rem] bg-white rounded-[1.2rem] shadow-2xl overflow-hidden">
+      <button
+        onClick={() => {
+          handleSkip?.();
+          open("cart");
+        }}
+        className="absolute top-[1.2rem] right-[1.2rem] p-[0.6rem] rounded hover:bg-gray-100"
+        aria-label="Close"
+      >
+        <IoCloseOutline className="h-[3rem] w-[3rem]" />
+      </button>
+
+      <Box className="p-[2.4rem] border-b border-gray-200">
+        <h3 className="text-[2rem] font-semibold">Complete your routine</h3>
+        <p className="text-[1.4rem] text-gray-600 mt-[0.6rem]">
+          You’re missing some essentials. Here are quick picks to round out a
+          basic routine.
+        </p>
+      </Box>
+
+      <Box className="max-h-[70vh] overflow-auto p-[2rem] grid gap-[2rem]">
+        {sections.map((s) => {
+          const items = essentials?.[s.key];
+          if (!items || items.length === 0) return null;
+
+          return (
+            <Box key={s.key} className="">
+              <h4 className="text-[1.6rem] font-medium mb-[1.2rem]">
+                {s.title}
+              </h4>
+              <Box className="grid gap-[1.6rem] sm:grid-cols-2 md:grid-cols-3">
+                {items.slice(0, 6).map((p: EssentialsProduct) => {
+                  const pid = String(p?._id ?? "");
+                  const sizes: Size[] = Array.isArray(p?.sizes) ? p.sizes : [];
+                  const selId = resolveSelectedSizeId(p);
+                  const sel = sizes.find((s: Size) => s?.id === selId);
+                  const basePrice = sel?.price ?? 0;
+                  const discount = sel?.discount ?? 0;
+                  const isDiscounted = discount > 0;
+                  const finalPrice = basePrice - discount;
+                  return (
+                    <Box
+                      key={pid}
+                      className="flex flex-col rounded-[1.2rem] overflow-hidden border border-gray-200 bg-white"
+                    >
+                      <div className="w-full aspect-square bg-gray-50 flex items-center justify-center overflow-hidden">
+                        {Array.isArray(p?.images) && p.images[0] ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={p.images[0]}
+                            alt={p?.name ?? "Product"}
+                            className="w-full h-full object-contain"
+                          />
+                        ) : (
+                          <span className="text-gray-300 text-[1.6rem]">—</span>
+                        )}
+                      </div>
+                      <div className="p-[1.2rem] flex flex-col gap-[0.8rem]">
+                        <p className="text-[1.4rem] font-semibold line-clamp-2 min-h-[3.6rem]">
+                          {p?.name ?? "Unnamed"}
+                        </p>
+                        <p className="text-[1.2rem] text-gray-500">
+                          {p?.brand?.name ?? ""}
+                        </p>
+                        {sizes.length > 1 ? (
+                          <select
+                            className="h-[3.6rem] border border-gray-300 rounded-md px-[0.8rem] text-[1.3rem]"
+                            value={selId}
+                            onChange={(e) =>
+                              handleSizeChange(pid, e.target.value)
+                            }
+                          >
+                            {sizes.map((s: Size) => (
+                              <option key={s.id} value={s.id}>
+                                {s.size} {s.unit}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <p className="text-[1.2rem] text-gray-600">
+                            {sizes[0]?.size} {sizes[0]?.unit}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-[0.8rem] text-[1.3rem]">
+                          <span
+                            className={`${isDiscounted ? "line-through text-gray-400" : "text-gray-900"}`}
+                          >
+                            {formatPrice.format(basePrice)}
+                          </span>
+                          {isDiscounted && (
+                            <>
+                              <span className="text-gray-900 font-semibold">
+                                {formatPrice.format(finalPrice)}
+                              </span>
+                              <span className="text-red-500 font-medium">
+                                {Math.round((discount / basePrice) * 100)}% off
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleAdd(p)}
+                          disabled={addingId === pid}
+                          className="mt-[0.4rem] h-[3.6rem] rounded-md border border-gray-300 hover:border-black hover:bg-black hover:text-white transition-colors text-[1.3rem]"
+                        >
+                          {addingId === pid ? "Adding…" : "Add to cart"}
+                        </button>
+                      </div>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
+          );
+        })}
+      </Box>
+
+      <Box className="p-[2rem] border-t border-gray-200 flex gap-[1rem] justify-end">
+        <button
+          onClick={() => {
+            handleSkip?.();
+            open("cart");
+          }}
+          className="px-[1.6rem] py-[0.8rem] rounded-md border border-gray-300 hover:border-black hover:bg-black hover:text-white text-[1.4rem]"
+        >
+          Skip and checkout
+        </button>
+        <button
+          onClick={onClose}
+          className="px-[1.6rem] py-[0.8rem] rounded-md border border-gray-300 hover:bg-gray-100 text-[1.4rem]"
+        >
+          Close
+        </button>
+      </Box>
+    </Box>
+  );
+}

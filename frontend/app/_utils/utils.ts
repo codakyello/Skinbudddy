@@ -97,3 +97,15 @@ export function getErrorMessage(error: unknown): string {
 
   return "An unknown error occurred.";
 }
+
+export function hasCategory(products: Product[], categoryName: string) {
+  const target = categoryName.toLowerCase();
+  return products.some((product) =>
+    product?.categories?.some((cat) => {
+      // If it's an Id (string at runtime), we can't match by name
+      if (!cat || typeof cat === "string") return false;
+      const name = cat.name?.toLowerCase();
+      return name === target;
+    })
+  );
+}

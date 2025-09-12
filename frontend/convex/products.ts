@@ -1,10 +1,13 @@
 import { v } from "convex/values";
 import { action, mutation, query, internalQuery } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
 import OpenAI from "openai";
 // import { captureSentryError } from "./_utils/sentry";
 import products from "../products.json";
 // Avoid importing `api` here to prevent circular type inference in this module
 import { SkinConcern, SkinType } from "./schema";
+import { AHA_BHA_SET, DRYING_ALCOHOLS } from "../convex/_utils/products";
+import { Product, Brand } from "./_utils/type";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
@@ -15,13 +18,15 @@ export const IngredientSensitivity = v.union(
   v.literal("niacinamide"),
   v.literal("ahas-bhas"), // Ai will help me filter this one out
   v.literal("vitamin-c"),
-  v.literal("essential-oils")
+  v.literal("essential-oils"),
+  v.literal("mandelic acid")
 );
 
 export const recommend = action({
   args: {
     skinConcern: v.array(SkinConcern),
     skinType: SkinType,
+    // Support both spellings for backward compatibility
     ingredientsToAvoid: v.optional(v.array(IngredientSensitivity)),
     fragranceFree: v.optional(v.boolean()),
 
@@ -66,25 +71,105 @@ export const recommend = action({
     const all = await ctx.runQuery(internalAny.products._getAllProductsRaw, {});
 
     // 2) Pre-filter by hard constraints before AI
+    // Unify avoid list from args
+    const avoidList: string[] = Array.isArray(skinProfile.ingredientsToAvoid)
+      ? (skinProfile.ingredientsToAvoid as string[])
+      : Array.isArray((skinProfile as any).ingredientsToavoid)
+        ? ((skinProfile as any).ingredientsToavoid as string[])
+        : [];
+
+    // const availableProducts = all
+    //   .filter((p: any) => {
+    //     const ingredients = (p.ingredients ?? []).map((ing: string) =>
+    //       ing.toLowerCase().split(" ").join("_")
+    //     );
+
+    //     // Expand "ahas-bhas" avoid flag into individual acids
+    //     const wantsNoAcids =
+    //       Array.isArray(avoidList) && avoidList.includes("ahas-bhas");
+    //     const AHA_BHA_SET = new Set<string>([
+    //       "glycolic_acid",
+    //       "lactic_acid",
+    //       "mandelic_acid",
+    //       "tartaric_acid",
+    //       "citric_acid",
+    //       "malic_acid",
+    //       "salicylic_acid",
+    //     ]);
+    //     if (
+    //       wantsNoAcids &&
+    //       ingredients.some((ing: string) => AHA_BHA_SET.has(ing))
+    //     ) {
+    //       return false;
+    //     }
+
+    //     // console.log(ingredients);
+
+    //     if (!p.canBeInRoutine) return false;
+
+    //     if (skinProfile.fragranceFree && p.hasFragrance) return false;
+    //     if (
+    //       avoidList.length > 0 &&
+    //       avoidList.some((ing) => ingredients.includes(ing))
+    //     )
+    //       return false;
+
+    //     // First: Does it work for me?
+    //     // Skin concern
+    //     if (skinProfile.skinConcern) {
+    //       const sc = (p as any).concerns;
+    //       const matchesConcern = Array.isArray(sc)
+    //         ? sc.some(
+    //             (c: any) => skinProfile.skinConcern.includes(c) || c === "all"
+    //           )
+    //         : skinProfile.skinConcern.includes(sc) || sc === "all";
+    //       if (!matchesConcern) return false;
+    //     }
+
+    //     // Skin type
+    //     // what if works for all skinType but not for my condition?
+    //     if (skinProfile.skinType) {
+    //       const st = (p as any).skinType;
+    //       const matchesSkinType = Array.isArray(st)
+    //         ? st.some((t: any) => t === skinProfile.skinType || t === "all")
+    //         : st === skinProfile.skinType || st === "all";
+    //       if (!matchesSkinType) return false;
+    //     }
+
+    //     return true; // keep if all specified constraints passed
+    //   })
+    //   .map((product: any) => ({
+    //     _id: product._id,
+    //     categories: product.categories,
+    //     name: product.name,
+    //     concerns: product.concerns,
+    //     skinType: product.skinType,
+    //     ingredients: product.ingredients,
+    //   }));
+
+    // Define drying (problematic) alcohols vs. fatty (safe) alcohols
+
+    function normalizeIngredient(raw: string): string {
+      return raw
+        .toLowerCase()
+        .replace(/\./g, "") // remove dots
+        .replace(/[,()\/-]/g, " ") // replace punctuation with spaces
+        .replace(/\s+/g, " ") // collapse multiple spaces
+        .trim()
+        .split(" ")
+        .join("_"); // unify with underscores
+    }
+
     const availableProducts = all
       .filter((p: any) => {
         const ingredients = (p.ingredients ?? []).map((ing: string) =>
-          ing.toLowerCase().split(" ").join("_")
+          normalizeIngredient(ing)
         );
 
         // Expand "ahas-bhas" avoid flag into individual acids
         const wantsNoAcids =
-          Array.isArray(skinProfile.ingredientsToAvoid) &&
-          skinProfile.ingredientsToAvoid.includes("ahas-bhas");
-        const AHA_BHA_SET = new Set<string>([
-          "glycolic_acid",
-          "lactic_acid",
-          "mandelic_acid",
-          "tartaric_acid",
-          "citric_acid",
-          "malic_acid",
-          "salicylic_acid",
-        ]);
+          Array.isArray(avoidList) && avoidList.includes("ahas-bhas");
+
         if (
           wantsNoAcids &&
           ingredients.some((ing: string) => AHA_BHA_SET.has(ing))
@@ -92,20 +177,27 @@ export const recommend = action({
           return false;
         }
 
-        // console.log(ingredients);
-
         if (!p.canBeInRoutine) return false;
 
         if (skinProfile.fragranceFree && p.hasFragrance) return false;
+
+        // 🔑 Alcohol-free logic
+        const wantsNoAlcohol =
+          Array.isArray(avoidList) && avoidList.includes("alcohol");
+        if (wantsNoAlcohol) {
+          const hasDryingAlcohol = ingredients.some((ing: string) =>
+            DRYING_ALCOHOLS.has(ing)
+          );
+          if (hasDryingAlcohol) return false;
+        }
+
+        // Other avoid ingredients
         if (
-          skinProfile.ingredientsToAvoid &&
-          skinProfile.ingredientsToAvoid.some((ing) =>
-            ingredients.includes(ing)
-          )
+          avoidList.length > 0 &&
+          avoidList.some((ing) => ingredients.includes(ing))
         )
           return false;
 
-        // First: Does it work for me?
         // Skin concern
         if (skinProfile.skinConcern) {
           const sc = (p as any).concerns;
@@ -118,7 +210,6 @@ export const recommend = action({
         }
 
         // Skin type
-        // what if works for all skinType but not for my condition?
         if (skinProfile.skinType) {
           const st = (p as any).skinType;
           const matchesSkinType = Array.isArray(st)
@@ -140,7 +231,7 @@ export const recommend = action({
 
     console.log(all.length, availableProducts.length);
 
-    console.log(products);
+    // console.log(products);
 
     // return;
     const prompt = `You are generating a skincare recommendation based 
@@ -301,7 +392,9 @@ export const _getAllProductsRaw = internalQuery({
           const brand = item.brandId ? await ctx.db.get(item.brandId) : null;
           const categories = Array.isArray(item.categories)
             ? await Promise.all(
-                item.categories.map((catId) => ctx.db.get(catId))
+                item.categories.map((catId: Id<"categories">) =>
+                  ctx.db.get(catId)
+                )
               )
             : [];
 
@@ -347,7 +440,9 @@ export const _getProductsByIdsRaw = internalQuery({
           const categories = Array.isArray(item.categories)
             ? (
                 await Promise.all(
-                  item.categories.map((catId) => ctx.db.get(catId))
+                  item.categories.map((catId: Id<"categories">) =>
+                    ctx.db.get(catId)
+                  )
                 )
               ).filter(Boolean)
             : [];
@@ -469,9 +564,13 @@ export const getAllProducts = query({
           try {
             const brand = item.brandId ? await ctx.db.get(item.brandId) : null;
             const categories = Array.isArray(item.categories)
-              ? await Promise.all(
-                  item.categories.map((catId) => ctx.db.get(catId))
-                )
+              ? (
+                  await Promise.all(
+                    item.categories.map((catId: Id<"categories">) =>
+                      ctx.db.get(catId)
+                    )
+                  )
+                ).filter(Boolean)
               : [];
 
             return {
@@ -492,6 +591,217 @@ export const getAllProducts = query({
       // captureSentryError(ctx, error);
       throw error;
     }
+  },
+});
+
+export const getEssentialProducts = query({
+  args: {
+    fragranceFree: v.optional(v.boolean()),
+    perCategory: v.optional(v.number()), // max items to return per bucket
+    selectedProductIds: v.optional(v.array(v.id("products"))), // products already chosen by user
+  },
+  handler: async (ctx, args) => {
+    const perCategoryRaw = args?.perCategory;
+    const perCategory =
+      typeof perCategoryRaw === "number" && perCategoryRaw > 0
+        ? Math.min(perCategoryRaw, 50)
+        : 10; // cap to 50 for safety
+    const wantFF = Boolean(args?.fragranceFree);
+
+    // --- Helper(s)
+    const includesAll = (val: any) => {
+      if (!val) return false;
+      if (Array.isArray(val)) return val.includes("all");
+      return val === "all";
+    };
+    const normalize = (s: string) =>
+      String(s || "")
+        .toLowerCase()
+        .trim();
+    const isMatch = (text: string, regexes: RegExp[]) =>
+      regexes.some((rx) => rx.test(text));
+
+    const matchers = {
+      cleanser: [
+        /^cleanser$/,
+        /face[-_\s]?wash/i,
+        /gel[-_\s]?cleanser/i,
+        /cleansing/i,
+      ],
+      moisturizer: [
+        /^moisturizer$/,
+        /moisturiser/i,
+        /cream$/i,
+        /lotion$/i,
+        /gel[-_\s]?cream/i,
+      ],
+      sunscreen: [/^sunscreen$/, /^spf$/i, /sun[-_\s]?screen/i, /uv/i],
+    };
+
+    type EssentialsProduct = Product & { brand?: Brand | null };
+    type CoreKey = "cleanser" | "moisturizer" | "sunscreen";
+
+    // --- 0) Determine which core categories are already satisfied by the user's selections
+    const satisfied = new Set<CoreKey>();
+    if (
+      Array.isArray(args?.selectedProductIds) &&
+      args!.selectedProductIds!.length > 0
+    ) {
+      // Fetch selected items (ignore nulls safely)
+      const selectedDocs = await Promise.all(
+        args!.selectedProductIds!.map((id) => ctx.db.get(id))
+      );
+      const selected = selectedDocs.filter(Boolean) as any[];
+
+      // Populate their categories to infer core keys
+      const selectedWithCats: any[] = await Promise.all(
+        selected.map(async (item: any) => {
+          try {
+            const categories = Array.isArray(item.categories)
+              ? (
+                  await Promise.all(
+                    item.categories.map((catId: Id<"categories">) =>
+                      ctx.db.get(catId)
+                    )
+                  )
+                ).filter(Boolean)
+              : [];
+            return { ...item, categories };
+          } catch {
+            return { ...item, categories: [] };
+          }
+        })
+      );
+
+      // If none of the selected products can be added to a routine,
+      // don't prompt essentials (e.g., bathing soap, pimple patch only)
+      const anyRoutineEligible = selectedWithCats.some(
+        (it: any) => it?.canBeInRoutine === true
+      );
+      if (!anyRoutineEligible) {
+        return false;
+      }
+
+      for (const p of selectedWithCats) {
+        const texts: string[] = Array.isArray(p.categories)
+          ? p.categories
+              .map((c: any) => normalize(c?.slug ?? c?.name ?? ""))
+              .filter(Boolean)
+          : [];
+        // Check matches
+        if (texts.some((t) => isMatch(t, matchers.cleanser)))
+          satisfied.add("cleanser");
+        if (texts.some((t) => isMatch(t, matchers.moisturizer)))
+          satisfied.add("moisturizer");
+        if (texts.some((t) => isMatch(t, matchers.sunscreen)))
+          satisfied.add("sunscreen");
+      }
+    }
+
+    // If all three are satisfied, return false (nothing to recommend)
+    if (
+      satisfied.has("cleanser") &&
+      satisfied.has("moisturizer") &&
+      satisfied.has("sunscreen")
+    ) {
+      return false;
+    }
+
+    // 1) Pull all products
+    let items = await ctx.db.query("products").collect();
+
+    // 2) Base filters for "core + universally safe"
+    items = items.filter((p: any) => {
+      if (!p || typeof p !== "object") return false;
+      if (!p.canBeInRoutine) return false;
+      if (!includesAll(p.concerns)) return false; // we assume not skin concern
+      if (!includesAll(p.skinType)) return false;
+      if (wantFF && p.hasFragrance) return false;
+      return true;
+    });
+
+    // 3) Enrich with brand & categories so we can read category slugs/names
+    const enriched = await Promise.all(
+      items.map(async (item: any) => {
+        const sizesSorted = Array.isArray(item?.sizes)
+          ? [...item.sizes].sort((a, b) => (a?.size ?? 0) - (b?.size ?? 0))
+          : item?.sizes;
+
+        try {
+          const brand = item?.brandId ? await ctx.db.get(item.brandId) : null;
+          const categories = Array.isArray(item?.categories)
+            ? (
+                await Promise.all(
+                  item.categories.map((catId: Id<"categories">) =>
+                    ctx.db.get(catId)
+                  )
+                )
+              ).filter(Boolean)
+            : [];
+
+          return { ...item, sizes: sizesSorted, brand, categories };
+        } catch {
+          return { ...item, sizes: sizesSorted };
+        }
+      })
+    );
+
+    // 4) Bucket by core categories (robust to naming variations)
+    const buckets: Record<CoreKey, EssentialsProduct[]> = {
+      cleanser: [],
+      moisturizer: [],
+      sunscreen: [],
+    };
+
+    const pushOnce = (key: CoreKey, prod: EssentialsProduct) => {
+      if (satisfied.has(key)) return; // Skip entire category if already satisfied by user
+      const arr = buckets[key];
+      if (!arr.some((p) => String(p._id) === String(prod._id))) {
+        arr.push(prod);
+      }
+    };
+
+    for (const p of enriched) {
+      // Try to infer category from embedded categories (prefer slug, then name)
+      const catTexts: string[] = Array.isArray(p.categories)
+        ? p.categories
+            .map((c: any) => normalize(c?.slug ?? c?.name ?? ""))
+            .filter(Boolean)
+        : [];
+
+      // Also consider a direct string property if present (some datasets carry category/categorySlug)
+      const extraHints = [
+        normalize((p as any).category),
+        normalize((p as any).categorySlug),
+      ].filter(Boolean);
+      const texts = [...catTexts, ...extraHints];
+
+      // Decide which core bucket(s) the product qualifies for
+      if (texts.some((t) => isMatch(t, matchers.cleanser)))
+        pushOnce("cleanser", p);
+      if (texts.some((t) => isMatch(t, matchers.moisturizer)))
+        pushOnce("moisturizer", p);
+      if (texts.some((t) => isMatch(t, matchers.sunscreen)))
+        pushOnce("sunscreen", p);
+    }
+
+    // 5) Limit per bucket
+    const result = {
+      cleanser: buckets.cleanser.slice(0, perCategory),
+      moisturizer: buckets.moisturizer.slice(0, perCategory),
+      sunscreen: buckets.sunscreen.slice(0, perCategory),
+    };
+
+    // 6) If there are no recommendations in any unsatisfied category, return false
+    const unsatisfied: CoreKey[] = (
+      ["cleanser", "moisturizer", "sunscreen"] as CoreKey[]
+    ).filter((k) => !satisfied.has(k));
+    const hasAtLeastOne = unsatisfied.some(
+      (k) => (result as any)[k]?.length > 0
+    );
+    if (!hasAtLeastOne) return false;
+
+    return result;
   },
 });
 
@@ -520,7 +830,9 @@ export const getProductsByIds = query({
           const brand = item.brandId ? await ctx.db.get(item.brandId) : null;
           const categories = Array.isArray(item.categories)
             ? await Promise.all(
-                item.categories.map((catId) => ctx.db.get(catId))
+                item.categories.map((catId: Id<"categories">) =>
+                  ctx.db.get(catId)
+                )
               )
             : [];
 

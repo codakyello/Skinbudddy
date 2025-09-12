@@ -4,6 +4,7 @@ import "./globals.css";
 import Announcement from "./_components/Announcement";
 import { Toaster } from "sonner";
 import Providers from "./_contexts/Providers";
+import PendingActions from "./_components/PendingActions";
 import * as Sentry from "@sentry/nextjs";
 
 // import SmoothLayout from "./_components/SmoothLayout";
@@ -46,7 +47,10 @@ export default async function RootLayout({
         className={`${geistSans.variable} min-h-screen ${geistMono.variable} antialiased`}
       >
         <Announcement />
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          <PendingActions />
+        </Providers>
         <Toaster
           richColors
           closeButton
