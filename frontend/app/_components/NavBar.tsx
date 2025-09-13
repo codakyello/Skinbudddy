@@ -5,6 +5,8 @@ import CartModal from "./CartModal";
 import { RoutineSuggestionsModal } from "./RoutineSuggestionsModal";
 import AuthModal from "./AuthModal";
 import Link from "next/link";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import useUserCart from "../_hooks/useUserCart";
 import { useNavSticky } from "../_contexts/Sticky";
 import { useUser } from "../_contexts/CreateConvexUser";
@@ -19,6 +21,10 @@ export default function NavBar() {
   // Ensure a string is passed to the hook even before user is ready
   const userId = user?._id ?? "";
   const { cart } = useUserCart(userId);
+  // Fetch routines to optionally show direct link to latest
+  const routinesRes = useQuery(api.routine.getUserRoutines, { userId });
+  const routines = (routinesRes as any)?.routines || [];
+  const latestRoutineId = routines.length ? String(routines[0]?._id) : null;
 
   const totalCartItems =
     cart?.reduce((acc, item) => {
@@ -60,6 +66,14 @@ export default function NavBar() {
           <li className=" hover:text-red-600 cursor-pointer">
             <Link href={"/recommender"}>Recommender</Link>
           </li>
+          <li className=" hover:text-red-600 cursor-pointer">
+            <Link href={"/routine"}>Routines</Link>
+          </li>
+          {latestRoutineId && (
+            <li className=" hover:text-red-600 cursor-pointer">
+              <Link href={`/routine/${latestRoutineId}`}>My Routine</Link>
+            </li>
+          )}
         </ul>
 
         <Link

@@ -6,7 +6,9 @@ import { api } from "@/convex/_generated/api";
 import { useUser } from "../_contexts/CreateConvexUser";
 import { Box } from "@chakra-ui/react";
 import { useModal, ModalWindow } from "./Modal";
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
+import { Id } from "@/convex/_generated/dataModel";
+import { toast } from "sonner";
 
 type PendingStatus = "pending" | "completed" | "dismissed";
 
@@ -16,7 +18,7 @@ type PendingAction = {
   status: PendingStatus;
   type: "create_routine" | "update_routine";
   data: {
-    productsToadd?: string[]; // or Id<"products">[] if you're using Convex Id type
+    productsToadd?: Id<"products">[];
     routineId?: string;
   };
   createdAt: number;
@@ -28,6 +30,7 @@ export default function PendingActions() {
   const { open, close } = useModal();
   const hasOpenedRef = useRef(false);
   const setStatus = useMutation(api.users.setPendingActionStatus);
+  const createRoutine = useAction(api.routine.createRoutine);
 
   const { data } = useQuery(
     convexQuery(api.users.getPendingActions, {
@@ -35,6 +38,7 @@ export default function PendingActions() {
     })
   );
 
+  console.log(data, "These are the pending actions");
   //   console.log(data, "These are the pending actions");
 
   const nextAction = useMemo(() => {
@@ -47,7 +51,7 @@ export default function PendingActions() {
     null
   );
 
-  //   Delay opening the modal so it feels less abrupt when mounted via layout
+  // Delay opening the modal so it feels less abrupt when mounted via layout
 
   // Open once when conditions are met
   useEffect(() => {
@@ -76,6 +80,29 @@ export default function PendingActions() {
       hasOpenedRef.current = false;
       // Trigger a fresh fetch; the open effect will run again only if another pending action exists
       //   await refetch();
+    }
+  }
+
+  async function handleAction(currentAction: PendingAction) {
+    if (currentAction?.type === "create_routine") {
+      // call create routine
+      if (currentAction.data.productsToadd) {
+        close();
+        toast.message("We are creating your routine for you");
+        try {
+          await createRoutine({
+            productIds: currentAction.data.productsToadd,
+            userId: user._id as string,
+          });
+          toast.success("Routine created successfully");
+        } catch (err) {
+          toast.error("Routine could not be created");
+        }
+      }
+    }
+    // update routine here
+    if (currentAction?.type === "update_routine") {
+      // call update routine
     }
   }
 
@@ -119,11 +146,7 @@ export default function PendingActions() {
             onClick={() => {
               handleUpdate("completed");
               // create routine here
-              if (currentAction?.type === "create_routine") {
-              }
-              // update routine here
-              if (currentAction?.type === "update_routine") {
-              }
+              handleAction(currentAction as PendingAction);
             }}
             className="px-[1.6rem] py-[0.8rem] rounded-md border border-gray-300 hover:bg-gray-100 text-[1.4rem]"
           >

@@ -89,10 +89,10 @@ export const DayPeriod = v.union(
 
 export const StepFrequency = v.union(
   v.literal("daily"),
-  v.literal("every_other_day"),
-  v.literal("weekly"),
-  v.literal("biweekly"),
-  v.literal("monthly"),
+  v.literal("every_other_day"), //equivalent to 3x a week
+  v.literal("weekly"), //equivalent to 1x a week
+  v.literal("biweekly"), //equivalent to 1x every two weeks
+  v.literal("monthly"), //equivalent to once a week
   v.literal("as_needed")
 );
 
@@ -345,8 +345,8 @@ export default defineSchema({
       v.object({
         id: v.string(), // client uid (e.g., nanoid)
         order: v.number(), // order within its period
-        categorySlug: v.string(), // e.g., "cleanser", "serum"
-        primaryProductId: v.id("products"),
+        category: v.string(), // e.g., "cleanser", "serum"
+        productId: v.id("products"),
         alternateProductIds: v.optional(v.array(v.id("products"))),
         period: DayPeriod, // am | pm | either
         frequency: StepFrequency, // daily, weekly, etc.
@@ -355,15 +355,17 @@ export default defineSchema({
     ),
 
     // Safety rails & constraints respected by editor/engine
-    constraints: v.object({
-      maxSerumsPerSession: v.number(), // e.g., 2
-      requireSunscreenForAM: v.boolean(), // e.g., true
-      conflictRules: v.optional(v.array(v.string())),
-    }),
+    constraints: v.optional(
+      v.object({
+        maxSerumsPerSession: v.number(), // e.g., 2
+        requireSunscreenForAM: v.boolean(), // e.g., true
+        conflictRules: v.optional(v.array(v.string())),
+      })
+    ),
 
     // Snapshot of skin context at creation (for explainability)
     skinSnapshot: v.object({
-      types: v.array(SkinType),
+      types: v.optional(SkinType),
       concerns: v.array(SkinConcern),
       notes: v.optional(v.string()),
     }),
@@ -402,6 +404,21 @@ export default defineSchema({
   })
     .index("by_routineId", ["routineId"])
     .index("by_userId", ["userId"]),
+
+  userRecommendations: defineTable({
+    userId: v.string(),
+    productId: v.id("products"),
+    recommended: v.boolean(),
+    inCart: v.boolean(),
+  }).index("by_userId", ["userId"]),
+
+  // use this to monitor user behaviour, which product are rejected / accepted
+  userRecommendationsHistory: defineTable({
+    userId: v.string(),
+    productId: v.id("products"),
+    recommended: v.boolean(),
+    inCart: v.boolean(),
+  }).index("by_userId", ["userId"]),
 
   reviews: defineTable({
     userId: v.string(),

@@ -8,8 +8,7 @@ import products from "../products.json";
 import { SkinConcern, SkinType } from "./schema";
 import { AHA_BHA_SET, DRYING_ALCOHOLS } from "../convex/_utils/products";
 import { Product, Brand } from "./_utils/type";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+import { runChatCompletion } from "./_utils/internalUtils";
 
 export const IngredientSensitivity = v.union(
   v.literal("alcohol"),
@@ -29,326 +28,375 @@ export const recommend = action({
     // Support both spellings for backward compatibility
     ingredientsToAvoid: v.optional(v.array(IngredientSensitivity)),
     fragranceFree: v.optional(v.boolean()),
+    userId: v.string(),
+    createRoutine: v.optional(v.boolean()),
 
     // alcoholFree: v.optional(v.boolean()),
     // fragranceFree: v.optional(v.boolean()),
   },
   handler: async (ctx, skinProfile) => {
-    // read any needed data first
-    // const profile = await ctx.db
-    //   .query("profiles")
-    //   .withIndex("by_user", (q) => q.eq("userId", userId))
-    //   .unique();
+    try {
+      // Pull raw products via an internal query to avoid action ctx.db access
+      const internalAny = (await import("./_generated/api")).internal as any;
+      const all = await ctx.runQuery(
+        internalAny.products._getAllProductsRaw,
+        {}
+      );
 
-    // for routine
-    // The user has the skin profile above.
-    // From the availableProducts list,
-    // recommend a safe skincare routine.
-    // Carefully analyze ingredients to avoid
-    //  conflicts (e.g., retinol + exfoliating acids,
-    //  too many actives in one step).
-    // Ensure each step of the routine has only
-    // one product per category (one cleanser, one moisturizer, etc.).
-    //  Then structure the routine into AM and PM steps.
-    // If something should only be used a few times a week,
-    // indicate that. Also explain briefly why you included/excluded certain products
+      // 2) Pre-filter by hard constraints before AI
+      // Unify avoid list from args
+      const avoidList: string[] = Array.isArray(skinProfile.ingredientsToAvoid)
+        ? (skinProfile.ingredientsToAvoid as string[])
+        : Array.isArray((skinProfile as any).ingredientsToavoid)
+          ? ((skinProfile as any).ingredientsToavoid as string[])
+          : [];
 
-    // recommend
-    // The user has the skin profile above.
-    // From the availableProducts list,
-    // recommend products.
-    // Carefully analyze ingredients to avoid
-    //  conflicts (e.g., retinol + exfoliating acids,
-    //  too many actives in one step).
-    // Ensure each step of the routine has only
-    // one product per category (one cleanser, one moisturizer, etc.).
-    // indicate that. Also explain briefly why you included/excluded certain products
+      function normalizeIngredient(raw: string): string {
+        return raw
+          .toLowerCase()
+          .replace(/\./g, "") // remove dots
+          .replace(/[,()\/-]/g, " ") // replace punctuation with spaces
+          .replace(/\s+/g, " ") // collapse multiple spaces
+          .trim()
+          .split(" ")
+          .join("_"); // unify with underscores
+      }
 
-    // let all = await ctx.db.query("products").collect();
+      const availableProducts = all
+        .filter((p: any) => {
+          const ingredients = (p.ingredients ?? []).map((ing: string) =>
+            normalizeIngredient(ing)
+          );
 
-    // Pull raw products via an internal query to avoid action ctx.db access
-    const internalAny = (await import("./_generated/api")).internal as any;
-    const all = await ctx.runQuery(internalAny.products._getAllProductsRaw, {});
+          // Expand "ahas-bhas" avoid flag into individual acids
+          const wantsNoAcids =
+            Array.isArray(avoidList) && avoidList.includes("ahas-bhas");
 
-    // 2) Pre-filter by hard constraints before AI
-    // Unify avoid list from args
-    const avoidList: string[] = Array.isArray(skinProfile.ingredientsToAvoid)
-      ? (skinProfile.ingredientsToAvoid as string[])
-      : Array.isArray((skinProfile as any).ingredientsToavoid)
-        ? ((skinProfile as any).ingredientsToavoid as string[])
-        : [];
+          if (
+            wantsNoAcids &&
+            ingredients.some((ing: string) => AHA_BHA_SET.has(ing))
+          ) {
+            return false;
+          }
 
-    // const availableProducts = all
-    //   .filter((p: any) => {
-    //     const ingredients = (p.ingredients ?? []).map((ing: string) =>
-    //       ing.toLowerCase().split(" ").join("_")
-    //     );
+          if (!p.canBeInRoutine) return false;
 
-    //     // Expand "ahas-bhas" avoid flag into individual acids
-    //     const wantsNoAcids =
-    //       Array.isArray(avoidList) && avoidList.includes("ahas-bhas");
-    //     const AHA_BHA_SET = new Set<string>([
-    //       "glycolic_acid",
-    //       "lactic_acid",
-    //       "mandelic_acid",
-    //       "tartaric_acid",
-    //       "citric_acid",
-    //       "malic_acid",
-    //       "salicylic_acid",
-    //     ]);
-    //     if (
-    //       wantsNoAcids &&
-    //       ingredients.some((ing: string) => AHA_BHA_SET.has(ing))
-    //     ) {
-    //       return false;
-    //     }
+          if (skinProfile.fragranceFree && p.hasFragrance) return false;
 
-    //     // console.log(ingredients);
+          // 🔑 Alcohol-free logic
+          const wantsNoAlcohol =
+            Array.isArray(avoidList) && avoidList.includes("alcohol");
+          if (wantsNoAlcohol) {
+            const hasDryingAlcohol = ingredients.some((ing: string) =>
+              DRYING_ALCOHOLS.has(ing)
+            );
+            if (hasDryingAlcohol) return false;
+          }
 
-    //     if (!p.canBeInRoutine) return false;
+          // Other avoid ingredients
+          if (
+            avoidList.length > 0 &&
+            avoidList.some((ing) => ingredients.includes(ing))
+          )
+            return false;
 
-    //     if (skinProfile.fragranceFree && p.hasFragrance) return false;
-    //     if (
-    //       avoidList.length > 0 &&
-    //       avoidList.some((ing) => ingredients.includes(ing))
-    //     )
-    //       return false;
+          // Skin concern
+          if (skinProfile.skinConcern) {
+            const sc = (p as any).concerns;
+            const matchesConcern = Array.isArray(sc)
+              ? sc.some(
+                  (c: any) => skinProfile.skinConcern.includes(c) || c === "all"
+                )
+              : skinProfile.skinConcern.includes(sc) || sc === "all";
+            if (!matchesConcern) return false;
+          }
 
-    //     // First: Does it work for me?
-    //     // Skin concern
-    //     if (skinProfile.skinConcern) {
-    //       const sc = (p as any).concerns;
-    //       const matchesConcern = Array.isArray(sc)
-    //         ? sc.some(
-    //             (c: any) => skinProfile.skinConcern.includes(c) || c === "all"
-    //           )
-    //         : skinProfile.skinConcern.includes(sc) || sc === "all";
-    //       if (!matchesConcern) return false;
-    //     }
+          // Skin type
+          if (skinProfile.skinType) {
+            const st = (p as any).skinType;
+            const matchesSkinType = Array.isArray(st)
+              ? st.some((t: any) => t === skinProfile.skinType || t === "all")
+              : st === skinProfile.skinType || st === "all";
+            if (!matchesSkinType) return false;
+          }
 
-    //     // Skin type
-    //     // what if works for all skinType but not for my condition?
-    //     if (skinProfile.skinType) {
-    //       const st = (p as any).skinType;
-    //       const matchesSkinType = Array.isArray(st)
-    //         ? st.some((t: any) => t === skinProfile.skinType || t === "all")
-    //         : st === skinProfile.skinType || st === "all";
-    //       if (!matchesSkinType) return false;
-    //     }
+          return true; // keep if all specified constraints passed
+        })
+        .map((product: any) => ({
+          _id: product._id,
+          categories: product.categories,
+          name: product.name,
+          concerns: product.concerns,
+          skinType: product.skinType,
+          ingredients: product.ingredients,
+        }));
 
-    //     return true; // keep if all specified constraints passed
-    //   })
-    //   .map((product: any) => ({
-    //     _id: product._id,
-    //     categories: product.categories,
-    //     name: product.name,
-    //     concerns: product.concerns,
-    //     skinType: product.skinType,
-    //     ingredients: product.ingredients,
-    //   }));
+      console.log(all.length, availableProducts.length);
 
-    // Define drying (problematic) alcohols vs. fatty (safe) alcohols
+      console.log(availableProducts, "This are the available");
 
-    function normalizeIngredient(raw: string): string {
-      return raw
-        .toLowerCase()
-        .replace(/\./g, "") // remove dots
-        .replace(/[,()\/-]/g, " ") // replace punctuation with spaces
-        .replace(/\s+/g, " ") // collapse multiple spaces
-        .trim()
-        .split(" ")
-        .join("_"); // unify with underscores
-    }
+      const prompt = `
+      STRICT RULES — NO EXCEPTIONS:
+      - Exactly 1 cleanser (mandatory)
+      - Maximum 1 toner (PRIORITIZE including if suitable match exists)
+      - Maximum 3 serums
+      - Exactly 1 moisturizer (mandatory)
+      - Exactly 1 sunscreen (mandatory)
+      
+      SELECTION PRIORITY ORDER:
+      1. Find suitable cleanser (mandatory)
+      2. Find suitable toner (include if ANY suitable match exists)
+      3. Find suitable serums (1-3 products, prioritize by concern relevance)
+      4. Find suitable moisturizer (mandatory)
+      5. Find suitable sunscreen (mandatory)
+      
+      CATEGORY MATCHING:
+      Use the exact category from product's "categories[0].name" field.
+      If product has "categories": [{"name": "Toner"}], use "category": "toner".
+      
+      SKIN CONCERN & TYPE MATCHING (FUZZY WITH WILDCARD):
+      - Treat product.concerns as an array of strings (case-insensitive).
+      - A product is ELIGIBLE if ANY of the following is true:
+        1) Intersection(product.concerns, user.skinConcern) is non-empty (EXACT), OR
+        2) product.concerns contains "all" (wildcard), OR
+        3) Intersection(product.concerns, RelatedConcerns(user.skinConcern)) is non-empty (RELATED).
+      - Prefer matches in this order: EXACT > RELATED > "all".
+      
+      TONER SELECTION CRITERIA:
+      - Include a toner if ANY toner product matches user's skin type OR concerns
+      - Toners are beneficial for most routines - be more lenient with matching
+      - Accept toners with "all" skin types or concerns readily
+      
+      For skin type, compare product.skinType to user.skinType (case-insensitive). Accept if:
+      - EXACT match, OR product.skinType is "all".
+      - Prefer skin type in this order: EXACT > "all".
+      
+      RelatedConcerns (guidance, one-way includes are fine):
+      - dryness → ["dehydration", "barrier support", "tightness", "hydration"]
+      - oily → ["sebum control", "shine", "congestion", "pore care"]
+      - acne → ["blemishes", "breakouts", "spots", "pore care"]
+      - sensitivity → ["redness", "irritation", "barrier support", "gentle"]
+      - hyperpigmentation → ["dark spots", "uneven tone", "post-acne marks", "brightening"]
+      
+      INGREDIENT SAFETY:
+      - Avoid conflicts (e.g., retinol + strong AHA/BHA in same routine; multiple high-strength acids).
+      - If using potent actives (e.g., glycolic/lactic/salicylic acid, retinoids, L-ascorbic vitamin C), add brief, necessary usage notes ONLY (e.g., "patch test", "use at night", "apply SPF in AM"). 
+      - Do NOT add boilerplate notes for basic moisturizers, gentle hydrating serums, or toners.
+      
+      SELECTION PRIORITY:
+      1) Concerns: prefer EXACT; if none, use RELATED; if none, allow "all".
+      2) Skin type: prefer EXACT; else "all".
+      3) Respect preferences (e.g., fragrance-free required).
+      4) For toners specifically: be more flexible - include if it matches skin type OR has beneficial ingredients
+      5) Avoid multiple exfoliating acids together; avoid combining HIGH-CONCENTRATION exfoliating acids.
+      6) When products have similar actives, pick the one with more beneficial ingredients for the user's skin type.
+      
+      RECOMMEND:
+      - Always try to include 1 toner if any suitable option exists
+      - Include 1–2 serums when available, ensuring they complement concerns without ingredient conflicts
+      - Aim for a complete 5-step routine when possible
+      
+      Select from: ${JSON.stringify(availableProducts)}
+      For profile: ${JSON.stringify(skinProfile)}
+      
+      Return ONLY this JSON:
+      {
+        "recommendations": [
+          {"_id": "exact_id", "name": "exact_name", "category": "from_product_data"}
+        ],
+        "notes": "Brief explanation of choices + ONLY necessary caution notes for potent actives."
+      }
+      `;
 
-    const availableProducts = all
-      .filter((p: any) => {
-        const ingredients = (p.ingredients ?? []).map((ing: string) =>
-          normalizeIngredient(ing)
+      // Validate using the AI's category assignments (not DB docs, which may have multiple categories)
+      const isValidSelection = (recs: any[]): boolean => {
+        const allowed = new Set([
+          "cleanser",
+          "toner",
+          "serum",
+          "moisturiser",
+          "sunscreen",
+        ]);
+        const counts: Record<string, number> = {};
+        for (const r of recs) {
+          const cat = String(r?.category || "")
+            .toLowerCase()
+            .trim();
+          if (!allowed.has(cat)) return false; // invalid category label
+          counts[cat] = (counts[cat] || 0) + 1;
+        }
+        // Mandatory singles
+        if ((counts["cleanser"] || 0) !== 1) return false;
+        if ((counts["moisturiser"] || 0) !== 1) return false;
+        if ((counts["sunscreen"] || 0) !== 1) return false;
+        // Maximums
+        if ((counts["toner"] || 0) > 1) return false;
+        if ((counts["serum"] || 0) > 3) return false;
+        return true;
+      };
+
+      const MAX_ATTEMPTS = 3;
+      let attempts = 0;
+      let lastParsedRecs: any[] = [];
+      let recommendations: any[] = [];
+      let notes = "";
+
+      do {
+        const data = await runChatCompletion(prompt, "gpt-4o", 0.1);
+        let parsed: any;
+        try {
+          parsed = JSON.parse(data);
+        } catch {
+          const match = data.match(/\{[\s\S]*\}/);
+          parsed = match ? JSON.parse(match[0]) : null;
+        }
+        const recs = Array.isArray(parsed?.recommendations)
+          ? parsed.recommendations
+          : [];
+
+        notes = typeof parsed?.notes === "string" ? parsed.notes : "";
+        lastParsedRecs = recs;
+
+        attempts++;
+      } while (!isValidSelection(lastParsedRecs) && attempts < MAX_ATTEMPTS);
+
+      // Resolve strictly against the allowed pool so disallowed items can't slip back in
+      const idByString = new Map<string, any>(
+        availableProducts.map((p: any) => [String(p._id), p._id])
+      );
+      const idByName = new Map<string, any>(
+        availableProducts.map((p: any) => [String(p.name), p._id])
+      );
+
+      const ids = Array.from(
+        new Set(
+          lastParsedRecs
+            .map(
+              (r: { _id: string; name: string }) =>
+                idByString.get(String(r._id)) ?? idByName.get(String(r.name))
+            )
+            .filter(Boolean) as any[]
+        )
+      );
+
+      // Fetch full product docs for the recommended ids using an internal query
+      recommendations = await ctx.runQuery(
+        (await import("./_generated/api")).internal.products
+          ._getProductsByIdsRaw,
+        { ids }
+      );
+
+      // Best‑effort: persist these recommendations for the current user
+      try {
+        const internalApi = (await import("./_generated/api")).internal;
+        const res = await ctx.runMutation(
+          internalApi.recommendations._saveRecommendations,
+          {
+            recommendations: ids,
+            userId: skinProfile.userId, // remove this, just for test
+          }
         );
 
-        // Expand "ahas-bhas" avoid flag into individual acids
-        const wantsNoAcids =
-          Array.isArray(avoidList) && avoidList.includes("ahas-bhas");
-
-        if (
-          wantsNoAcids &&
-          ingredients.some((ing: string) => AHA_BHA_SET.has(ing))
-        ) {
-          return false;
-        }
-
-        if (!p.canBeInRoutine) return false;
-
-        if (skinProfile.fragranceFree && p.hasFragrance) return false;
-
-        // 🔑 Alcohol-free logic
-        const wantsNoAlcohol =
-          Array.isArray(avoidList) && avoidList.includes("alcohol");
-        if (wantsNoAlcohol) {
-          const hasDryingAlcohol = ingredients.some((ing: string) =>
-            DRYING_ALCOHOLS.has(ing)
-          );
-          if (hasDryingAlcohol) return false;
-        }
-
-        // Other avoid ingredients
-        if (
-          avoidList.length > 0 &&
-          avoidList.some((ing) => ingredients.includes(ing))
-        )
-          return false;
-
-        // Skin concern
-        if (skinProfile.skinConcern) {
-          const sc = (p as any).concerns;
-          const matchesConcern = Array.isArray(sc)
-            ? sc.some(
-                (c: any) => skinProfile.skinConcern.includes(c) || c === "all"
-              )
-            : skinProfile.skinConcern.includes(sc) || sc === "all";
-          if (!matchesConcern) return false;
-        }
-
-        // Skin type
-        if (skinProfile.skinType) {
-          const st = (p as any).skinType;
-          const matchesSkinType = Array.isArray(st)
-            ? st.some((t: any) => t === skinProfile.skinType || t === "all")
-            : st === skinProfile.skinType || st === "all";
-          if (!matchesSkinType) return false;
-        }
-
-        return true; // keep if all specified constraints passed
-      })
-      .map((product: any) => ({
-        _id: product._id,
-        categories: product.categories,
-        name: product.name,
-        concerns: product.concerns,
-        skinType: product.skinType,
-        ingredients: product.ingredients,
-      }));
-
-    console.log(all.length, availableProducts.length);
-
-    // console.log(products);
-
-    // return;
-    const prompt = `You are generating a skincare recommendation based 
-    on the skin profile and the provided availableProducts (objects with
-    _id, name, categories, ingredients, concerns, skinType).
-
-Rules:
-- Choose only from availableProducts; do not invent IDs or names.
-- One product per category (cleanser, toner, moisturizer, sunscreen ), except "serum" where 1–3 products are allowed.
-- Avoid ingredient conflicts (e.g., retinoids + strong acids in the same routine, too many overlapping actives).
-- Prefer products where concerns and skinType match the skin profile.
-- If a step cannot be safely filled, omit it and explain why in notes.
--	This is very important: Add important usage or caution notes only when necessary 
-  (e.g., for exfoliating acids like glycolic acid: “do a patch test before use,”
-  or for retinol: “use only at night and apply sunscreen in the morning”). 
-  Do not add notes for basic products like moisturizers or hydrating serums unless truly relevant.
-
-Output:
-Return ONLY a valid JSON object, with no prose and no markdown, matching exactly:
-{
-  "recommendations": [
-    {"_id": "<product id>", "name": "<product name>", "category": "cleanser"},
-    {"_id": "<product id>", "name": "<product name>", "category": "toner"},
-    {"_id": "<product id>", "name": "<product name>", "category": "serum"},
-    {"_id": "<product id>", "name": "<product name>", "category": "moisturizer"},
-    {"_id": "<product id>", "name": "<product name>", "category": "sunscreen"}
-  ],
-  "notes": "<short explanation about choices and exclusions, state the name of the products you are explaining>"
-
-Formatting constraints:
-- Keys and string values must be in double quotes; no trailing commas.
-- The recommendations array must be sorted strictly by category in this order: cleanser, toner, serum(s), moisturizer, sunscreen.
-- Use only these category strings: "cleanser", "toner", "serum", "moisturizer", "sunscreen".
-- Each recommendation's "_id" and "name" MUST come from the matching product in availableProducts (exact string match).
-
-Sort the \`recommendations\` array in this exact order: cleanser, toner, serum, moisturizer, sunscreen.
-
-`;
-
-    const resp = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: `You are SkinBuddy AI, a professional skincare recommender and expert. 
-          Never mention OpenAI—always introduce yourself as SkinBuddy AI. 
-          You specialize in analyzing skin types, skin concerns, and ingredients to provide safe, 
-          effective, and well-structured skincare recommendations. 
-          Always explain your choices clearly and avoid jargon so users feel confident and informed.
-          `,
-        },
-        {
-          role: "user",
-          content: `Skin profile: ${JSON.stringify(skinProfile)}
-Available products: ${JSON.stringify(availableProducts)}
-${prompt} also this is very important: Add important usage or caution notes only when necessary 
-  (e.g., for exfoliating acids like glycolic acid: “do a patch test before use,”
-  or for retinol: “use only at night and apply sunscreen in the morning”). 
-  Do not add notes for basic products like moisturizers or hydrating serums unless truly relevant.`,
-        },
-      ],
-    });
-
-    const raw = resp.choices[0]?.message?.content?.trim() ?? "{}";
-    let parsed: any;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (e) {
-      // Fallback: try to extract the first JSON object from the text
-      const match = raw.match(/\{[\s\S]*\}/);
-      if (match) {
-        parsed = JSON.parse(match[0]);
-      } else {
-        throw new Error("Model did not return valid JSON");
+        if (res.success === false) throw Error(res.message as string);
+        console.log("successfully saved in userRecommendations");
+      } catch (e) {
+        // Ignore persistence errors (e.g., not authenticated)
+        console.log(e);
       }
+
+      // Optionally, create and persist a routine from these recommendations
+      let routineId: any = null;
+      if (skinProfile.createRoutine) {
+        try {
+          // Build deterministic steps from model output
+          const orderBase: Record<string, number> = {
+            cleanser: 1,
+            toner: 2,
+            serum: 3,
+            moisturizer: 4,
+            moisturiser: 4, // normalize just in case
+            sunscreen: 5,
+          };
+
+          const selectedSteps: Array<{
+            category: string;
+            productId: any;
+          }> = [];
+
+          const seenPerCat = new Map<string, number>();
+          for (const r of lastParsedRecs) {
+            const catRaw = String(r?.category ?? "").toLowerCase().trim();
+            const category = catRaw === "moisturiser" ? "moisturizer" : catRaw;
+            const pid = idByString.get(String(r?._id)) ?? idByName.get(String(r?.name));
+            if (!pid) continue;
+            selectedSteps.push({ category, productId: pid });
+            seenPerCat.set(category, (seenPerCat.get(category) || 0) + 1);
+          }
+
+          // Compute orders within category groups based on base order + index
+          let stepsForSave = selectedSteps
+            .slice()
+            .sort((a, b) => (orderBase[a.category] || 99) - (orderBase[b.category] || 99))
+            .map((s, idx, arr) => {
+              const idxInCat = arr.filter((x, i) => i <= idx && x.category === s.category).length - 1;
+              const order = (orderBase[s.category] || 99) + (s.category === "serum" || s.category === "toner" ? idxInCat : 0);
+              return {
+                id: `${s.category}_${idxInCat + 1}`,
+                order,
+                category: s.category,
+                productId: s.productId,
+                alternateProductIds: [] as any[],
+                period: "either" as const,
+                frequency: "daily" as const,
+                notes: undefined as string | undefined,
+              };
+            });
+
+          const now = Date.now();
+          const name = `AI Routine · ${String(skinProfile.skinType)} · ${skinProfile.skinConcern.join(", ")}`;
+          const internalApi = (await import("./_generated/api")).internal;
+          const save = await ctx.runMutation(internalApi.routine.saveRoutine, {
+            routine: {
+              userId: skinProfile.userId,
+              name,
+              status: "active",
+              version: 1,
+              previousVersionId: undefined,
+              createdAt: now,
+              updatedAt: now,
+              steps: stepsForSave as any,
+              constraints: {
+                maxSerumsPerSession: 2,
+                requireSunscreenForAM: true,
+                conflictRules: [],
+              },
+              skinSnapshot: {
+                types: skinProfile.skinType,
+                concerns: skinProfile.skinConcern,
+                notes,
+              } as any,
+              source: { createdFromOrderId: undefined, createdBy: "ai" },
+              metrics: { usageCount: 0, lastUsedAt: undefined },
+            },
+          });
+          routineId = save?.routineId ?? null;
+        } catch (e) {
+          // Non-fatal: if routine creation fails, still return recommendations
+          console.warn("recommend.createRoutine failed:", (e as any)?.message);
+        }
+      }
+
+      return { recommendations: recommendations, notes, routineId };
+    } catch (err) {
+      return {
+        success: false,
+        message: "Error getting product recommendations.",
+      };
     }
-
-    const recs = Array.isArray(parsed?.recommendations)
-      ? parsed.recommendations
-      : [];
-
-    // Resolve strictly against the allowed pool so disallowed items can't slip back in
-    const idByString = new Map<string, any>(
-      availableProducts.map((p: any) => [String(p._id), p._id])
-    );
-    const idByName = new Map<string, any>(
-      availableProducts.map((p: any) => [String(p.name), p._id])
-    );
-    const ids = Array.from(
-      new Set(
-        recs
-          .map(
-            (r: { _id: string; name: string; category: string }) =>
-              idByString.get(String(r._id)) ?? idByName.get(String(r.name))
-          )
-          .filter(Boolean) as any[]
-      )
-    );
-
-    const notes = typeof parsed?.notes === "string" ? parsed.notes : "";
-
-    // Fetch full product docs for the recommended ids using an internal query
-    const recommendations = await ctx.runQuery(
-      internalAny.products._getProductsByIdsRaw,
-      { ids }
-    );
-
-    return { recommendations: recommendations, notes };
-
-    // const parsed = JSON.parse(result); // clean JSON object
-
-    // console.log(result);
-
-    // return parsed;
   },
 });
+
+// todo
 
 // --- Seeding via mutation(s) ---
 // Use this if you want to seed from the bundled JSON file at `frontend/products.json`

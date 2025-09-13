@@ -281,320 +281,331 @@ export const completeOrder = internalMutation({
   },
   handler: async (ctx, { reference }) => {
     console.log("entered complete order");
-    const ref = await ctx.db
-      .query("orderReferences")
-      .withIndex("by_reference", (q) => q.eq("reference", reference))
-      .first();
+    try {
+      const ref = await ctx.db
+        .query("orderReferences")
+        .withIndex("by_reference", (q) => q.eq("reference", reference))
+        .first();
 
-    if (!ref) {
-      return {
-        success: false,
-        statusCode: 404,
-        message: "Reference not found.",
-      } as const;
-    }
-    const order = await ctx.db.get(ref.orderId);
-
-    // 1) Look up order by payment reference
-
-    if (!order) {
-      return {
-        success: false,
-        statusCode: 404,
-        message: "Order not found for this reference.",
-      } as const;
-    }
-
-    // Ensure payment was verified by an action before completing
-    if ((order as any).paymentVerifyStatus !== "verified") {
-      return {
-        success: false,
-        statusCode: 403,
-        message: "Payment not verified for this order.",
-      } as const;
-    }
-
-    // // 3) Validate that the reference matches what we have on record (defensive)
-    // if (!reference) {
-    //   // Extremely rare: reference not stored yet; never overwrite if it exists and differs
-    //   await ctx.db.patch(order._id, { reference });
-    // } else if (order.reference !== reference) {
-    //   return {
-    //     success: false,
-    //     statusCode: 400,
-    //     message: "Reference mismatch for this order.",
-    //   } as const;
-    // }
-
-    // 3) Calculate fulfillable quantities & shortages atomically by reading latest stock
-    type Shortage = {
-      productId: Id<"products">;
-      sizeId: string | undefined;
-      requested: number;
-      available: number;
-      shortBy: number;
-      refund: number;
-    };
-
-    const shortages: Shortage[] = [];
-    const fulfillPlan: Array<{
-      productId: Id<"products">;
-      productDocId: Id<"products">;
-      sizeIndex: number;
-      sizeId: string;
-      fulfillQty: number;
-      price: number;
-    }> = [];
-
-    for (const item of order.items) {
-      const product = await ctx.db.get(item.productId);
-      if (!product || !product.sizes) {
-        // If the product is gone or sizes missing, treat as full shortage for that line
-        const unitPrice = (item as any).price ?? 0;
-        shortages.push({
-          productId: item.productId,
-          sizeId: item.sizeId as any,
-          requested: item.quantity,
-          available: 0,
-          shortBy: item.quantity,
-          refund: unitPrice * item.quantity,
-        });
-        continue;
-      }
-
-      const idx = product.sizes.findIndex((s: any) => s.id === item.sizeId);
-      if (idx === -1 || idx === undefined) {
-        const unitPrice = (item as any).price ?? 0;
-        shortages.push({
-          productId: product._id,
-          sizeId: item.sizeId as any,
-          requested: item.quantity,
-          available: 0,
-          shortBy: item.quantity,
-          refund: unitPrice * item.quantity,
-        });
-        continue;
-      }
-
-      const available = (product as any).sizes[idx].stock ?? 0;
-      const requested = item.quantity;
-      const fulfillQty = Math.min(available, requested);
-      const unitPrice = (item as any).price ?? 0;
-
-      if (fulfillQty < requested) {
-        shortages.push({
-          productId: product._id,
-          sizeId: item.sizeId as any,
-          requested,
-          available,
-          shortBy: requested - fulfillQty,
-          refund: (requested - fulfillQty) * unitPrice,
-        });
-      }
-
-      // Record what we plan to deduct now (could be 0)
-      fulfillPlan.push({
-        productId: item.productId,
-        productDocId: product._id,
-        sizeIndex: idx,
-        sizeId: item.sizeId as any,
-        fulfillQty,
-        price: unitPrice,
-      });
-    }
-
-    // Build fulfilled items snapshot (what we can actually deliver now)
-    const fulfilledItems = fulfillPlan
-      .filter((p) => p.fulfillQty > 0)
-      .map((p) => ({
-        productId: p.productId,
-        sizeId: p.sizeId as any,
-        quantity: p.fulfillQty,
-        price: p.price,
-      }));
-
-    const fulfilledAmount = fulfilledItems.reduce(
-      (sum, li) => sum + li.price * li.quantity,
-      0
-    );
-
-    // 4) Apply deductions for fulfillable quantities (guarded by latest stock)
-    for (const step of fulfillPlan) {
-      if (step.fulfillQty <= 0) continue;
-      const prod = await ctx.db.get(step.productId);
-      if (!prod || !(prod as any).sizes || !(prod as any).sizes[step.sizeIndex])
-        continue;
-      const currentStock = (prod as any).sizes[step.sizeIndex].stock ?? 0;
-      const deduct = Math.min(currentStock, step.fulfillQty); // re-check to avoid over-deduct due to races
-      if (deduct <= 0) continue;
-      (prod as any).sizes[step.sizeIndex].stock = currentStock - deduct;
-      await ctx.db.patch(step.productDocId as any, {
-        sizes: (prod as any).sizes,
-      });
-    }
-
-    // 5) Compute refund and decide final status
-    const refundAmount = shortages.reduce((sum, s) => sum + s.refund, 0);
-    const anyFulfilled = fulfillPlan.some((p) => p.fulfillQty > 0);
-
-    const reason =
-      order.status === "paid"
-        ? "Order already paid for"
-        : anyFulfilled
-          ? "Some of the products are out of stock. Partial refund of " +
-            "₦" +
-            refundAmount
-          : "All products out of stock. Full refund of " + "₦" + refundAmount;
-
-    // for refundDue we will save a list of references and their correspondnig refund amount
-
-    if (shortages.length > 0) {
-      // Partial or zero fulfillment
-      const fulfillmentStatus = anyFulfilled ? "partial" : "none";
-      await ctx.db.patch(order._id, {
-        status: anyFulfilled ? "paid" : "out_of_stock",
-        fulfillmentStatus,
-        shortages: shortages,
-        refundDue: [
-          ...(order.refundDue ?? []),
-          {
-            reference,
-            amount: refundAmount,
-            reason,
-            status: "pending",
-            attempts: 0,
-            nextRefundAt: Date.now(),
-            providerRefundId: undefined,
-            processedAt: undefined,
-            lastRefundError: undefined,
-            lastRefundHttpStatus: undefined,
-            lastRefundErrorCode: undefined,
-            lastRefundPayload: undefined,
-          },
-        ],
-        // initialize refund workflow
-        refundStatus: "pending",
-        refundAttempts: 0,
-        refundReason: anyFulfilled ? "partial_fulfillment" : "out_of_stock",
-        lastRefundAttemptAt: undefined,
-        lastRefundError: undefined,
-        refundProviderId: undefined,
-        nextRefundAt: Date.now(), // try immediately; cron/worker will respect this
-        // fulfillment snapshots
-        fulfilledItems,
-        fulfilledAmount,
-      } as any);
-
-      // Enqueue an immediate refund attempt (event-driven)
-      // Hack: Mutations cannot call actions or external apis
-      //we have to know the reference to process a refund too
-
-      // lets update the orderReference
-      if (anyFulfilled) {
-        console.log("partial refunded");
-        // save as partial refunded
-        await ctx.db.patch(ref._id, { status: "partial_refund" });
-      } else {
-        // save as refunded
-        console.log("fully refunded");
-
-        await ctx.db.patch(ref._id, { status: "to_be_refunded" });
-      }
-
-      // run the refund function, for the reference
-      await ctx.scheduler.runAfter(0, internal.order.processRefund, {
-        orderId: order._id,
-      });
-
-      // // 2) Idempotency and status gates
-      if (order.status === "paid") {
-        return {
-          success: true,
-          message: "Order already completed (paid).",
-        } as const;
-      }
-      if (order.status === "out_of_stock") {
-        return {
-          success: true,
-          message: "Order previously marked out of stock.",
-          shortages: (order as any).shortages ?? [],
-          refundDue: (order as any).refundDue ?? 0,
-        } as const;
-      }
-      if ((order as any).fulfillmentStatus === "partial") {
-        return {
-          success: true,
-          message: "Order already partially fulfilled.",
-          shortages: (order as any).shortages ?? [],
-          refundDue: (order as any).refundDue ?? 0,
-        } as const;
-      }
-
-      // Only allow completion from "pending" status (not "draft" anymore)
-      if (order.status !== "pending") {
+      if (!ref) {
         return {
           success: false,
-          statusCode: 409,
-          message: `Cannot complete order from status '${order.status}'.`,
+          statusCode: 404,
+          message: "Reference not found.",
+        } as const;
+      }
+      const order = await ctx.db.get(ref.orderId);
+
+      // 1) Look up order by payment reference
+
+      if (!order) {
+        return {
+          success: false,
+          statusCode: 404,
+          message: "Order not found for this reference.",
         } as const;
       }
 
-      // Clear the user's cart regardless to avoid duplicate retries with old quantities
+      // Ensure payment was verified by an action before completing
+      if ((order as any).paymentVerifyStatus !== "verified") {
+        return {
+          success: false,
+          statusCode: 403,
+          message: "Payment not verified for this order.",
+        } as const;
+      }
+
+      // // 3) Validate that the reference matches what we have on record (defensive)
+      // if (!reference) {
+      //   // Extremely rare: reference not stored yet; never overwrite if it exists and differs
+      //   await ctx.db.patch(order._id, { reference });
+      // } else if (order.reference !== reference) {
+      //   return {
+      //     success: false,
+      //     statusCode: 400,
+      //     message: "Reference mismatch for this order.",
+      //   } as const;
+      // }
+
+      // 3) Calculate fulfillable quantities & shortages atomically by reading latest stock
+      type Shortage = {
+        productId: Id<"products">;
+        sizeId: string | undefined;
+        requested: number;
+        available: number;
+        shortBy: number;
+        refund: number;
+      };
+
+      const shortages: Shortage[] = [];
+      const fulfillPlan: Array<{
+        productId: Id<"products">;
+        productDocId: Id<"products">;
+        sizeIndex: number;
+        sizeId: string;
+        fulfillQty: number;
+        price: number;
+      }> = [];
+
+      for (const item of order.items) {
+        const product = await ctx.db.get(item.productId);
+        if (!product || !product.sizes) {
+          // If the product is gone or sizes missing, treat as full shortage for that line
+          const unitPrice = (item as any).price ?? 0;
+          shortages.push({
+            productId: item.productId,
+            sizeId: item.sizeId as any,
+            requested: item.quantity,
+            available: 0,
+            shortBy: item.quantity,
+            refund: unitPrice * item.quantity,
+          });
+          continue;
+        }
+
+        const idx = product.sizes.findIndex((s: any) => s.id === item.sizeId);
+        if (idx === -1 || idx === undefined) {
+          const unitPrice = (item as any).price ?? 0;
+          shortages.push({
+            productId: product._id,
+            sizeId: item.sizeId as any,
+            requested: item.quantity,
+            available: 0,
+            shortBy: item.quantity,
+            refund: unitPrice * item.quantity,
+          });
+          continue;
+        }
+
+        const available = (product as any).sizes[idx].stock ?? 0;
+        const requested = item.quantity;
+        const fulfillQty = Math.min(available, requested);
+        const unitPrice = (item as any).price ?? 0;
+
+        if (fulfillQty < requested) {
+          shortages.push({
+            productId: product._id,
+            sizeId: item.sizeId as any,
+            requested,
+            available,
+            shortBy: requested - fulfillQty,
+            refund: (requested - fulfillQty) * unitPrice,
+          });
+        }
+
+        // Record what we plan to deduct now (could be 0)
+        fulfillPlan.push({
+          productId: item.productId,
+          productDocId: product._id,
+          sizeIndex: idx,
+          sizeId: item.sizeId as any,
+          fulfillQty,
+          price: unitPrice,
+        });
+      }
+
+      // Build fulfilled items snapshot (what we can actually deliver now)
+      const fulfilledItems = fulfillPlan
+        .filter((p) => p.fulfillQty > 0)
+        .map((p) => ({
+          productId: p.productId,
+          sizeId: p.sizeId as any,
+          quantity: p.fulfillQty,
+          price: p.price,
+        }));
+
+      const fulfilledAmount = fulfilledItems.reduce(
+        (sum, li) => sum + li.price * li.quantity,
+        0
+      );
+
+      // 4) Apply deductions for fulfillable quantities (guarded by latest stock)
+      for (const step of fulfillPlan) {
+        if (step.fulfillQty <= 0) continue;
+        const prod = await ctx.db.get(step.productId);
+        if (
+          !prod ||
+          !(prod as any).sizes ||
+          !(prod as any).sizes[step.sizeIndex]
+        )
+          continue;
+        const currentStock = (prod as any).sizes[step.sizeIndex].stock ?? 0;
+        const deduct = Math.min(currentStock, step.fulfillQty); // re-check to avoid over-deduct due to races
+        if (deduct <= 0) continue;
+        (prod as any).sizes[step.sizeIndex].stock = currentStock - deduct;
+        await ctx.db.patch(step.productDocId as any, {
+          sizes: (prod as any).sizes,
+        });
+      }
+
+      // 5) Compute refund and decide final status
+      const refundAmount = shortages.reduce((sum, s) => sum + s.refund, 0);
+      const anyFulfilled = fulfillPlan.some((p) => p.fulfillQty > 0);
+
+      const reason =
+        order.status === "paid"
+          ? "Order already paid for"
+          : anyFulfilled
+            ? "Some of the products are out of stock. Partial refund of " +
+              "₦" +
+              refundAmount
+            : "All products out of stock. Full refund of " + "₦" + refundAmount;
+
+      // for refundDue we will save a list of references and their correspondnig refund amount
+
+      if (shortages.length > 0) {
+        // Partial or zero fulfillment
+        const fulfillmentStatus = anyFulfilled ? "partial" : "none";
+        await ctx.db.patch(order._id, {
+          status: anyFulfilled ? "paid" : "out_of_stock",
+          fulfillmentStatus,
+          shortages: shortages,
+          refundDue: [
+            ...(order.refundDue ?? []),
+            {
+              reference,
+              amount: refundAmount,
+              reason,
+              status: "pending",
+              attempts: 0,
+              nextRefundAt: Date.now(),
+              providerRefundId: undefined,
+              processedAt: undefined,
+              lastRefundError: undefined,
+              lastRefundHttpStatus: undefined,
+              lastRefundErrorCode: undefined,
+              lastRefundPayload: undefined,
+            },
+          ],
+          // initialize refund workflow
+          refundStatus: "pending",
+          refundAttempts: 0,
+          refundReason: anyFulfilled ? "partial_fulfillment" : "out_of_stock",
+          lastRefundAttemptAt: undefined,
+          lastRefundError: undefined,
+          refundProviderId: undefined,
+          nextRefundAt: Date.now(), // try immediately; cron/worker will respect this
+          // fulfillment snapshots
+          fulfilledItems,
+          fulfilledAmount,
+        } as any);
+
+        // Enqueue an immediate refund attempt (event-driven)
+        // Hack: Mutations cannot call actions or external apis
+        //we have to know the reference to process a refund too
+
+        // lets update the orderReference
+        if (anyFulfilled) {
+          console.log("partial refunded");
+          // save as partial refunded
+          await ctx.db.patch(ref._id, { status: "partial_refund" });
+        } else {
+          // save as refunded
+          console.log("fully refunded");
+
+          await ctx.db.patch(ref._id, { status: "to_be_refunded" });
+        }
+
+        // run the refund function, for the reference
+        await ctx.scheduler.runAfter(0, internal.order.processRefund, {
+          orderId: order._id,
+        });
+
+        // // 2) Idempotency and status gates
+        if (order.status === "paid") {
+          return {
+            success: true,
+            message: "Order already completed (paid).",
+          } as const;
+        }
+        if (order.status === "out_of_stock") {
+          return {
+            success: true,
+            message: "Order previously marked out of stock.",
+            shortages: (order as any).shortages ?? [],
+            refundDue: (order as any).refundDue ?? 0,
+          } as const;
+        }
+        if ((order as any).fulfillmentStatus === "partial") {
+          return {
+            success: true,
+            message: "Order already partially fulfilled.",
+            shortages: (order as any).shortages ?? [],
+            refundDue: (order as any).refundDue ?? 0,
+          } as const;
+        }
+
+        // Only allow completion from "pending" status (not "draft" anymore)
+        if (order.status !== "pending") {
+          return {
+            success: false,
+            statusCode: 409,
+            message: `Cannot complete order from status '${order.status}'.`,
+          } as const;
+        }
+
+        // Clear the user's cart regardless to avoid duplicate retries with old quantities
+        const userCartItems = await ctx.db
+          .query("carts")
+          .filter((q) => q.eq(q.field("userId"), order.userId))
+          .collect();
+        await Promise.all(userCartItems.map((ci) => ctx.db.delete(ci._id)));
+
+        return {
+          success: true,
+          message: anyFulfilled
+            ? "Order partially fulfilled. Refund due for unavailable items."
+            : "Insufficient stock. Order marked out of stock.",
+          fulfillmentStatus,
+          shortages,
+          refundAmount,
+        } as const;
+
+        // mark that reference as partial refund
+      }
+
+      // 6) Full fulfillment path: mark as paid, clear cart
+      await ctx.db.patch(ref._id, { status: "paid" });
+      await ctx.db.patch(order._id, {
+        status: "paid",
+        fulfillmentStatus: "full",
+        fulfilledItems: order.items.map((it) => ({
+          productId: it.productId,
+          sizeId: it.sizeId as any,
+          quantity: it.quantity,
+          price: (it as any).price ?? 0,
+        })),
+        fulfilledAmount: order.totalAmount,
+        // refundDue: 0,
+      } as any);
+
+      // Clear the user's cart (synchronously) to finalize checkout
       const userCartItems = await ctx.db
         .query("carts")
         .filter((q) => q.eq(q.field("userId"), order.userId))
         .collect();
       await Promise.all(userCartItems.map((ci) => ctx.db.delete(ci._id)));
 
+      // Defer heavier post-completion side effects (building pendingActions, etc.)
+      // Run shortly after commit without blocking the mutation
+      await ctx.scheduler.runAfter(
+        0,
+        internal.order.postCompleteOrderSideEffects,
+        {
+          orderId: order._id,
+        }
+      );
+
       return {
         success: true,
-        message: anyFulfilled
-          ? "Order partially fulfilled. Refund due for unavailable items."
-          : "Insufficient stock. Order marked out of stock.",
-        fulfillmentStatus,
-        shortages,
-        refundAmount,
+        message: "Order completed and stock updated.",
       } as const;
-
-      // mark that reference as partial refund
+    } catch (err) {
+      return {
+        status: false,
+        message: "Could not complete your order!",
+      };
     }
-
-    // 6) Full fulfillment path: mark as paid, clear cart
-    await ctx.db.patch(ref._id, { status: "paid" });
-    await ctx.db.patch(order._id, {
-      status: "paid",
-      fulfillmentStatus: "full",
-      fulfilledItems: order.items.map((it) => ({
-        productId: it.productId,
-        sizeId: it.sizeId as any,
-        quantity: it.quantity,
-        price: (it as any).price ?? 0,
-      })),
-      fulfilledAmount: order.totalAmount,
-      // refundDue: 0,
-    } as any);
-
-    // Clear the user's cart (synchronously) to finalize checkout
-    const userCartItems = await ctx.db
-      .query("carts")
-      .filter((q) => q.eq(q.field("userId"), order.userId))
-      .collect();
-    await Promise.all(userCartItems.map((ci) => ctx.db.delete(ci._id)));
-
-    // Defer heavier post-completion side effects (building pendingActions, etc.)
-    // Run shortly after commit without blocking the mutation
-    await ctx.scheduler.runAfter(
-      0,
-      internal.order.postCompleteOrderSideEffects,
-      {
-        orderId: order._id,
-      }
-    );
-
-    return {
-      success: true,
-      message: "Order completed and stock updated.",
-    } as const;
   },
 });
 
@@ -1585,19 +1596,24 @@ export const postCompleteOrderSideEffects = internalAction({
       }));
 
       // Checks
-      const hasCategoryBySlug = (slug: string) =>
-        enriched.some((prod) =>
-          prod.categories.some(
-            (c) => (c.slug || c.name)?.toLowerCase() === slug
-          )
+      const hasCategory = (slug: string) =>
+        enriched.some(
+          (prod) =>
+            prod.categories.some(
+              (c) => (c.slug || c.name)?.toLowerCase() === slug
+            ) && prod.canBeInRoutine
         );
 
-      const productCanBeInRoutine = enriched.some(
-        (prod) => prod.canBeInRoutine
-      );
+      // const productCanBeInRoutine = enriched.some(
+      //   (prod) => prod.canBeInRoutine
+      // );
       const hasCoreProducts = ["moisturiser", "cleanser", "sunscreen"].every(
-        (s) => hasCategoryBySlug(s)
+        (s) => hasCategory(s)
       );
+
+      // if a user orders multiple core products what are we doing
+
+      // if a user includes a product that can be in routine with core products
 
       // TODO: Replace with actual routine lookup per user
       const hasRoutine = false;
@@ -1605,13 +1621,23 @@ export const postCompleteOrderSideEffects = internalAction({
       // Create action to create a brand new routine if user has no routine but core products available
       // Todo
       // productCanBeInRoutine dosent work best this way. Fix later
-      if (!hasRoutine && productCanBeInRoutine && hasCoreProducts) {
+      const names = enriched.map((p) => p.name);
+      const preview = names.slice(0, 2).join(", ");
+      const extra = Math.max(0, names.length - 2);
+      const prompt =
+        extra > 0
+          ? `Would you like us to help you build a skincare routine including ${preview} and ${extra} other product(s) to your routine?`
+          : `Would you like us to create a routine ${preview} to your routine?`;
+      if (!hasRoutine && hasCoreProducts) {
         console.log("here in create routine pending action");
-        const productIds = enriched.map((p) => p._id);
+
+        // only productIds that can be included in a routine
+        const productIds = enriched
+          .filter((p) => p.canBeInRoutine)
+          .map((p) => p._id);
         const action: PendingAction = {
           id: generateToken(),
-          prompt:
-            "Would you like us to help you create a skincare routine with your recent purchase?",
+          prompt,
           status: "pending",
           type: "create_routine",
           data: { productsToadd: productIds as any },

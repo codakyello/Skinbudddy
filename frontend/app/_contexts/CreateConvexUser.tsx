@@ -37,8 +37,6 @@ export default function ConvexUserProvider({
     setState((prev) => !prev);
   }
 
-  console.log("ConvexUserProvider is rendering"); // Add this line
-
   useEffect(() => {
     (async () => {
       if (!isSignedIn || !clerkUser) {
@@ -61,6 +59,7 @@ export default function ConvexUserProvider({
             email: clerkUser.emailAddresses?.[0]?.emailAddress,
             name: clerkUser.fullName || clerkUser.username || undefined,
             imageUrl: clerkUser.imageUrl || undefined,
+            clerkId: clerkUser?.id,
           });
         }
 

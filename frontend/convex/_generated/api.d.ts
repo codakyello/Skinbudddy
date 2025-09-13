@@ -23,6 +23,8 @@ import type * as convex from "../convex.js";
 import type * as crons from "../crons.js";
 import type * as order from "../order.js";
 import type * as products from "../products.js";
+import type * as recommendations from "../recommendations.js";
+import type * as routine from "../routine.js";
 import type * as users from "../users.js";
 
 /**
@@ -44,6 +46,8 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   order: typeof order;
   products: typeof products;
+  recommendations: typeof recommendations;
+  routine: typeof routine;
   users: typeof users;
 }>;
 export declare const api: FilterApi<

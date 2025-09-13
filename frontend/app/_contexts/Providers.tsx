@@ -2,6 +2,7 @@
 
 import { ClerkProvider, useAuth } from "@clerk/nextjs";
 import Modal from "../_components/Modal";
+import NavBar from "../_components/NavBar";
 import QueryProvider from "./QueryProvider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
@@ -38,6 +39,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
                   <ConvexUserProvider>
                     {/* <SmoothLayout> */}
                     <FullPageLoader>
+                      <NavBar />
                       <CartReminder />
                       {children}
                     </FullPageLoader>
