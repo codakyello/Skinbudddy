@@ -21,6 +21,17 @@ export const IngredientSensitivity = v.union(
   v.literal("mandelic acid")
 );
 
+function normalizeIngredient(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/\./g, "") // remove dots
+    .replace(/[,()\/-]/g, " ") // replace punctuation with spaces
+    .replace(/\s+/g, " ") // collapse multiple spaces
+    .trim()
+    .split(" ")
+    .join("_"); // unify with underscores
+}
+
 export const recommend = action({
   args: {
     skinConcern: v.array(SkinConcern),
@@ -50,17 +61,6 @@ export const recommend = action({
         : Array.isArray((skinProfile as any).ingredientsToavoid)
           ? ((skinProfile as any).ingredientsToavoid as string[])
           : [];
-
-      function normalizeIngredient(raw: string): string {
-        return raw
-          .toLowerCase()
-          .replace(/\./g, "") // remove dots
-          .replace(/[,()\/-]/g, " ") // replace punctuation with spaces
-          .replace(/\s+/g, " ") // collapse multiple spaces
-          .trim()
-          .split(" ")
-          .join("_"); // unify with underscores
-      }
 
       const availableProducts = all
         .filter((p: any) => {
@@ -325,9 +325,12 @@ export const recommend = action({
 
           const seenPerCat = new Map<string, number>();
           for (const r of lastParsedRecs) {
-            const catRaw = String(r?.category ?? "").toLowerCase().trim();
+            const catRaw = String(r?.category ?? "")
+              .toLowerCase()
+              .trim();
             const category = catRaw === "moisturiser" ? "moisturizer" : catRaw;
-            const pid = idByString.get(String(r?._id)) ?? idByName.get(String(r?.name));
+            const pid =
+              idByString.get(String(r?._id)) ?? idByName.get(String(r?.name));
             if (!pid) continue;
             selectedSteps.push({ category, productId: pid });
             seenPerCat.set(category, (seenPerCat.get(category) || 0) + 1);
@@ -336,10 +339,19 @@ export const recommend = action({
           // Compute orders within category groups based on base order + index
           let stepsForSave = selectedSteps
             .slice()
-            .sort((a, b) => (orderBase[a.category] || 99) - (orderBase[b.category] || 99))
+            .sort(
+              (a, b) =>
+                (orderBase[a.category] || 99) - (orderBase[b.category] || 99)
+            )
             .map((s, idx, arr) => {
-              const idxInCat = arr.filter((x, i) => i <= idx && x.category === s.category).length - 1;
-              const order = (orderBase[s.category] || 99) + (s.category === "serum" || s.category === "toner" ? idxInCat : 0);
+              const idxInCat =
+                arr.filter((x, i) => i <= idx && x.category === s.category)
+                  .length - 1;
+              const order =
+                (orderBase[s.category] || 99) +
+                (s.category === "serum" || s.category === "toner"
+                  ? idxInCat
+                  : 0);
               return {
                 id: `${s.category}_${idxInCat + 1}`,
                 order,

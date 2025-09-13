@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Image from "next/image";
 import { Product } from "../_utils/types";
 import { IoCloseOutline } from "react-icons/io5";
 import { Box } from "@chakra-ui/react";
@@ -67,13 +68,16 @@ export function ProductPreviewModal({
       <button onClick={onClose} className="absolute top-[2rem] right-[2rem]">
         <IoCloseOutline className="h-[3.5rem] w-[3.5rem]" />
       </button>
-      <Box className="bg-[#f4f4f2]">
+      <Box className="bg-[#f4f4f2] relative">
         {/* src={product.images?.[0] || "/images/product-1.webp"}
         alt={product.name} */}
-        <img
-          className="w-full h-full object-contain"
-          src={product.images?.at(0)}
-          alt={product.name}
+        <Image
+          src={product.images?.at(0) || "/images/product-1.webp"}
+          alt={product.name || "Product image"}
+          fill
+          className="object-contain"
+          sizes="(max-width: 768px) 100vw, 50vw"
+          priority
         />
       </Box>
       <Box className="flex flex-col h-[45rem] my-auto mx-[7rem] overflow-auto ">

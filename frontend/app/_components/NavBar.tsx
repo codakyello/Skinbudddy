@@ -22,8 +22,14 @@ export default function NavBar() {
   const userId = user?._id ?? "";
   const { cart } = useUserCart(userId);
   // Fetch routines to optionally show direct link to latest
-  const routinesRes = useQuery(api.routine.getUserRoutines, { userId });
-  const routines = (routinesRes as any)?.routines || [];
+  type RoutineSummary = { _id?: string; name?: string; createdAt?: number };
+  type GetUserRoutinesResult =
+    | { success: true; routines: RoutineSummary[] }
+    | { success: false; message: string };
+  const routinesRes = useQuery(api.routine.getUserRoutines, { userId }) as
+    | GetUserRoutinesResult
+    | undefined;
+  const routines: RoutineSummary[] = routinesRes && routinesRes.success ? routinesRes.routines : [];
   const latestRoutineId = routines.length ? String(routines[0]?._id) : null;
 
   const totalCartItems =

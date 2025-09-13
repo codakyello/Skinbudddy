@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "concurrently \"next dev\" \"convex dev\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:ts": "tsc -p tsconfig.build.json",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

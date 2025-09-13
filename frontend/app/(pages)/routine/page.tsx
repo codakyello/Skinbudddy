@@ -5,11 +5,38 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser } from "@/app/_contexts/CreateConvexUser";
 
+type DayPeriod = "am" | "pm" | "either";
+type StepFrequency =
+  | "daily"
+  | "every_other_day"
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "as_needed";
+
+type RoutineStep = {
+  id: string;
+  order: number;
+  period: DayPeriod;
+  frequency: StepFrequency;
+};
+
+type RoutineSummary = {
+  _id?: string;
+  name?: string;
+  createdAt?: number;
+  steps?: RoutineStep[];
+};
+
+type GetUserRoutinesResult =
+  | { success: true; routines: RoutineSummary[] }
+  | { success: false; message: string };
+
 export default function RoutineListPage() {
   const { user } = useUser();
   const result = useQuery(api.routine.getUserRoutines, {
     userId: user._id as string,
-  });
+  }) as GetUserRoutinesResult | undefined;
 
   if (!user) {
     return (
@@ -31,7 +58,7 @@ export default function RoutineListPage() {
     );
   }
 
-  const routines = (result as any).routines || [];
+  const routines: RoutineSummary[] = result && result.success ? result.routines : [];
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -44,11 +71,11 @@ export default function RoutineListPage() {
         </div>
       ) : (
         <ul className="grid gap-4">
-          {routines.map((r: any) => {
+          {routines.map((r: RoutineSummary) => {
             const created = new Date(Number(r?.createdAt || 0));
             const stepCount = Array.isArray(r?.steps) ? r.steps.length : 0;
             const amCount = Array.isArray(r?.steps)
-              ? r.steps.filter((s: any) => s.period === "am").length
+              ? r.steps.filter((s: RoutineStep) => s.period === "am").length
               : 0;
             const pmCount = stepCount - amCount;
             return (

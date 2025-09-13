@@ -95,7 +95,7 @@ export default function PendingActions() {
             userId: user._id as string,
           });
           toast.success("Routine created successfully");
-        } catch (err) {
+        } catch {
           toast.error("Routine could not be created");
         }
       }

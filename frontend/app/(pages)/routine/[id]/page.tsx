@@ -4,16 +4,48 @@ import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import useUserCart from "@/app/_hooks/useUserCart";
 import { useUser } from "@/app/_contexts/CreateConvexUser";
+import type { Product } from "@/app/_utils/types";
 
-function Section({ title, steps }: { title: string; steps: any[] }) {
+type DayPeriod = "am" | "pm" | "either";
+type StepFrequency =
+  | "daily"
+  | "every_other_day"
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "as_needed";
+
+type PopulatedStep = {
+  id: string;
+  order: number;
+  category?: string;
+  categorySlug?: string;
+  period: DayPeriod;
+  frequency: StepFrequency;
+  notes?: string;
+  product?: Product | null;
+  alternateProducts?: Product[];
+};
+
+type RoutineDoc = {
+  _id?: Id<"routines"> | string;
+  name?: string;
+  createdAt?: number;
+  steps: PopulatedStep[];
+};
+
+type GetRoutinePopulatedResult =
+  | { success: true; routine: RoutineDoc }
+  | { success: false; message: string; statusCode?: number };
+
+function Section({ title, steps }: { title: string; steps: PopulatedStep[] }) {
   if (!steps.length) return null;
   return (
     <div className="mb-6">
       <h3 className="text-lg font-semibold mb-2">{title}</h3>
       <ol className="space-y-3">
-        {steps.map((s: any) => (
+        {steps.map((s: PopulatedStep) => (
           <li key={s.id} className="rounded border p-3 bg-white">
             <div className="flex items-start gap-3">
               <div className="text-gray-500 w-6">{s.order}.</div>
@@ -52,7 +84,7 @@ export default function RoutineDetailPage() {
   const result = useQuery(api.routine.getUserRoutinePopulated, {
     userId: user?._id as string,
     routineId: rid as Id<"routines">,
-  });
+  }) as GetRoutinePopulatedResult | undefined;
 
   if (!result) {
     return (
@@ -62,28 +94,30 @@ export default function RoutineDetailPage() {
     );
   }
 
-  if (!result.success) {
+  if (result && !result.success) {
     return (
       <div className="max-w-3xl mx-auto p-6">
         <h1 className="text-2xl font-semibold mb-2">Routine</h1>
-        <p className="text-sm text-red-600">
-          {(result as any).message || "Unable to load routine."}
-        </p>
+        <p className="text-sm text-red-600">{result.message || "Unable to load routine."}</p>
       </div>
     );
   }
 
-  const routine = (result as any).routine;
-  const steps: any[] = Array.isArray(routine?.steps) ? routine.steps : [];
+  const routine = (result && result.success ? result.routine : undefined) as
+    | RoutineDoc
+    | undefined;
+  const steps: PopulatedStep[] = Array.isArray(routine?.steps)
+    ? (routine!.steps as PopulatedStep[])
+    : [];
   const am = steps
     .filter((s) => s.period === "am")
-    .sort((a, b) => a.order - b.order);
+    .sort((a: PopulatedStep, b: PopulatedStep) => a.order - b.order);
   const pm = steps
     .filter((s) => s.period === "pm")
-    .sort((a, b) => a.order - b.order);
+    .sort((a: PopulatedStep, b: PopulatedStep) => a.order - b.order);
   const either = steps
     .filter((s) => s.period === "either")
-    .sort((a, b) => a.order - b.order);
+    .sort((a: PopulatedStep, b: PopulatedStep) => a.order - b.order);
 
   const created = new Date(Number(routine?.createdAt || 0));
 

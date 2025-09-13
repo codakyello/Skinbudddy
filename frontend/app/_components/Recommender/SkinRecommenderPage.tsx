@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Box } from "@chakra-ui/react";
 import SkinQuiz, { QuizResult } from "./SkinQuiz";
 import ProductCard from "@/app/_components/ProductCard";
@@ -23,11 +23,55 @@ export default function SkinRecommenderPage() {
   const [addingAll, setAddingAll] = useState(false);
   const { open } = useModal();
 
+  // Backend arg/response types
+  type BackendSkinType =
+    | "normal"
+    | "oily"
+    | "dry"
+    | "combination"
+    | "sensitive"
+    | "mature"
+    | "acne-prone"
+    | "all";
+  type BackendSkinConcern =
+    | "acne"
+    | "blackheads"
+    | "hyperpigmentation"
+    | "uneven-tone"
+    | "dryness"
+    | "oiliness"
+    | "redness"
+    | "sensitivity"
+    | "fine-lines"
+    | "wrinkles"
+    | "loss-of-firmness"
+    | "dullness"
+    | "sun-damage"
+    | "all";
+  type BackendIngredientSensitivity =
+    | "alcohol"
+    | "retinoids"
+    | "retinol"
+    | "niacinamide"
+    | "ahas-bhas"
+    | "vitamin-c"
+    | "essential-oils"
+    | "mandelic acid";
+  type RecommendArgs = {
+    userId: string;
+    skinType: BackendSkinType;
+    skinConcern: BackendSkinConcern[];
+    ingredientsToAvoid?: BackendIngredientSensitivity[];
+    fragranceFree?: boolean;
+  };
+  type RecommendResponse =
+    | { recommendations: Product[]; notes: string; routineId?: string }
+    | { success: false; message: string };
+
   // Map quiz result to backend args
-  const buildArgs = (r: QuizResult) => {
-    const mapConcern = (c: string): string | null => {
-      // Map frontend concerns to backend schema values
-      const map: Record<string, string> = {
+  const buildArgs = (r: QuizResult): RecommendArgs => {
+    const mapConcern = (c: string): BackendSkinConcern | null => {
+      const map: Record<string, BackendSkinConcern> = {
         acne: "acne",
         blackheads: "blackheads",
         hyperpigmentation: "hyperpigmentation",
@@ -43,30 +87,31 @@ export default function SkinRecommenderPage() {
       };
       return map[c] ?? null;
     };
-    const mapSensitivity = (s: string): string | null => {
-      const map: Record<string, string> = {
+    const mapSensitivity = (
+      s: string
+    ): BackendIngredientSensitivity | null => {
+      const map: Record<string, BackendIngredientSensitivity> = {
         essential_oils: "essential-oils",
         ahas_bhas: "ahas-bhas",
         vitamin_c: "vitamin-c",
         alcohol: "alcohol",
         retinoids: "retinoids",
         niacinamide: "niacinamide",
-        // fragrance handled via fragranceFree flag
       };
       return map[s] ?? null;
     };
     const skinConcern = r.concerns
       .map((c) => mapConcern(c))
-      .filter(Boolean) as string[];
+      .filter((x): x is BackendSkinConcern => Boolean(x));
     const ingredientsToAvoid = r.sensitivities
       .map((s) => mapSensitivity(s))
-      .filter(Boolean) as string[];
+      .filter((x): x is BackendIngredientSensitivity => Boolean(x));
 
     return {
       userId: String(user?._id || "guest"),
-      skinType: r.skinType as any,
-      skinConcern: skinConcern as any,
-      ingredientsToAvoid: ingredientsToAvoid as any,
+      skinType: r.skinType as BackendSkinType,
+      skinConcern,
+      ingredientsToAvoid,
       fragranceFree: Boolean(r.preferences?.fragranceFree),
     };
   };
@@ -78,14 +123,16 @@ export default function SkinRecommenderPage() {
         setLoading(true);
         setError(null);
         const args = buildArgs(result);
-        const resp: any = await recommend(args as any);
-        const recs: Product[] = Array.isArray(resp?.recommendations)
-          ? (resp.recommendations as Product[])
-          : [];
+        const resp = (await recommend(args)) as RecommendResponse;
+        const recs: Product[] =
+          resp && "recommendations" in resp && Array.isArray(resp.recommendations)
+            ? resp.recommendations
+            : [];
         setTopProducts(recs);
-        setNotes(typeof resp?.notes === "string" ? resp.notes : "");
-      } catch (e: any) {
-        setError(e?.message || "Failed to get recommendations");
+        setNotes(resp && "notes" in resp && typeof resp.notes === "string" ? resp.notes : "");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to get recommendations";
+        setError(msg);
         setTopProducts([]);
         setNotes("");
       } finally {
@@ -120,18 +167,28 @@ export default function SkinRecommenderPage() {
         toast.error("No valid sizes found for these products.");
         return;
       }
-      const res: any = await bulkAdd({ userId: String(user._id), items });
-      if (!res?.success) {
-        const msg = res?.message || "Some items could not be added";
+      type BulkAddResponse =
+        | {
+            success: true;
+            statusCode: 200;
+            message: string;
+            createdIds: string[];
+            updatedIds: string[];
+          }
+        | { success: false; statusCode: number; message: string; errors?: unknown[] };
+      const res = (await bulkAdd({ userId: String(user._id), items })) as BulkAddResponse;
+      if (!res.success) {
+        const msg = res.message || "Some items could not be added";
         toast.error(msg);
       } else {
-        const created = Array.isArray(res?.createdIds) ? res.createdIds.length : 0;
-        const updated = Array.isArray(res?.updatedIds) ? res.updatedIds.length : 0;
+        const created = Array.isArray(res.createdIds) ? res.createdIds.length : 0;
+        const updated = Array.isArray(res.updatedIds) ? res.updatedIds.length : 0;
         toast.success(`Added ${created + updated} item(s) to your cart.`);
         open("cart");
       }
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to add items to cart");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to add items to cart";
+      toast.error(msg);
     } finally {
       setAddingAll(false);
     }
