@@ -1,4 +1,4 @@
-import { Box, position } from "@chakra-ui/react";
+import { Box } from "@chakra-ui/react";
 import useOutsideClick from "../_hooks/useOutsideClick";
 
 export default function ModalWrapper({

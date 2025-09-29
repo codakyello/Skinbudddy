@@ -12,7 +12,6 @@ import { useMutation } from "convex/react";
 import { toast } from "sonner";
 import AppError from "../_utils/appError";
 import { formatPrice } from "../_utils/utils";
-import { useModal } from "./Modal";
 import { Product, Size, Brand } from "../_utils/types";
 
 // type Essentials =
@@ -24,6 +23,19 @@ import { Product, Size, Brand } from "../_utils/types";
 //     };
 
 type EssentialsProduct = Product & { brand?: Brand | null };
+
+// Type guard for EssentialsProduct
+function isEssentialsProduct(
+  product: Product | null | undefined
+): product is EssentialsProduct {
+  return (
+    product !== null &&
+    product !== undefined &&
+    typeof product === "object" &&
+    "canBeInRoutine" in product &&
+    Boolean(product.canBeInRoutine)
+  );
+}
 
 export function RoutineSuggestionsModal({
   onClose,
@@ -46,10 +58,9 @@ export function RoutineSuggestionsModal({
   const SECTIONS: RoutineCategory[] = ["cleanser", "moisturizer", "sunscreen"];
 
   // Heuristic category inference from product data
-  function inferRoutineCategory(p?: {
-    name?: string | null;
-    category?: string | null;
-  }): RoutineCategory | null {
+  function inferRoutineCategory(
+    p?: EssentialsProduct | null
+  ): RoutineCategory | null {
     const hay = `${p?.name ?? ""} ${p?.category ?? ""}`.toLowerCase();
     if (/(cleanser|face wash|gel wash|micellar)/.test(hay)) return "cleanser";
     if (/(moistur|cream|lotion|hydrating)/.test(hay)) return "moisturizer";
@@ -64,20 +75,22 @@ export function RoutineSuggestionsModal({
   }
 
   // Pull routine-capable items from cart
-  const routineCartProducts = (cart ?? [])
-    .map((i) => i.product)
-    .filter((p) => p?.canBeInRoutine) as (EssentialsProduct | undefined)[];
+  const allProductsInCart = (cart ?? []).map((i) => i.product);
+
+  const routineCartProducts: EssentialsProduct[] = (
+    allProductsInCart.filter((p) => p !== null && p !== undefined) as Product[]
+  ).filter(isEssentialsProduct);
 
   // Track which routine categories are already present
   const presentCats = new Set<RoutineCategory>();
   routineCartProducts.forEach((p) => {
-    const c = inferRoutineCategory(p as any);
+    const c = inferRoutineCategory(p);
     if (c) presentCats.add(c);
   });
 
   // Choose one headline product to mention
   const headline = routineCartProducts[0];
-  const headlineCat = inferRoutineCategory(headline as any);
+  const headlineCat = inferRoutineCategory(headline);
   const missing = SECTIONS.filter((c) => !presentCats.has(c));
 
   const pickedLabel = [headline?.brand?.name, headline?.name]
@@ -91,12 +104,16 @@ export function RoutineSuggestionsModal({
       : `Nice pick for your routine. Add ${formatList(missing)} to complete it.`
     : `Build a simple, effective routine: ${formatList(SECTIONS)} — quick picks to get you started.`;
 
-  const { data: essentials } = useQuery(
+  type EssentialsResponse =
+    | Record<RoutineCategory, EssentialsProduct[]>
+    | false;
+  const essentialsQuery = useQuery(
     convexQuery(api.products.getEssentialProducts, {
       selectedProductIds,
       perCategory: 10,
     })
   );
+  const essentials = essentialsQuery.data as EssentialsResponse | undefined;
 
   const addToCart = useMutation(api.cart.createCart);
   const [selectedSizeByProduct, setSelectedSizeByProduct] = useState<
@@ -149,7 +166,7 @@ export function RoutineSuggestionsModal({
     if (!essentials) {
       onClose?.();
     }
-  }, [essentials]);
+  }, [essentials, onClose]);
 
   if (essentials === false) return null;
   if (!essentials) return null;
@@ -174,8 +191,9 @@ export function RoutineSuggestionsModal({
 
       <Box className="max-h-[70vh] overflow-auto p-[2rem] grid gap-[2rem]">
         {sections.map((s) => {
-          const items = essentials?.[s.key];
-          if (!items || items.length === 0) return null;
+          const raw = essentials?.[s.key];
+          const items: EssentialsProduct[] = Array.isArray(raw) ? raw : [];
+          if (items.length === 0) return null;
 
           return (
             <Box key={s.key} className="">

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
@@ -146,11 +147,13 @@ function StepCard({
     <li className="list-none">
       <div className="group flex gap-4 rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_20px_40px_-30px_rgba(15,23,42,0.45)] ring-1 ring-black/[0.04]">
         <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl bg-slate-100">
-          <img
+          <Image
             src={typeof imageSrc === "string" ? imageSrc : fallbackImage}
             alt={productName}
-            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-            loading="lazy"
+            fill
+            unoptimized
+            className="object-cover transition duration-500 group-hover:scale-105"
+            sizes="80px"
           />
         </div>
 

@@ -1,8 +1,9 @@
 "use client";
 import { Box } from "@chakra-ui/react";
+import Image from "next/image";
 import { algoliasearch } from "algoliasearch";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Hit } from "@algolia/client-search";
+import { Hit, SearchResponse } from "@algolia/client-search";
 import { Size } from "../_utils/types";
 
 interface ProductHit extends Hit<Record<string, unknown>> {
@@ -33,7 +34,7 @@ export default function Search() {
     }
 
     return algoliasearch(appID, apiKey);
-  }, [appID, apiKey]);
+  }, []);
 
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -80,13 +81,14 @@ export default function Search() {
             hitsPerPage: 12,
           },
         })
-        .then((response) => {
+        .then((response: SearchResponse<ProductHit>) => {
           if (requestIdRef.current !== requestId) return;
 
           setResults(response.hits);
         })
-        .catch((err) => {
-          if (requestIdRef.current !== requestId) return;
+        .catch((err: unknown) => {
+          if (err instanceof Error)
+            if (requestIdRef.current !== requestId) return;
 
           console.error("Search request failed", err);
           setResults([]);
@@ -202,11 +204,13 @@ export default function Search() {
                       className="group flex gap-4 rounded-2xl border border-transparent bg-neutral-50/80 p-4 transition hover:border-black/10 hover:bg-white"
                     >
                       <Box className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl bg-neutral-200">
-                        <img
+                        <Image
                           src={imageSrc}
                           alt={product.name ?? "Product"}
-                          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                          loading="lazy"
+                          fill
+                          unoptimized
+                          className="object-cover transition duration-500 group-hover:scale-105"
+                          sizes="80px"
                         />
                       </Box>
 

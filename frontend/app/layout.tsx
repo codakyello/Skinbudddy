@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import Announcement from "./_components/Announcement";
 import { Toaster } from "sonner";
 import Providers from "./_contexts/Providers";
 import PendingActions from "./_components/PendingActions";
 import * as Sentry from "@sentry/nextjs";
 import NavBar from "./_components/NavBar";
 import { Box } from "@chakra-ui/react";
-import Modal from "./_components/Modal";
 
 // import SmoothLayout from "./_components/SmoothLayout";
 const geistSans = localFont({

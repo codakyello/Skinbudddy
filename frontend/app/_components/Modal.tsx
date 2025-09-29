@@ -12,7 +12,6 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
-import useOutsideClick from "../_hooks/useOutsideClick";
 import { wait } from "../_utils/utils";
 import ModalWrapper from "./ModalWrapper";
 
@@ -49,7 +48,7 @@ export default function Modal({ children }: { children: ReactNode }) {
     if (!isOpen) return;
 
     close();
-  }, [pathname]);
+  }, [pathname, close, isOpen]);
 
   return (
     <ModalContext.Provider

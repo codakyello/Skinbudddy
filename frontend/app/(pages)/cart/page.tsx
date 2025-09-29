@@ -1,19 +1,19 @@
 import Cart from "@/app/_components/Cart";
-import CartTable from "@/app/_components/CartTable";
-import Modal from "@/app/_components/Modal";
-import { Tab, TabHeader, Tabs } from "@/app/_components/Tabs";
+import { Tabs } from "@/app/_components/Tabs";
 import { Box } from "@chakra-ui/react";
-import { title } from "process";
+import { Suspense } from "react";
 
-export default async function Page() {
+export default function Page() {
   return (
-    <Tabs state="local" defaultTab="cart">
-      <Box>
-        <Box className="text-center uppercase bg-[#eaedf0] text-[1.8rem] py-[4.5rem] font-semibold">
-          Shopping cart
+    <Suspense fallback={"...Loading"}>
+      <Tabs state="local" defaultTab="cart">
+        <Box>
+          <Box className="text-center uppercase bg-[#eaedf0] text-[1.8rem] py-[4.5rem] font-semibold">
+            Shopping cart
+          </Box>
+          <Cart />
         </Box>
-        <Cart />
-      </Box>
-    </Tabs>
+      </Tabs>
+    </Suspense>
   );
 }

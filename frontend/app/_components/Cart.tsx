@@ -6,7 +6,6 @@ import useTabs, { Tab, TabHeader, TabWindow } from "./Tabs";
 import CartTable from "./CartTable";
 import { formatPrice } from "../_utils/utils";
 import { CheckoutForm } from "./CheckoutForm";
-import Modal from "./Modal";
 import useUserDetails from "../_hooks/useUserDetails";
 import { User } from "../_utils/types";
 
@@ -46,7 +45,7 @@ export default function Cart() {
     <Box className="overflow-hidden mx-auto max-w-[1100px] ">
       <Box className="flex gap-[10rem] mt-[6rem] mb-[4rem]  py-[3rem] justify-center border-t border-b border-gray-200">
         {tabs.map((tab, index) => (
-          <Tab tab={tab.name}>
+          <Tab key={tab.name} tab={tab.name}>
             <TabHeader number={index + 1} title={tab.title} />
           </Tab>
         ))}

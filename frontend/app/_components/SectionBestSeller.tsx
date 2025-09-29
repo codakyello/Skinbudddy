@@ -2,16 +2,13 @@
 import { Product } from "../_utils/types";
 import useProducts from "../_hooks/useProducts";
 import Section from "./Section";
-import Modal from "./Modal";
-import { useEffect } from "react";
-import { toast } from "sonner";
 
 export default function SectionBestSeller({
   initialProducts,
 }: {
   initialProducts: Product[];
 }) {
-  const { products, error, isPending } = useProducts({
+  const { products } = useProducts({
     filters: { isBestseller: true },
 
     sort: "",

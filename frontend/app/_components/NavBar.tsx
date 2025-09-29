@@ -2,19 +2,12 @@
 import { Box } from "@chakra-ui/react";
 import Modal, { ModalHoverOpen, ModalOpen, ModalWindow } from "./Modal";
 import CartModal from "./CartModal";
-import { RoutineSuggestionsModal } from "./RoutineSuggestionsModal";
 import AuthModal from "./AuthModal";
 import Link from "next/link";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import useUserCart from "../_hooks/useUserCart";
-import { useNavSticky } from "../_contexts/Sticky";
 import { useUser } from "../_contexts/CreateConvexUser";
-import { useState } from "react";
 import Logo from "./Logo";
-import Input from "./Input";
 import NavModal from "./NavModal";
-import ModalWrapper from "./ModalWrapper";
 import Search from "./Search";
 import { BsStars } from "react-icons/bs";
 
@@ -26,15 +19,8 @@ const nav = [
   { name: "more info", link: "/" },
 ];
 
-type RoutineSummary = { _id?: string; name?: string; createdAt?: number };
-type GetUserRoutinesResult =
-  | { success: true; routines: RoutineSummary[] }
-  | { success: false; message: string };
-
 export default function NavBar() {
   // const { isSticky } = useNavSticky();
-  const [skipped, SetSkipped] = useState(false);
-
   const { user } = useUser();
 
   // Ensure a string is passed to the hook even before user is ready
@@ -42,21 +28,10 @@ export default function NavBar() {
   const { cart } = useUserCart(userId);
   // Fetch routines to optionally show direct link to latest
 
-  const routinesRes = useQuery(api.routine.getUserRoutines, { userId }) as
-    | GetUserRoutinesResult
-    | undefined;
-  const routines: RoutineSummary[] =
-    routinesRes && routinesRes.success ? routinesRes.routines : [];
-  const latestRoutineId = routines.length ? String(routines[0]?._id) : null;
-
   const totalCartItems =
     cart?.reduce((acc, item) => {
       return acc + item.quantity;
     }, 0) || 0;
-
-  const handleSkip = function () {
-    SetSkipped(true);
-  };
 
   return (
     <Box className="fixed w-full z-[99]">
@@ -169,7 +144,7 @@ export default function NavBar() {
         <Box className=" bg-black h-[4.4rem] flex items-center justify-center">
           <ul className="text-[#fff] flex uppercase text-[1.3rem]">
             {nav.map((item) => (
-              <ModalHoverOpen name={item.name}>
+              <ModalHoverOpen key={item.name} name={item.name}>
                 <li className="px-[2rem] cursor-pointer">
                   <Link href={item.link}>{item.name}</Link>
                 </li>
@@ -218,7 +193,7 @@ export default function NavBar() {
         name="cart"
         position="right"
       >
-        <CartModal skipped={skipped} />
+        <CartModal />
       </ModalWindow>
     </Box>
   );

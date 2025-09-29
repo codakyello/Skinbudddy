@@ -14,8 +14,6 @@ import { validatePassword } from "../_utils/utils";
 import { validateEmail } from "../_utils/utils";
 import { useClerk, useSignIn, useSignUp } from "@clerk/clerk-react";
 import { useAuth } from "@clerk/nextjs";
-import React from "react";
-import ModalWrapper from "./ModalWrapper";
 import { useModal } from "./Modal";
 import { FormError } from "../_utils/types";
 

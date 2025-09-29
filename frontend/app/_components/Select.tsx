@@ -21,7 +21,8 @@ export default function Select({
   handleChange: (event: ChangeEvent<HTMLSelectElement>) => void;
   label: string;
 }) {
-  const selectId = id ?? useId();
+  const generatedId = useId();
+  const selectId = id ?? generatedId;
 
   return (
     <Box className="relative">

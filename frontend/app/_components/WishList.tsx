@@ -16,7 +16,7 @@ export default function WishList() {
   return (
     <Box className="grid grid-cols-4 gap-4">
       {res?.map((item) => (
-        <ProductCard product={item.product as Product} />
+        <ProductCard key={item._id} product={item.product as Product} />
       ))}
     </Box>
   );

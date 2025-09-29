@@ -1,23 +1,17 @@
 /* eslint-disable @next/next/no-img-element */
 import { Box } from "@chakra-ui/react";
 import ClipLoader from "react-spinners/ClipLoader";
-import { useNavSticky } from "../_contexts/Sticky";
 import useUserCart from "../_hooks/useUserCart";
-import { Cart, Product } from "../_utils/types";
+import { Cart } from "../_utils/types";
 import { useUser } from "../_contexts/CreateConvexUser";
 import { X, Minus, Plus } from "lucide-react";
 import { useMutation } from "convex/react";
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
-import { formatPrice, hasCategory } from "../_utils/utils";
-import { useMemo, useState } from "react";
+import { formatPrice } from "../_utils/utils";
+import { useState } from "react";
 import AppError from "../_utils/appError";
-import { convexQuery } from "@convex-dev/react-query";
-import { useModal } from "./Modal";
-import ModalWrapper from "./ModalWrapper";
-import Link from "next/link";
 import TransitionLink from "./TransitionLink";
 
 const images = [
@@ -35,42 +29,17 @@ const images = [
   "/images/product/facefacts-moisturising-gel-cream.webp",
 ];
 
-export default function CartModal({
-  onClose,
-  skipped = false,
-}: {
-  onClose?: () => void;
-  skipped: boolean;
-}) {
+export default function CartModal() {
   const { user } = useUser();
   const { cart, isPending } = useUserCart(user._id as string);
-  const { isSticky } = useNavSticky();
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const { open } = useModal();
   const updateCartQuantity = useMutation(api.cart.updateCartQuantity);
   const removeFromCart = useMutation(api.cart.removeFromCart);
   // const generateOrderToken = useMutation(api.order.generateOrderToken);
-  const [orderDiscrepancies, setOrderDiscrepancies] = useState<
-    Record<string, string>
-  >({});
+  const [orderDiscrepancies] = useState<Record<string, string>>({});
 
   console.log(cart, "This are cart");
-  // Build a stable list of selected product IDs from the cart
-  const selectedProductIds = useMemo(() => {
-    return (cart || [])
-      .map((item) => item.product?._id)
-      .filter(Boolean) as Id<"products">[];
-  }, [cart]);
-
-  // Prefetch essentials whenever the cart changes (top-level reactive query)
-  const { data: essentials } = useQuery(
-    convexQuery(api.products.getEssentialProducts, {
-      selectedProductIds,
-      perCategory: 10,
-      // fragranceFree: true, // uncomment if you want to force FF
-    })
-  );
 
   const handleUpdateCartQuantity = async function (
     quantity: number,
@@ -128,7 +97,7 @@ export default function CartModal({
               <Box className="flex-1 overflow-auto">
                 {cart.map((item: Cart, index: number) => (
                   <Box
-                    key={index}
+                    key={item._id}
                     className="relative flex items-center gap-[1.6rem] py-[16px] transition-all duration-300 border-b border-gray-200"
                   >
                     {/* Remove button */}

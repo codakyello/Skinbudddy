@@ -1,16 +1,8 @@
 /* eslint-disable @next/next/no-img-element */
 import SectionBestSeller from "./_components/SectionBestSeller";
-import Modal from "./_components/Modal";
-import Hero from "./_components/Hero";
-import SectionCategories from "./_components/SectionCategories";
-import SectionSets from "./_components/SectionSets";
-import Image from "next/image";
-import NewProductImageCarousel from "./_components/NewProductImageCarousel";
-import { Footer } from "./_components/Footer";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { Box } from "@chakra-ui/react";
-import ProductCard from "./_components/ProductCard";
 import SectionTrending from "./_components/SectionTrending";
 
 const section = [
@@ -42,8 +34,9 @@ export default async function HomePage() {
   return (
     <>
       <Box className="flex h-[49rem] mb-[96px] gap-[8px] pl-[16px] pt-[8px] overflow-auto">
-        {section.map((s) => (
+        {section.map((s, index) => (
           <Box
+            key={index}
             style={{ backgroundColor: s.bg }}
             className={`min-w-[54.5rem] h-full rounded-[5px]`}
           />

@@ -1,5 +1,4 @@
 import { Id } from "@/convex/_generated/dataModel";
-import { v } from "convex/values";
 import { ActionTypes } from "@/convex/schema";
 
 export type Size = {
@@ -58,6 +57,15 @@ export type Product = {
   sizes?: Size[];
   slug?: string;
   unit?: string;
+  category?: string; // Add this line
+  originalPrice?: number; // Add this line
+  _creationTime?: number; // Add this line
+  hasFragrance?: boolean; // Add this line
+  hasAlcohol?: boolean; // Add this line
+  canBeInRoutine?: boolean; // Add this line
+  skinType?: string[]; // Add this line
+  concerns?: string[]; // Add this line
+  ingredients?: string[]; // Add this line
   // Convex returns category ids in DB docs, but queries often populate them.
   // Allow both to avoid assignment errors at boundaries.
   categories?: (Id<"categories"> | Category | null)[];

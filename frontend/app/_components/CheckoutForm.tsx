@@ -7,7 +7,7 @@ import useUserCart from "../_hooks/useUserCart";
 import { api } from "@/convex/_generated/api";
 import { useEffect, useMemo, useState } from "react";
 import { Id } from "@/convex/_generated/dataModel";
-import Modal, { ModalWindow, useModal } from "./Modal";
+import { ModalWindow, useModal } from "./Modal";
 import { FormError, Product, User } from "../_utils/types";
 import { hasCategory, validateEmail, validatePhoneNo } from "../_utils/utils";
 import { FormRow } from "./FormRow";
@@ -17,9 +17,6 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
   const createOrder = useMutation(api.order.createOrder);
   const [isInitiating, setIsInitiating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [orderDiscrepancies, setOrderDiscrepancies] = useState<
-    Record<string, string>
-  >({});
   const { user } = useUser();
   const { cart } = useUserCart(user._id as string);
   const [errors, setErrors] = useState<FormError>({});
@@ -220,15 +217,6 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
       console.log(fullAddress);
 
       const orderId = res?.orderId;
-      const discrepancies = res?.discrepancies;
-
-      const obj: Record<string, string> = {};
-      if (discrepancies)
-        discrepancies.forEach((d: { cartId: string; reason: string }) => {
-          obj[d.cartId] = d.reason;
-        });
-      if (Object.keys(obj).length > 0) setOrderDiscrepancies(obj);
-
       if (!res.success) throw new AppError(res.message as string);
       if (!orderId) throw new AppError("Order ID not found after creation");
 
@@ -309,17 +297,6 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
       });
 
       console.log(fullAddress, "full Address");
-
-      const discrepancies = res?.discrepancies;
-
-      const obj: Record<string, string> = {};
-
-      if (discrepancies)
-        discrepancies.forEach((d: { cartId: string; reason: string }) => {
-          obj[d.cartId] = d.reason;
-        });
-
-      if (Object.keys(obj).length > 0) setOrderDiscrepancies(obj);
 
       if (!res.success) throw new AppError(res.message);
 

@@ -3,7 +3,6 @@ import ProductCard from "./ProductCard";
 import { Product } from "../_utils/types";
 // import Section from "./Section";
 import { Box } from "@chakra-ui/react";
-import useProducts from "../_hooks/useProducts";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
@@ -43,8 +42,6 @@ export default function Section({
   const displayedProducts = products || initialProducts;
 
   const [offset, setOffset] = useState(0);
-
-  const [paused, setPaused] = useState(false);
 
   const [cardWidth, setCardWidth] = useState(300);
 
@@ -148,8 +145,6 @@ export default function Section({
         <Box
           key={displayLimit}
           className="flex gap-x-[4rem]  no-scrollbar transition-transform duration-300 ease-out"
-          onMouseEnter={() => setPaused(true)}
-          onMouseLeave={() => setPaused(false)}
           style={{ transform: `translateX(${offset}px)` }}
         >
           {displayedProducts.map((product: Product, i: number) => (

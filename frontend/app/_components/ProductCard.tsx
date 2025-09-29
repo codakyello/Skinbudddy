@@ -3,8 +3,7 @@
 "use client";
 import { Box } from "@chakra-ui/react";
 import { Product } from "../_utils/types";
-import { formatPrice, getDiscountedType, getTagType } from "../_utils/utils";
-import Tag from "./Tag";
+import { formatPrice } from "../_utils/utils";
 import { CiHeart } from "react-icons/ci";
 import { FiEye } from "react-icons/fi";
 import { useMutation } from "convex/react";

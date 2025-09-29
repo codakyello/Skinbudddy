@@ -1,9 +1,6 @@
 "use client";
 
-import Table, { Body, Footer, Header } from "./Table";
-import Modal from "./Modal";
-import useUserCart from "../_hooks/useUserCart";
-import { useUser } from "../_contexts/CreateConvexUser";
+import Table, { Body, Header } from "./Table";
 import { Cart } from "../_utils/types";
 import CartRow from "./CartRow";
 
@@ -24,24 +21,20 @@ const images = [
 
 export default function CartTable({ cart }: { cart: Cart[] }) {
   return (
-    <Modal>
-      <Table columns={["30rem", "20rem", "15rem", "20rem", "auto"]}>
-        <Header headers={["Product", "Price", "Quantity", "Total", "Delete"]} />
+    <Table columns={["30rem", "20rem", "15rem", "20rem", "auto"]}>
+      <Header headers={["Product", "Price", "Quantity", "Total", "Delete"]} />
 
-        <Body>
-          {cart.map((item, index) => (
-            <CartRow
-              item={{
-                ...item,
-                product: { ...item.product, images: [images[index]] },
-              }}
-            />
-          ))}
-        </Body>
-        {/* <Footer>
-          {Number(count) > RESULTS_PER_PAGE ? <Pagination count={count} /> : ""}
-        </Footer> */}
-      </Table>
-    </Modal>
+      <Body>
+        {cart.map((item, index) => (
+          <CartRow
+            key={item._id}
+            item={{
+              ...item,
+              product: { ...item.product, images: [images[index]] },
+            }}
+          />
+        ))}
+      </Body>
+    </Table>
   );
 }

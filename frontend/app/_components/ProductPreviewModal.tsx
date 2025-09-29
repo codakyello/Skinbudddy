@@ -11,7 +11,6 @@ import { useMutation } from "convex/react";
 import { Id } from "@/convex/_generated/dataModel";
 import { useModal } from "./Modal";
 import AppError from "../_utils/appError";
-import useOutsideClick from "../_hooks/useOutsideClick";
 import ModalWrapper from "./ModalWrapper";
 
 export function ProductPreviewModal({
