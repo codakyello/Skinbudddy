@@ -48,7 +48,7 @@ export default function Modal({ children }: { children: ReactNode }) {
     if (!isOpen) return;
 
     close();
-  }, [pathname, close, isOpen]);
+  }, [pathname]);
 
   return (
     <ModalContext.Provider

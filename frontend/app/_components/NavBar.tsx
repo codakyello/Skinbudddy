@@ -177,7 +177,7 @@ export default function NavBar() {
       </Modal>
 
       <ModalWindow
-        listenCapturing={true}
+        listenCapturing={false}
         bgClassName="bg-[var(--color-modal-bg)] z-[9999]"
         name="user"
         position="right"
