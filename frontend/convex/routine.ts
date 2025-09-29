@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { action, query, internalMutation } from "./_generated/server";
-import { runChatCompletion } from "./_utils/internalUtils";
+import { runChatCompletion, generateToken } from "./_utils/internalUtils";
 import {
   SkinConcern,
   SkinType,
@@ -28,8 +28,13 @@ export const createRoutine = action({
     skinConcerns: v.optional(v.array(SkinConcern)),
     skinType: v.optional(SkinType),
     userId: v.string(),
+    pendingActionId: v.optional(v.string()),
+    orderId: v.optional(v.id("orders")),
   },
-  handler: async (ctx, { productIds, skinConcerns, skinType, userId }) => {
+  handler: async (
+    ctx,
+    { productIds, skinConcerns, skinType, userId, pendingActionId, orderId }
+  ) => {
     try {
       const internalAny = (await import("./_generated/api")).internal as any;
       // Try to identify user
@@ -466,6 +471,52 @@ export const createRoutine = action({
         console.warn("saveRoutine failed:", (e as any)?.message);
       }
 
+      if (userId) {
+        try {
+          const userDoc = await ctx.runQuery(
+            internalAny.order._getUserByExternalId,
+            { userId }
+          );
+
+          if (userDoc?._id) {
+            if (pendingActionId) {
+              await ctx.runMutation(
+                internalAny.order._setUserPendingActionStatus,
+                {
+                  userDocId: userDoc._id,
+                  actionId: pendingActionId,
+                  status: "completed",
+                }
+              );
+            }
+
+            const completedAction = {
+              id: generateToken(),
+              prompt: "Your new skincare routine is ready",
+              status: "pending",
+              type: "create_routine_completed",
+              data: {
+                routineId: savedId,
+                orderId: orderId ?? undefined,
+              },
+              createdAt: Date.now(),
+            };
+
+            await ctx.runMutation(internalAny.order._appendUserPendingAction, {
+              userDocId: userDoc._id,
+              action: completedAction,
+            });
+
+            console.log("routine created success and pending action saved");
+          }
+        } catch (e) {
+          console.warn("routine completion pending action failed", {
+            userId,
+            message: (e as any)?.message,
+          });
+        }
+      }
+
       // we will do this when we want to return the routine
       return {
         success: true,
@@ -473,7 +524,6 @@ export const createRoutine = action({
         routine: { ...finalRoutine, steps: populatedSteps },
         notes: String(parsed?.notes ?? ""),
       } as const;
-      return {};
     } catch (err) {
       console.log(err);
       return {

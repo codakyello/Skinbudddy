@@ -5,13 +5,14 @@ import { useMutation, useQuery } from "convex/react";
 import { useUser } from "../_contexts/CreateConvexUser";
 import useUserCart from "../_hooks/useUserCart";
 import { api } from "@/convex/_generated/api";
-import { useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Id } from "@/convex/_generated/dataModel";
 import { ModalWindow, useModal } from "./Modal";
 import { FormError, Product, User } from "../_utils/types";
 import { hasCategory, validateEmail, validatePhoneNo } from "../_utils/utils";
 import { FormRow } from "./FormRow";
 import { RoutineSuggestionsModal } from "./RoutineSuggestionsModal";
+import CheckBox from "./CheckBox";
 
 export function CheckoutForm({ userDetail }: { userDetail: User }) {
   const createOrder = useMutation(api.order.createOrder);
@@ -26,15 +27,6 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
       .filter(Boolean) as Id<"products">[];
   }, [cart]);
   const [skipped, SetSkipped] = useState(false);
-  const { open, isOpen } = useModal();
-  const essentials = useQuery(api.products.getEssentialProducts, {
-    selectedProductIds,
-    perCategory: 10,
-    // fragranceFree: true, // uncomment if you want to force FF
-  });
-
-  console.log(isOpen, "routine-suggestions");
-
   const [input, setInput] = useState({
     firstName: "",
     lastName: "",
@@ -47,8 +39,6 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
     phone: "",
     email: "",
   });
-
-  // sync default values to controlled input
   useEffect(() => {
     if (!userDetail) return;
     setInput((prev) => {
@@ -62,6 +52,40 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
       return next;
     });
   }, [userDetail]);
+
+  const [checked, setChecked] = useState(false);
+  const { open } = useModal();
+  const essentials = useQuery(api.products.getEssentialProducts, {
+    selectedProductIds,
+    perCategory: 10,
+    // fragranceFree: true, // uncomment if you want to force FF
+  });
+  const products = cart
+    .map((item) => item.product)
+    .filter(Boolean) as Product[];
+  if (cart.length < 1) return;
+
+  const anyProductCanBeInRoutine = cart.some(
+    (item) => item.product?.canBeInRoutine
+  );
+
+  const hasCoreProducts = ["moisturiser", "cleanser", "sunscreen"].every(
+    (cat) => hasCategory(products, cat)
+  );
+
+  const hasSuggestions =
+    essentials &&
+    Object.values(essentials).some(
+      (list) => Array.isArray(list) && list.length > 0
+    );
+
+  function handleCheck(e: ChangeEvent<HTMLInputElement>) {
+    const value = e.currentTarget.checked;
+    setChecked(value);
+    console.log(value);
+  }
+
+  // sync default values to controlled input
 
   const anyInput = input as Record<string, string>;
   const safeTrim = (v: unknown) =>
@@ -165,24 +189,6 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
     if (Object.values(errors).some(Boolean)) return null;
 
     // ---- Cart checks & routine suggestions logic ----
-    const products = cart
-      .map((item) => item.product)
-      .filter(Boolean) as Product[];
-    if (cart.length < 1) return;
-
-    const anyProductCanBeInRoutine = cart.some(
-      (item) => item.product?.canBeInRoutine
-    );
-
-    const hasCoreProducts = ["moisturiser", "cleanser", "sunscreen"].every(
-      (cat) => hasCategory(products, cat)
-    );
-
-    const hasSuggestions =
-      essentials &&
-      Object.values(essentials).some(
-        (list) => Array.isArray(list) && list.length > 0
-      );
 
     if (
       anyProductCanBeInRoutine &&
@@ -212,6 +218,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
         additionalAddress, // additional address
         streetAddress, // keep separate fields for backend if needed
         deliveryNote: "",
+        createRoutine: checked,
       });
 
       console.log(fullAddress);
@@ -294,6 +301,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
         additionalAddress,
         streetAddress, // keep separate fields for backend if needed
         deliveryNote: "",
+        createRoutine: checked,
       });
 
       console.log(fullAddress, "full Address");
@@ -427,6 +435,20 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
           error={errors.email || ""}
         />
 
+        {hasCoreProducts && anyProductCanBeInRoutine && (
+          <Box className="flex gap-3 mb-[3rem] mt-[-1rem] items-center">
+            <CheckBox
+              className="!h-[16px]"
+              id="create-routine"
+              name="createRoutine"
+              onChange={handleCheck}
+            />
+            <label htmlFor="create-routine">
+              Do you want us to help you create a routine?
+            </label>
+          </Box>
+        )}
+
         <Box className="flex gap-[2rem]">
           <button
             disabled={isInitiating}
@@ -449,6 +471,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
         bgClassName="bg-black/25 z-[9999]"
         name="routine-suggestions"
         position="center"
+        listenCapturing={false}
       >
         <RoutineSuggestionsModal handleSkip={handleSkip} />
       </ModalWindow>

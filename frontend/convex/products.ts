@@ -41,11 +41,16 @@ export const recommend = action({
     fragranceFree: v.optional(v.boolean()),
     userId: v.string(),
     createRoutine: v.optional(v.boolean()),
-
     // alcoholFree: v.optional(v.boolean()),
     // fragranceFree: v.optional(v.boolean()),
   },
+
   handler: async (ctx, skinProfile) => {
+    console.log(
+      skinProfile.skinConcern,
+      skinProfile.skinType,
+      "This is skinProfile"
+    );
     try {
       // Pull raw products via an internal query to avoid action ctx.db access
       const internalAny = (await import("./_generated/api")).internal as any;

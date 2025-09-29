@@ -26,10 +26,15 @@ type PendingAction = {
   id: string;
   prompt: string;
   status: "pending" | "completed" | "dismissed";
-  type: "create_routine" | "update_routine";
+  type:
+    | "create_routine"
+    | "update_routine"
+    | "create_routine_in_progress"
+    | "create_routine_completed";
   data: {
     productsToadd?: string[]; // or Id<"products">[] if you're using Convex Id type
     routineId?: string;
+    orderId?: Id<"orders">;
   };
   createdAt: number;
   expiresAt?: number;
@@ -91,6 +96,7 @@ export const createOrder = mutation({
     orderType: v.optional(OrderType), // defaults to "normal"
     additionalAddress: v.optional(v.string()),
     fullAddress: v.optional(v.string()),
+    createRoutine: v.optional(v.boolean()),
   },
   handler: async (
     ctx,
@@ -110,6 +116,7 @@ export const createOrder = mutation({
       streetAddress,
       deliveryNote,
       orderType,
+      createRoutine,
     }
   ) => {
     const cartItems = await ctx.db
@@ -210,6 +217,7 @@ export const createOrder = mutation({
       streetAddress,
       deliveryNote,
       orderType: effectiveType,
+      createRoutine,
       ...(effectiveType === "pay_for_me" ? { token, tokenExpiry } : {}),
     });
 
@@ -1577,6 +1585,31 @@ export const _appendUserPendingAction = internalMutation({
   },
 });
 
+export const _setUserPendingActionStatus = internalMutation({
+  args: {
+    userDocId: v.id("users"),
+    actionId: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("completed"),
+      v.literal("dismissed")
+    ),
+  },
+  handler: async (ctx, { userDocId, actionId, status }) => {
+    const doc = await ctx.db.get(userDocId);
+    if (!doc) return;
+
+    const actions: Array<any> = Array.isArray((doc as any).pendingActions)
+      ? (doc as any).pendingActions
+      : [];
+    const idx = actions.findIndex((a) => String(a?.id) === actionId);
+    if (idx === -1) return;
+
+    actions[idx] = { ...(actions[idx] || {}), status };
+    await ctx.db.patch(userDocId, { pendingActions: actions } as any);
+  },
+});
+
 export const postCompleteOrderSideEffects = internalAction({
   args: { orderId: v.id("orders") },
   handler: async (ctx, { orderId }) => {
@@ -1659,39 +1692,95 @@ export const postCompleteOrderSideEffects = internalAction({
       // Create action to create a brand new routine if user has no routine but core products available
       // Todo
       // productCanBeInRoutine dosent work best this way. Fix later
-      const names = enriched.map((p) => p.name);
-      const preview = names.slice(0, 2).join(", ");
-      const extra = Math.max(0, names.length - 2);
-      const prompt =
-        extra > 0
-          ? `Would you like us to help you build a skincare routine including ${preview} and ${extra} other product(s) to your routine?`
-          : `Would you like us to create a routine ${preview} to your routine?`;
-      if (!hasRoutine && hasCoreProducts) {
-        console.log("here in create routine pending action");
+      // const names = enriched.map((p) => p.name);
+      // const preview = names.slice(0, 2).join(", ");
+      // const extra = Math.max(0, names.length - 2);
+      // const prompt =
+      //   extra > 0
+      //     ? `Would you like us to help you build a skincare routine including ${preview} and ${extra} other product(s) to your routine?`
+      //     : `Would you like us to create a routine ${preview} to your routine?`;
+      // if (!hasRoutine && hasCoreProducts) {
+      //   console.log("here in create routine pending action");
 
-        // only productIds that can be included in a routine
-        const productIds = enriched
-          .filter((p) => p.canBeInRoutine)
-          .map((p) => p._id);
-        const action: PendingAction = {
+      //   // only productIds that can be included in a routine
+      //   const productIds = enriched
+      //     .filter((p) => p.canBeInRoutine)
+      //     .map((p) => p._id);
+      //   const action: PendingAction = {
+      //     id: generateToken(),
+      //     prompt,
+      //     status: "pending",
+      //     type: "create_routine",
+      //     data: { productsToadd: productIds as any },
+      //     createdAt: Date.now(),
+      //     expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+      //   };
+
+      //   console.log("action created");
+      //   await ctx.runMutation(internal.order._appendUserPendingAction, {
+      //     userDocId: userDoc._id,
+      //     action: action as any,
+      //   });
+      // }
+
+      // lets create the routine straight up here
+
+      const productIds = enriched
+        .filter((p) => p.canBeInRoutine)
+        .map((p) => p._id);
+
+      if (order.createRoutine && productIds.length) {
+        console.log("added a creating routine pending action");
+        const creatingAction: PendingAction = {
           id: generateToken(),
-          prompt,
+          prompt: "We are building your new skincare routine",
           status: "pending",
-          type: "create_routine",
-          data: { productsToadd: productIds as any },
+          type: "create_routine_in_progress",
+          data: { orderId: order._id },
           createdAt: Date.now(),
-          expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        };
+          expiresAt: Date.now() + 5 * 60 * 1000,
+        } as any;
 
-        console.log("action created");
         await ctx.runMutation(internal.order._appendUserPendingAction, {
           userDocId: userDoc._id,
-          action: action as any,
+          action: creatingAction as any,
         });
+
+        try {
+          const routine = await ctx.runAction(api.routine.createRoutine, {
+            productIds: productIds as Id<"products">[],
+            userId: order.userId,
+            pendingActionId: creatingAction.id,
+            orderId,
+          } as any);
+
+          if (!routine.success) throw Error(routine.message);
+        } catch (e) {
+          console.error("createRoutine failed", {
+            orderId,
+            message: (e as any)?.message,
+          });
+          try {
+            await ctx.runMutation(
+              (internal.order as any)._removeUserPendingAction,
+              {
+                userDocId: userDoc._id,
+                actionId: creatingAction.id,
+              }
+            );
+          } catch (cleanupErr) {
+            console.warn("cleanup creating pending action failed", {
+              orderId,
+              pendingActionId: creatingAction.id,
+              message: (cleanupErr as any)?.message,
+            });
+          }
+        }
       }
 
       // Suggest complementary items to add to existing routine
       const CORE = new Set(["moisturiser", "cleanser", "sunscreen"]);
+      // not like this we use Ai to decide
       const complementary = enriched.filter(
         (prod) =>
           prod.canBeInRoutine &&
@@ -1702,6 +1791,7 @@ export const postCompleteOrderSideEffects = internalAction({
 
       console.log(complementary, "This is complementary product");
 
+      // has routine and there is complemntary product (Ai decides)
       if (hasRoutine && complementary.length > 1) {
         console.log("here in updating routine pending action");
         const names = complementary.map((p) => p.name);

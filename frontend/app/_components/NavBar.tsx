@@ -151,7 +151,7 @@ export default function NavBar() {
               </ModalHoverOpen>
             ))}
 
-            <li className="flex gap-2">
+            <li className="flex gap-2 px-[2rem]">
               <BsStars className="text-[1.6rem]" />
               <Link href={"/recommender"}>Recommendation</Link>
             </li>

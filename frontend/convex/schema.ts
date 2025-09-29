@@ -72,7 +72,9 @@ export const SkinConcern = v.union(
 
 export const ActionTypes = v.union(
   v.literal("create_routine"),
-  v.literal("update_routine")
+  v.literal("update_routine"),
+  v.literal("create_routine_in_progress"),
+  v.literal("create_routine_completed")
   // v.literal("create_routine")
 );
 
@@ -248,6 +250,7 @@ export default defineSchema({
     streetAddress: v.optional(v.string()),
     deliveryNote: v.optional(v.string()),
     orderType: v.optional(v.string()),
+    createRoutine: v.optional(v.boolean()),
 
     // access token for sharing order details
     token: v.optional(v.string()),
