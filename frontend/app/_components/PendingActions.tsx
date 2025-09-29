@@ -36,6 +36,8 @@ const AUTO_TOAST_TYPES = new Set<PendingAction["type"]>([
   "create_routine_completed",
 ]);
 
+const ROUTINE_TOAST_ID = "routine-creation-status";
+
 export default function PendingActions() {
   const { user } = useUser();
   const { open, close } = useModal();
@@ -53,9 +55,9 @@ export default function PendingActions() {
   //   console.log(data, "These are the pending actions");
 
   const processedAuto = useRef(new Set<string>());
-  const [routineReadyAction, setRoutineReadyAction] = useState<
-    PendingAction | null
-  >(null);
+  const routineToastIdRef = useRef<string | null>(null);
+  const [routineReadyAction, setRoutineReadyAction] =
+    useState<PendingAction | null>(null);
 
   const nextAction = useMemo(() => {
     const actions = (data?.actions as PendingAction[]) || [];
@@ -85,8 +87,23 @@ export default function PendingActions() {
           typeof action.expiresAt === "number" && action.expiresAt < Date.now();
         if (!isExpired) {
           if (action.type === "create_routine_in_progress") {
-            toast.message(action.prompt || "We are creating your routine");
+            const prompt = action.prompt || "We are creating your routine";
+            const toastId = routineToastIdRef.current || ROUTINE_TOAST_ID;
+            toast.loading(prompt, {
+              id: toastId,
+              duration: Infinity,
+            });
+            routineToastIdRef.current = toastId;
           } else if (action.type === "create_routine_completed") {
+            if (routineToastIdRef.current) {
+              toast.success(action.prompt || "Your routine is ready", {
+                id: routineToastIdRef.current,
+                duration: 6000,
+              });
+              routineToastIdRef.current = null;
+            } else {
+              toast.success(action.prompt || "Your routine is ready");
+            }
             setRoutineReadyAction(action);
             open("routine-ready");
           }
@@ -138,15 +155,26 @@ export default function PendingActions() {
       // call create routine
       if (currentAction.data.productsToadd) {
         close();
-        toast.message("We are creating your routine for you");
+        const toastId = routineToastIdRef.current || ROUTINE_TOAST_ID;
+        toast.loading("We are creating your routine for you", {
+          id: toastId,
+          duration: Infinity,
+        });
+        routineToastIdRef.current = toastId;
         try {
           await createRoutine({
             productIds: currentAction.data.productsToadd,
             userId: user._id as string,
           });
-          toast.success("Routine created successfully");
+          toast.success("Routine created successfully", {
+            id: toastId,
+          });
         } catch {
-          toast.error("Routine could not be created");
+          toast.error("Routine could not be created", {
+            id: toastId,
+          });
+        } finally {
+          routineToastIdRef.current = null;
         }
       }
     }
@@ -172,45 +200,45 @@ export default function PendingActions() {
         listenCapturing={true}
         className="bg-black/25 z-[1000]"
       >
-      <Box className="relative max-w-[56rem] w-[95%] bg-white rounded-[1.2rem] shadow-2xl overflow-hidden">
-        <Box className="p-[2.4rem] border-b border-gray-200">
-          <h3 className="text-[2rem] font-semibold">
-            {currentAction?.prompt || nextAction?.prompt || "Heads up"}
-          </h3>
-          {!currentAction && !nextAction && (
-            <p className="text-[1.4rem] text-gray-600 mt-[0.6rem]">
-              We have a suggestion for you.
-            </p>
-          )}
-        </Box>
+        <Box className="relative max-w-[56rem] w-[95%] bg-white rounded-[1.2rem] shadow-2xl overflow-hidden">
+          <Box className="p-[2.4rem] border-b border-gray-200">
+            <h3 className="text-[2rem] font-semibold">
+              {currentAction?.prompt || nextAction?.prompt || "Heads up"}
+            </h3>
+            {!currentAction && !nextAction && (
+              <p className="text-[1.4rem] text-gray-600 mt-[0.6rem]">
+                We have a suggestion for you.
+              </p>
+            )}
+          </Box>
 
-        <Box className="p-[2rem] text-[1.4rem] text-gray-700">
-          {currentAction?.type === "create_routine" && (
-            <p>We can create a routine from your latest purchase.</p>
-          )}
-          {currentAction?.type === "update_routine" && (
-            <p>We can enhance your existing routine with compatible items.</p>
-          )}
-        </Box>
+          <Box className="p-[2rem] text-[1.4rem] text-gray-700">
+            {currentAction?.type === "create_routine" && (
+              <p>We can create a routine from your latest purchase.</p>
+            )}
+            {currentAction?.type === "update_routine" && (
+              <p>We can enhance your existing routine with compatible items.</p>
+            )}
+          </Box>
 
-        <Box className="p-[2rem] border-t border-gray-200 flex gap-[1rem] justify-end">
-          <button
-            onClick={() => handleUpdate("dismissed")}
-            className="px-[1.6rem] py-[0.8rem] rounded-md border border-gray-300 hover:border-black hover:bg-black hover:text-white text-[1.4rem]"
-          >
-            Decline
-          </button>
-          <button
-            onClick={() => {
-              handleUpdate("completed");
-              // create routine here
-              handleAction(currentAction as PendingAction);
-            }}
-            className="px-[1.6rem] py-[0.8rem] rounded-md border border-gray-300 hover:bg-gray-100 text-[1.4rem]"
-          >
-            Accept
-          </button>
-        </Box>
+          <Box className="p-[2rem] border-t border-gray-200 flex gap-[1rem] justify-end">
+            <button
+              onClick={() => handleUpdate("dismissed")}
+              className="px-[1.6rem] py-[0.8rem] rounded-md border border-gray-300 hover:border-black hover:bg-black hover:text-white text-[1.4rem]"
+            >
+              Decline
+            </button>
+            <button
+              onClick={() => {
+                handleUpdate("completed");
+                // create routine here
+                handleAction(currentAction as PendingAction);
+              }}
+              className="px-[1.6rem] py-[0.8rem] rounded-md border border-gray-300 hover:bg-gray-100 text-[1.4rem]"
+            >
+              Accept
+            </button>
+          </Box>
         </Box>
       </ModalWindow>
       <ModalWindow

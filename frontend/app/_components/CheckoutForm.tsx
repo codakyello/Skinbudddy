@@ -9,7 +9,12 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Id } from "@/convex/_generated/dataModel";
 import { ModalWindow, useModal } from "./Modal";
 import { FormError, Product, User } from "../_utils/types";
-import { hasCategory, validateEmail, validatePhoneNo } from "../_utils/utils";
+import {
+  hasCategory,
+  hasRoutineCategory,
+  validateEmail,
+  validatePhoneNo,
+} from "../_utils/utils";
 import { FormRow } from "./FormRow";
 import { RoutineSuggestionsModal } from "./RoutineSuggestionsModal";
 import CheckBox from "./CheckBox";
@@ -72,6 +77,13 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
   const hasCoreProducts = ["moisturiser", "cleanser", "sunscreen"].every(
     (cat) => hasCategory(products, cat)
   );
+
+  // check if products have all the core categories and if they can be added in a routine
+  const allCoreProductCanBeInRoutine = [
+    "moisturiser",
+    "cleanser",
+    "sunscreen",
+  ].every((cat) => hasRoutineCategory(products, cat));
 
   const hasSuggestions =
     essentials &&
@@ -190,9 +202,10 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
 
     // ---- Cart checks & routine suggestions logic ----
 
+    console.log(allCoreProductCanBeInRoutine, "All core products");
     if (
       anyProductCanBeInRoutine &&
-      !hasCoreProducts &&
+      !allCoreProductCanBeInRoutine &&
       !(skipped || forceSkip) &&
       hasSuggestions
     ) {
@@ -257,6 +270,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
       toast.success("order created successfully");
       return null;
     } catch (err) {
+      console.log(err);
       if (err instanceof AppError) toast.error(err.message);
       else toast.error("Something went wrong");
       return null;
@@ -435,7 +449,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
           error={errors.email || ""}
         />
 
-        {hasCoreProducts && anyProductCanBeInRoutine && (
+        {hasCoreProducts && allCoreProductCanBeInRoutine && (
           <Box className="flex gap-3 mb-[3rem] mt-[-1rem] items-center">
             <CheckBox
               className="!h-[16px]"

@@ -149,6 +149,18 @@ export function hasCategory(products: Product[], categoryName: string) {
   );
 }
 
+export function hasRoutineCategory(products: Product[], categoryName: string) {
+  const target = categoryName.toLowerCase();
+  return products.some((product) =>
+    product?.categories?.some((cat) => {
+      // If it's an Id (string at runtime), we can't match by name
+      if (!cat || typeof cat === "string") return false;
+      const name = cat.name?.toLowerCase();
+      return name === target && product.canBeInRoutine;
+    })
+  );
+}
+
 export const generateGridTemplateColumns = (columns: string[]) => {
   const cols = columns
     .map((col: string) => col)

@@ -751,6 +751,7 @@ export const getEssentialProducts = query({
               .filter(Boolean)
           : [];
         // Check matches
+        if (!p.canBeInRoutine) continue;
         if (texts.some((t) => isMatch(t, matchers.cleanser)))
           satisfied.add("cleanser");
         if (texts.some((t) => isMatch(t, matchers.moisturizer)))

@@ -131,7 +131,7 @@ export default function Search() {
           type="search"
           value={query}
           onChange={handleSearchInput}
-          placeholder="Search products, ingredients..."
+          placeholder="Search products, concerns, ingredients..."
           className="h-[3.4rem] w-[400px] rounded-full border border-black/5 bg-[#F6F6F8] pl-14 pr-6 text-[1.4rem] font-medium text-neutral-900 outline-none transition focus:border-black focus:bg-white focus:shadow-lg"
           aria-label="Search"
         />
