@@ -22,7 +22,7 @@ export default function AnnouncementBanner({
   if (!announcements) return null;
 
   return (
-    <Box className="bg-[#000] font-dmSans text-[14px] flex items-center justify-center h-[40px] text-[#fff]">
+    <Box className="bg-[#F9E189] h-[60px] text-[13.5px] flex items-center justify-center text-[#000]">
       <AnimatePresence mode="wait">
         <motion.p
           key={index}

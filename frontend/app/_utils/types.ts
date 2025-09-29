@@ -1,4 +1,6 @@
 import { Id } from "@/convex/_generated/dataModel";
+import { v } from "convex/values";
+import { ActionTypes } from "@/convex/schema";
 
 export type Size = {
   unit: string;
@@ -53,7 +55,7 @@ export type Product = {
   isTrending?: boolean;
   discount?: number;
   size?: number;
-  sizes: Size[];
+  sizes?: Size[];
   slug?: string;
   unit?: string;
   // Convex returns category ids in DB docs, but queries often populate them.
@@ -80,14 +82,51 @@ export type Announcement = {
   title: string;
 };
 
-export interface User {
-  _id?: string;
-  userName?: string;
+export type PendingAction = {
+  id: string;
+  prompt: string;
+  status: "pending" | "completed" | "dismissed";
+  type: typeof ActionTypes;
+  data: unknown; // TODO: Refine this type if possible based on ActionTypes
+  createdAt: number;
+  expiresAt?: number;
+};
+
+export type User = {
+  _id: Id<"users">; // Convex document ID
+  _creationTime: number; // Convex creation timestamp
+  userId: string;
+  email?: string;
+  clerkId?: string;
   name?: string;
   phone?: string;
-  email?: string;
-  accountType?: string;
-  image?: string;
-  organisationId?: string;
-  subscriptionStatus?: string;
-}
+  pendingActions?: PendingAction[];
+  address?: string;
+  streetAddress?: string;
+  additionalAddress?: string;
+  fullAddress?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+  companyName?: string;
+  firstName?: string;
+  lastName?: string;
+  createdAt: number;
+  hasUsedRecommender?: boolean;
+  aiBuilderUsed?: boolean;
+};
+
+export type FormError = {
+  email?: string | null;
+  password?: string | null;
+  phone?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  country?: string | null;
+  state?: string | null;
+  city?: string | null;
+  streetAddress?: string | null;
+  additionalAddress?: string | null;
+  companyName?: string | null;
+};

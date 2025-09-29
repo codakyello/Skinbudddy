@@ -546,9 +546,6 @@ export const getAllProducts = query({
   },
   handler: async (ctx, args) => {
     try {
-      // lets add a 5 seconds delay here
-      // await wait(5)
-
       const filters = args.filters;
       const sort = args.sort;
 

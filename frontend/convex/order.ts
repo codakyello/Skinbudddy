@@ -89,12 +89,16 @@ export const createOrder = mutation({
     streetAddress: v.optional(v.string()),
     deliveryNote: v.optional(v.string()),
     orderType: v.optional(OrderType), // defaults to "normal"
+    additionalAddress: v.optional(v.string()),
+    fullAddress: v.optional(v.string()),
   },
   handler: async (
     ctx,
     {
       userId,
       address,
+      additionalAddress,
+      fullAddress,
       city,
       state,
       phone,
@@ -208,6 +212,40 @@ export const createOrder = mutation({
       orderType: effectiveType,
       ...(effectiveType === "pay_for_me" ? { token, tokenExpiry } : {}),
     });
+
+    // Update the user's saved billing profile with latest checkout info (if user doc exists)
+    const userDoc = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+
+    if (userDoc) {
+      const userPatch: any = {
+        // Keep a simple canonical address for quick display/search
+        address: address,
+        // Store granular fields too (schema supports these)
+        streetAddress: streetAddress,
+        additionalAddress: additionalAddress,
+        fullAddress:
+          fullAddress ??
+          [streetAddress, additionalAddress].filter(Boolean).join(", "),
+        city,
+        state,
+        country,
+        companyName,
+        firstName,
+        lastName,
+        email,
+        phone,
+      };
+
+      // Avoid writing explicit undefined values
+      Object.keys(userPatch).forEach((k) => {
+        if (typeof userPatch[k] === "undefined") delete (userPatch as any)[k];
+      });
+
+      await ctx.db.patch(userDoc._id, userPatch);
+    }
 
     return {
       success: true,
@@ -1065,7 +1103,7 @@ export const _markOrderPaymentFailed = internalMutation({
   args: {
     orderId: v.id("orders"),
     providerStatus: v.string(),
-    message: v.optional(v.string()),
+    message: v.optional(v.string() || null),
   },
   handler: async (ctx, { orderId, providerStatus, message }) => {
     const order = await ctx.db.get(orderId);

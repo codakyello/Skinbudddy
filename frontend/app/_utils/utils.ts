@@ -38,11 +38,50 @@ export function validatePassword(
   return null;
 }
 
-export const formatPrice = new Intl.NumberFormat("en-NG", {
-  style: "currency",
-  currency: "NGN",
-  minimumFractionDigits: 0,
-});
+export const formatPrice = (price: number | undefined) => {
+  const numberFormat = new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    minimumFractionDigits: 0,
+  });
+  const formattedPrice = numberFormat.format(price || 0);
+
+  return formattedPrice;
+};
+
+export function validatePhoneNo(
+  phone: string,
+  options?: { country?: "NG" | "INTL" } // default NG
+) {
+  if (!phone) return "You need to fill in this field";
+
+  const country = options?.country ?? "NG";
+  // Strip spaces, dashes, dots, and parentheses
+  const cleaned = phone.trim().replace(/[\s\-().]/g, "");
+
+  if (country === "INTL") {
+    // Generic E.164: + followed by 7–15 digits (no leading zero after +)
+    const e164 = /^\+[1-9]\d{6,14}$/;
+    if (!e164.test(cleaned)) {
+      return "Enter a valid phone number (e.g., +2348012345678)";
+    }
+    return null;
+  }
+
+  // NG formats:
+  // - Local: 11 digits starting with 0 (e.g., 08012345678)
+  // - International: +234 followed by 10 digits (no leading 0)
+  // Accept bare 234… as well.
+  const ngLocal = /^0\d{10}$/; // 11 digits
+  const ngIntl = /^\+234\d{10}$/; // +234XXXXXXXXXX
+  const ngBare = /^234\d{10}$/; // 234XXXXXXXXXX
+
+  if (ngLocal.test(cleaned) || ngIntl.test(cleaned) || ngBare.test(cleaned)) {
+    return null;
+  }
+
+  return "Enter a valid Nigerian phone number (e.g., 08012345678 or +2348012345678)";
+}
 
 export function getOrCreateAnonymousId(): string {
   const key = "anon_user_id";
@@ -109,3 +148,11 @@ export function hasCategory(products: Product[], categoryName: string) {
     })
   );
 }
+
+export const generateGridTemplateColumns = (columns: string[]) => {
+  const cols = columns
+    .map((col: string) => col)
+    .join(" ")
+    .replaceAll(",", "");
+  return cols;
+};

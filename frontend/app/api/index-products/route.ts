@@ -13,8 +13,6 @@ export async function POST() {
 
     const products = await fetchQuery(api.products.getAllProducts, {});
 
-    console.log(products);
-
     await client.saveObjects({
       indexName: "products_index",
       objects: products,

@@ -40,6 +40,57 @@ export function RoutineSuggestionsModal({
       .map((item) => item.product?._id)
       .filter(Boolean) as Id<"products">[];
   }, [cart]);
+
+  // --- Routine message helpers ---
+  type RoutineCategory = "cleanser" | "moisturizer" | "sunscreen";
+  const SECTIONS: RoutineCategory[] = ["cleanser", "moisturizer", "sunscreen"];
+
+  // Heuristic category inference from product data
+  function inferRoutineCategory(p?: {
+    name?: string | null;
+    category?: string | null;
+  }): RoutineCategory | null {
+    const hay = `${p?.name ?? ""} ${p?.category ?? ""}`.toLowerCase();
+    if (/(cleanser|face wash|gel wash|micellar)/.test(hay)) return "cleanser";
+    if (/(moistur|cream|lotion|hydrating)/.test(hay)) return "moisturizer";
+    if (/(sunscreen|spf|sun screen|uv)/.test(hay)) return "sunscreen";
+    return null;
+  }
+
+  function formatList(list: string[]) {
+    if (list.length === 0) return "";
+    if (list.length === 1) return list[0];
+    return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+  }
+
+  // Pull routine-capable items from cart
+  const routineCartProducts = (cart ?? [])
+    .map((i) => i.product)
+    .filter((p) => p?.canBeInRoutine) as (EssentialsProduct | undefined)[];
+
+  // Track which routine categories are already present
+  const presentCats = new Set<RoutineCategory>();
+  routineCartProducts.forEach((p) => {
+    const c = inferRoutineCategory(p as any);
+    if (c) presentCats.add(c);
+  });
+
+  // Choose one headline product to mention
+  const headline = routineCartProducts[0];
+  const headlineCat = inferRoutineCategory(headline as any);
+  const missing = SECTIONS.filter((c) => !presentCats.has(c));
+
+  const pickedLabel = [headline?.brand?.name, headline?.name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  const message = headline
+    ? pickedLabel
+      ? `We noticed you picked ${pickedLabel}${headlineCat ? ` — a solid ${headlineCat}.` : "."} Add ${formatList(missing)} to complete a routine.`
+      : `Nice pick for your routine. Add ${formatList(missing)} to complete it.`
+    : `Build a simple, effective routine: ${formatList(SECTIONS)} — quick picks to get you started.`;
+
   const { data: essentials } = useQuery(
     convexQuery(api.products.getEssentialProducts, {
       selectedProductIds,
@@ -48,7 +99,6 @@ export function RoutineSuggestionsModal({
   );
 
   const addToCart = useMutation(api.cart.createCart);
-  const { open } = useModal();
   const [selectedSizeByProduct, setSelectedSizeByProduct] = useState<
     Record<string, string | undefined>
   >({});
@@ -80,7 +130,7 @@ export function RoutineSuggestionsModal({
         quantity: 1,
       });
       if (!res?.success) throw new AppError(res?.message as string);
-      toast.success("Added to cart");
+      // toast.success("Added to cart");
     } catch (err) {
       if (err instanceof AppError) toast.error(err.message);
       else toast.error("Something went wrong");
@@ -96,17 +146,20 @@ export function RoutineSuggestionsModal({
   ] as const;
 
   useEffect(() => {
-    if (!essentials) open("cart");
-  }, [essentials, open]);
+    if (!essentials) {
+      onClose?.();
+    }
+  }, [essentials]);
 
   if (essentials === false) return null;
   if (!essentials) return null;
+
   return (
     <Box className="relative z-[20] w-[90rem] bg-white rounded-[1.2rem] shadow-2xl overflow-hidden">
       <button
         onClick={() => {
           handleSkip?.();
-          open("cart");
+          onClose?.();
         }}
         className="absolute top-[1.2rem] right-[1.2rem] p-[0.6rem] rounded hover:bg-gray-100"
         aria-label="Close"
@@ -116,10 +169,7 @@ export function RoutineSuggestionsModal({
 
       <Box className="p-[2.4rem] border-b border-gray-200">
         <h3 className="text-[2rem] font-semibold">Complete your routine</h3>
-        <p className="text-[1.4rem] text-gray-600 mt-[0.6rem]">
-          You’re missing some essentials. Here are quick picks to round out a
-          basic routine.
-        </p>
+        <p className="text-[1.4rem] text-gray-600 mt-[0.6rem]">{message}</p>
       </Box>
 
       <Box className="max-h-[70vh] overflow-auto p-[2rem] grid gap-[2rem]">
@@ -189,12 +239,12 @@ export function RoutineSuggestionsModal({
                           <span
                             className={`${isDiscounted ? "line-through text-gray-400" : "text-gray-900"}`}
                           >
-                            {formatPrice.format(basePrice)}
+                            {formatPrice(basePrice)}
                           </span>
                           {isDiscounted && (
                             <>
                               <span className="text-gray-900 font-semibold">
-                                {formatPrice.format(finalPrice)}
+                                {formatPrice(finalPrice)}
                               </span>
                               <span className="text-red-500 font-medium">
                                 {Math.round((discount / basePrice) * 100)}% off
@@ -223,7 +273,7 @@ export function RoutineSuggestionsModal({
         <button
           onClick={() => {
             handleSkip?.();
-            open("cart");
+            onClose?.();
           }}
           className="px-[1.6rem] py-[0.8rem] rounded-md border border-gray-300 hover:border-black hover:bg-black hover:text-white text-[1.4rem]"
         >

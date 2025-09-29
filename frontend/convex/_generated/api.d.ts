@@ -26,6 +26,7 @@ import type * as products from "../products.js";
 import type * as recommendations from "../recommendations.js";
 import type * as routine from "../routine.js";
 import type * as users from "../users.js";
+import type * as wishlist from "../wishlist.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   recommendations: typeof recommendations;
   routine: typeof routine;
   users: typeof users;
+  wishlist: typeof wishlist;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,

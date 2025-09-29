@@ -87,9 +87,7 @@ export default function SkinRecommenderPage() {
       };
       return map[c] ?? null;
     };
-    const mapSensitivity = (
-      s: string
-    ): BackendIngredientSensitivity | null => {
+    const mapSensitivity = (s: string): BackendIngredientSensitivity | null => {
       const map: Record<string, BackendIngredientSensitivity> = {
         essential_oils: "essential-oils",
         ahas_bhas: "ahas-bhas",
@@ -119,19 +117,28 @@ export default function SkinRecommenderPage() {
   useEffect(() => {
     const run = async () => {
       if (!result) return;
+      // emptty previous array first
+      setTopProducts([]);
       try {
         setLoading(true);
         setError(null);
         const args = buildArgs(result);
         const resp = (await recommend(args)) as RecommendResponse;
         const recs: Product[] =
-          resp && "recommendations" in resp && Array.isArray(resp.recommendations)
+          resp &&
+          "recommendations" in resp &&
+          Array.isArray(resp.recommendations)
             ? resp.recommendations
             : [];
         setTopProducts(recs);
-        setNotes(resp && "notes" in resp && typeof resp.notes === "string" ? resp.notes : "");
+        setNotes(
+          resp && "notes" in resp && typeof resp.notes === "string"
+            ? resp.notes
+            : ""
+        );
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to get recommendations";
+        const msg =
+          e instanceof Error ? e.message : "Failed to get recommendations";
         setError(msg);
         setTopProducts([]);
         setNotes("");
@@ -162,7 +169,11 @@ export default function SkinRecommenderPage() {
             quantity: 1,
           };
         })
-        .filter(Boolean) as { productId: Id<"products">; sizeId: string; quantity: number }[];
+        .filter(Boolean) as {
+        productId: Id<"products">;
+        sizeId: string;
+        quantity: number;
+      }[];
       if (!items.length) {
         toast.error("No valid sizes found for these products.");
         return;
@@ -175,19 +186,32 @@ export default function SkinRecommenderPage() {
             createdIds: string[];
             updatedIds: string[];
           }
-        | { success: false; statusCode: number; message: string; errors?: unknown[] };
-      const res = (await bulkAdd({ userId: String(user._id), items })) as BulkAddResponse;
+        | {
+            success: false;
+            statusCode: number;
+            message: string;
+            errors?: unknown[];
+          };
+      const res = (await bulkAdd({
+        userId: String(user._id),
+        items,
+      })) as BulkAddResponse;
       if (!res.success) {
         const msg = res.message || "Some items could not be added";
         toast.error(msg);
       } else {
-        const created = Array.isArray(res.createdIds) ? res.createdIds.length : 0;
-        const updated = Array.isArray(res.updatedIds) ? res.updatedIds.length : 0;
+        const created = Array.isArray(res.createdIds)
+          ? res.createdIds.length
+          : 0;
+        const updated = Array.isArray(res.updatedIds)
+          ? res.updatedIds.length
+          : 0;
         toast.success(`Added ${created + updated} item(s) to your cart.`);
         open("cart");
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to add items to cart";
+      const msg =
+        e instanceof Error ? e.message : "Failed to add items to cart";
       toast.error(msg);
     } finally {
       setAddingAll(false);
@@ -198,20 +222,25 @@ export default function SkinRecommenderPage() {
     <Box className="px-[2rem] md:px-[5.6rem] py-10 md:py-16 min-h-[70vh] bg-[#fafafa]">
       <Box className="max-w-[1100px] mx-auto">
         <header className="mb-10 text-center">
-          <h1 className="text-3xl md:text-4xl font-bold font-dmSans">Find Your Perfect Routine</h1>
+          <h1 className="text-3xl md:text-4xl font-bold font-dmSans">
+            Find Your Perfect Routine
+          </h1>
           <p className="text-gray-600 mt-2 max-w-[680px] mx-auto">
-            Answer a few quick questions about your skin and goals. We’ll recommend products that fit your skin type, concerns, and lifestyle.
+            Answer a few quick questions about your skin and goals. We’ll
+            recommend products that fit your skin type, concerns, and lifestyle.
           </p>
         </header>
 
         {!result && <SkinQuiz onComplete={setResult} />}
 
-        {result && (
+        {result && !loading && (
           <Box className="space-y-8">
             <Box className="rounded-lg border border-gray-200 bg-white p-6 md:p-8 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-semibold">Your Recommendations</h2>
+                  <h2 className="text-2xl font-semibold">
+                    Your Recommendations
+                  </h2>
                   <p className="text-gray-600 mt-1">Tailored by SkinBuddy AI</p>
                 </div>
                 <button
@@ -222,7 +251,9 @@ export default function SkinRecommenderPage() {
                 </button>
               </div>
               {notes && (
-                <p className="mt-4 text-sm text-gray-700 whitespace-pre-wrap">{notes}</p>
+                <p className="mt-4 text-sm text-gray-700 whitespace-pre-wrap">
+                  {notes}
+                </p>
               )}
             </Box>
 
@@ -234,28 +265,35 @@ export default function SkinRecommenderPage() {
                     onClick={handleAddAllToCart}
                     disabled={addingAll}
                     className={`px-4 py-2 rounded-md border text-sm ${
-                      addingAll ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-50"
+                      addingAll
+                        ? "opacity-50 cursor-not-allowed"
+                        : "hover:bg-gray-50"
                     }`}
                   >
                     {addingAll ? "Adding…" : "Add All to Cart"}
                   </button>
                 )}
               </div>
-              {loading && <p className="text-gray-600">Getting recommendations…</p>}
-              {error && !loading && (
-                <p className="text-red-600">{error}</p>
-              )}
+
+              {error && !loading && <p className="text-red-600">{error}</p>}
               {!loading && !error && topProducts.length === 0 && (
-                <p className="text-gray-600">We couldn’t match products yet. Try adjusting your answers.</p>
+                <p className="text-gray-600">
+                  We couldn’t match products yet. Try adjusting your answers.
+                </p>
               )}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                 {topProducts.map((p) => (
-                  <ProductCard key={String(p._id ?? p.slug ?? p.name)} product={p} />
+                  <ProductCard
+                    key={String(p._id ?? p.slug ?? p.name)}
+                    product={p}
+                  />
                 ))}
               </div>
             </Box>
           </Box>
         )}
+
+        {loading && <p className="text-gray-600">Getting recommendations…</p>}
       </Box>
     </Box>
   );

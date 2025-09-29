@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Host+Grotesk:ital,wght@0,300..800;1,300..800&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Raleway:ital,wght@0,100..900;1,100..900&display=swap');
+/* @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Host+Grotesk:ital,wght@0,300..800;1,300..800&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Raleway:ital,wght@0,100..900;1,100..900&display=swap'); */
+
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Host+Grotesk:ital,wght@0,300..800;1,300..800&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Raleway:ital,wght@0,100..900;1,100..900&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -44,18 +46,17 @@ html {
 
 /* @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;600&family=Poppins:wght@100;200;300;400;500;600;700;800;900&family=DM+Sans:wght@300;400;500;700&display=swap"); */
 
-
 body {
   color: #000;
   line-height: 1.5;
   font-size: 1.6rem;
-  font-family: "Montserrat", sans-serif !important;
+  font-family: "Inter", sans-serif !important;
+  font-weight: 400;
 }
 
 input:focus-visible {
   border: 1px solid var(--input-border-color-focus);
   outline: none;
-  
 }
 
 *:focus-visible {
@@ -119,7 +120,8 @@ input:focus-visible {
   animation: slide-right-in 0.3s ease-out forwards;
 } */
 .right-modal {
-  animation: slide-right-in-drag 0.4s cubic-bezier(0.5, 0.46, 0.45, 0.94) forwards;
+  animation: slide-right-in-drag 0.4s cubic-bezier(0.5, 0.46, 0.45, 0.94)
+    forwards;
 }
 
 /* Modal Closing Animations */
@@ -149,50 +151,102 @@ input:focus-visible {
 
 /* Keyframes */
 @keyframes fade-scale-in {
-  0% { transform: scale(0.7); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
+  0% {
+    transform: scale(0.7);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 @keyframes fade-scale-out {
-  0% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0.7); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
 }
 @keyframes slide-top-in {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(0); }
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(0);
+  }
 }
 @keyframes slide-top-out {
-  0% { transform: translateY(0); }
-  100% { transform: translateY(-100%); }
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-100%);
+  }
 }
 @keyframes slide-bottom-in {
-  0% { transform: translateY(100%); }
-  100% { transform: translateY(0); }
+  0% {
+    transform: translateY(100%);
+  }
+  100% {
+    transform: translateY(0);
+  }
 }
 @keyframes slide-bottom-out {
-  0% { transform: translateY(0); }
-  100% { transform: translateY(100%); }
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(100%);
+  }
 }
 @keyframes slide-left-in {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(0); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
 }
 @keyframes slide-left-out {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-100%); }
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
 }
 @keyframes slide-right-in {
-  0% { transform: translateX(100%); }
-  100% { transform: translateX(0); }
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
 }
 @keyframes slide-right-in-drag {
-  0% { transform: translateX(100%); }
-  10%{transform: translateX(102%); }
-  25%{transform: translateX(98%); }
-  100% { transform: translateX(0); }
+  0% {
+    transform: translateX(100%);
+  }
+  10% {
+    transform: translateX(102%);
+  }
+  25% {
+    transform: translateX(98%);
+  }
+  100% {
+    transform: translateX(0);
+  }
 }
 @keyframes slide-right-out {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 @keyframes fade-in {
   0% {

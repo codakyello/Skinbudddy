@@ -39,7 +39,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
                   <ConvexUserProvider>
                     {/* <SmoothLayout> */}
                     <FullPageLoader>
-                      <NavBar />
+                      {/* <NavBar /> */}
                       <CartReminder />
                       {children}
                     </FullPageLoader>

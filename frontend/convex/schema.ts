@@ -124,6 +124,9 @@ export default defineSchema({
     ),
     // after the first order, we will save the address, city, state, zip, country, companyName, firstName, lastName to the user
     address: v.optional(v.string()),
+    streetAddress: v.optional(v.string()),
+    additionalAddress: v.optional(v.string()),
+    fullAddress: v.optional(v.string()),
     city: v.optional(v.string()),
     state: v.optional(v.string()),
     zip: v.optional(v.string()),
@@ -204,7 +207,9 @@ export default defineSchema({
     userId: v.string(),
     productId: v.id("products"),
     createdAt: v.number(),
-  }),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_user_product", ["userId", "productId"]),
 
   orders: defineTable({
     userId: v.string(),

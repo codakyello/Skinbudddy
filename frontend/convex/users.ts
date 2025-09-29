@@ -16,9 +16,9 @@ export const createUser = mutation({
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .first();
 
-    if (existing) return;
+    if (existing) return existing;
 
-    await ctx.db.insert("users", {
+    const newUser = await ctx.db.insert("users", {
       clerkId: args.clerkId,
       userId: args.userId,
       email: args.email,
@@ -26,6 +26,8 @@ export const createUser = mutation({
       createdAt: Date.now(),
       hasUsedRecommender: false,
     });
+
+    return newUser;
   },
 });
 
@@ -152,5 +154,31 @@ export const setPendingActionStatus = mutation({
     await ctx.db.patch(user._id, { pendingActions: actions } as any);
 
     return { success: true } as const;
+  },
+});
+
+export const getUser = query({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    if (!userId)
+      return {
+        success: false,
+        statusCode: 400,
+        message: "userId is required",
+      } as const;
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+
+    if (!user)
+      return {
+        success: false,
+        statusCode: 404,
+        message: "User not found",
+      } as const;
+
+    return { success: true, user } as const;
   },
 });

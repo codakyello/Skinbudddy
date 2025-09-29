@@ -23,18 +23,21 @@ export default function ProductCard({
   product,
   selectClassName,
   bgwhite,
+  sectionName,
   handleProductToPreview,
 }: {
   product: Product;
   className?: string;
   selectClassName?: string;
+  sectionName?: string;
   bgwhite?: boolean;
   handleProductToPreview?: (product: Product) => void;
 }) {
   const addToCart = useMutation(api.cart.createCart);
+  const addToWishList = useMutation(api.wishlist.createWishList);
   const [isAdding, setIsAdding] = useState(false);
   const { user } = useUser();
-  const [selectedSize, setSelectedSize] = useState(product.sizes.at(0));
+  const [selectedSize, setSelectedSize] = useState(product.sizes?.at(0));
   const { open } = useModal();
   const isDiscounted = selectedSize?.discount;
 
@@ -53,11 +56,9 @@ export default function ProductCard({
         quantity: 1,
       });
 
-      console.log(res, "This is the response");
-
       if (!res?.success) throw new AppError(res?.message as string);
 
-      toast.success(`Added to cart`);
+      // toast.success(`Added to cart`);
       // open the cart modal for confirmation
       open("cart");
     } catch (error) {
@@ -71,6 +72,21 @@ export default function ProductCard({
     }
   };
 
+  const handleAddToWishList = async () => {
+    if (!product._id || !user._id) return;
+    try {
+      console.log("clicked");
+      await addToWishList({
+        userId: user._id as string,
+        productId: product._id as Id<"products">,
+      });
+
+      toast.success("Added to wishlist successfully");
+    } catch (err) {
+      if (err instanceof Error) toast.error("Failed to add to wishlist");
+    }
+  };
+
   const handleSizeChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const value = event.currentTarget.value;
     setSelectedSize(product.sizes?.find((s) => s.id === value));
@@ -78,18 +94,18 @@ export default function ProductCard({
 
   return (
     <Box
-      className={`relative ${className || ""} overflow-hidden h-full flex flex-col`}
+      className={`relative ${className || ""} overflow-hidden text-center h-full flex flex-col`}
     >
       <Box className="group aspect-square overflow-hidden cursor-pointer w-full relative">
         <button
           className="absolute top-[15px] right-[15px]"
-          onClick={handleAddToCart}
+          onClick={handleAddToWishList}
         >
           <CiHeart className="w-[20px] h-[20px]" />
         </button>
         <Box className="absolute top-[15px] left-[15px] flex flex-col items-start gap-[.5rem]">
-          <Tag type={getTagType(product)} />
-          <Tag type={getDiscountedType(product?.sizes)} />
+          {/* <Tag type={getTagType(product)} />
+          <Tag type={getDiscountedType(product?.sizes)} /> */}
         </Box>
 
         <Link href={`/products/${product.slug}`}>
@@ -101,7 +117,7 @@ export default function ProductCard({
         </Link>
         {/* ModalOpen with smooth hover animation */}
         <ModalOpen
-          name="product-preview"
+          name={sectionName || ""}
           handler={() => handleProductToPreview?.(product)}
         >
           <button className="absolute bottom-0 left-0 w-full opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all duration-300 bg-black text-white text-[1.2rem] px-[1.6rem] py-[1.2rem] flex items-center justify-center gap-[0.8rem] border-t border-gray-900">
@@ -112,11 +128,13 @@ export default function ProductCard({
       </Box>
 
       <Link href={`/products/${product.slug}`}>
-        <Box className="text-[1.4rem] font-[montserrat] flex flex-col gap-[8px mt-[2rem]">
-          <h2 className="min-h-[4.8rem] mb-[8px] text-[#000] text-[1.6rem] font-semibold capitalize  tracking-[0.25px] leading-tight  ">
+        <Box className="text-[1.4rem] flex flex-col gap-[8px] mt-[2rem]">
+          <h2 className="min-h-[4.8rem] font-medium mb-[8px] text-[#000] text-[1.4rem] capitalize  tracking-[0.25px] leading-tight">
             {product.name}
           </h2>
-          <p className="mb-[2rem] text-[#333]">{product.description}</p>
+          <p className="mb-[1rem] text-[1.2rem] text-[#333]">
+            {product.description}
+          </p>
         </Box>
       </Link>
 
@@ -132,11 +150,11 @@ export default function ProductCard({
         ) : (
           product.sizes && (
             <Select
+              label="Select a size"
               className={selectClassName}
               bgwhite={bgwhite}
               handleChange={handleSizeChange}
               value={selectedSize?.id}
-              label="Select a size"
               options={product.sizes.map((s) => ({
                 name: s.size + " " + s.unit,
                 value: s.id,
@@ -146,15 +164,13 @@ export default function ProductCard({
         )}
       </Box>
 
-      <Box className="flex flex-wrap gap-[8px] items-center font-[montserrat] text-[1.4rem] mb-[2rem] font-semibold">
+      <Box className="flex flex-wrap gap-[8px] justify-center items-center text-[1.4rem] mb-[2rem] font-semibold">
         <p className={` ${isDiscounted ? "line-through text-[#888]" : ""} `}>
-          {selectedSize && formatPrice.format(selectedSize.price)}
+          {selectedSize && formatPrice(selectedSize.price)}
         </p>
         {selectedSize?.discount ? (
           <>
-            <p>
-              {formatPrice.format(selectedSize.price - selectedSize.discount)}
-            </p>
+            <p>{formatPrice(selectedSize.price - selectedSize.discount)}</p>
             <span className="text-red-500 font-semibold text-[1.3rem]">
               {Math.round((selectedSize.discount / selectedSize.price) * 100)}%
               off
@@ -166,11 +182,11 @@ export default function ProductCard({
       </Box>
 
       <button
-        className="hover:bg-black shadow-[0_4px_8px_rgba(0,0,0,0.15)] hover:text-white font-hostgrotesk capitalize w-full h-[44px] text-[1.4rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
+        className="bg-black uppercase shadow-[0_4px_8px_rgba(0,0,0,0.15)] text-white font-hostgrotesk w-full h-[35px] text-[1.2rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
         onClick={handleAddToCart}
         disabled={isAdding}
       >
-        Add to cart
+        {isAdding ? "..Adding" : "Add to Bag"}
       </button>
     </Box>
   );

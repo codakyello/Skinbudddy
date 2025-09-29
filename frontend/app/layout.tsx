@@ -6,6 +6,9 @@ import { Toaster } from "sonner";
 import Providers from "./_contexts/Providers";
 import PendingActions from "./_components/PendingActions";
 import * as Sentry from "@sentry/nextjs";
+import NavBar from "./_components/NavBar";
+import { Box } from "@chakra-ui/react";
+import Modal from "./_components/Modal";
 
 // import SmoothLayout from "./_components/SmoothLayout";
 const geistSans = localFont({
@@ -46,9 +49,10 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} min-h-screen ${geistMono.variable} antialiased`}
       >
-        <Announcement />
         <Providers>
-          {children}
+          {/* <Announcement /> */}
+          <NavBar />
+          <Box className="pt-[138px]">{children}</Box>
           <PendingActions />
         </Providers>
         <Toaster

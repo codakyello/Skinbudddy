@@ -10,9 +10,11 @@ import {
   useEffect,
   useState,
 } from "react";
+import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import useOutsideClick from "../_hooks/useOutsideClick";
 import { wait } from "../_utils/utils";
+import ModalWrapper from "./ModalWrapper";
 
 const ModalContext = createContext<
   | {
@@ -28,9 +30,8 @@ const ModalContext = createContext<
 export default function Modal({ children }: { children: ReactNode }) {
   const [isOpen, setOpen] = useState("");
   const [hovering, setHovering] = useState(false);
+  const pathname = usePathname();
   const open = setOpen;
-
-  console.log(isOpen);
 
   // adding close-modal class but not closing
   const close = useCallback(async () => {
@@ -42,6 +43,13 @@ export default function Modal({ children }: { children: ReactNode }) {
     setOpen("");
     document.body.classList.remove("close-modal");
   }, []);
+
+  // close modal on navigation change
+  useEffect(() => {
+    if (!isOpen) return;
+
+    close();
+  }, [pathname]);
 
   return (
     <ModalContext.Provider
@@ -119,14 +127,16 @@ export function ModalHoverOpen({
 export function ModalWindow({
   children,
   className,
+  bgClassName,
   name,
-  position = "center",
+  position,
   listenCapturing = false,
   openType = "click",
   overlayColor,
 }: {
   children: ReactElement;
   className?: string;
+  bgClassName?: string;
   name: string;
   position?: "center" | "top" | "bottom" | "left" | "right";
   openType?: "click" | "hover";
@@ -144,20 +154,43 @@ export function ModalWindow({
     }
   }, [isOpen]);
 
-  const ref = useOutsideClick<HTMLDivElement>(close, listenCapturing);
+  // const ref = useOutsideClick<HTMLDivElement>(close, listenCapturing);
 
   if (isOpen !== name) return "";
 
   return createPortal(
     <Box
-      className={`fixed ${overlayColor} ${className}  modal-bg top-0 left-0 flex h-screen w-screen 
+      className={`fixed ${bgClassName} ${overlayColor} modal-bg top-0 left-0 flex h-screen w-screen 
         ${position === "center" ? "items-center justify-center" : ""}
         ${position === "top" ? "items-start justify-center" : ""}
         ${position === "bottom" ? "items-end justify-center" : ""}
         ${position === "left" ? "items-end justify-start" : ""}
         ${position === "right" ? "items-end justify-end" : ""}`}
     >
-      <Box
+      {/* <Box
+        // onMouseLeave={() => {
+        //   if (openType !== "hover") return;
+        //   setHovering(false);
+        //   close();
+        // }}
+        // onMouseEnter={() => {
+        //   // set a state e.g hovering
+        //   setHovering(true);
+        //   console.log("setting hovering true");
+        //   console.log("hovering true");
+        // }}
+        className={`
+        ${position === "center" ? "center-modal" : ""}
+        ${position === "top" ? "top-modal" : ""}
+        ${position === "bottom" ? "bottom-modal" : ""}
+        ${position === "left" ? "left-modal" : ""}
+        ${position === "right" ? "right-modal" : ""}`}
+      > */}
+      <ModalWrapper
+        className={className}
+        onClose={close}
+        position={position}
+        listenCapturing={listenCapturing}
         onMouseLeave={() => {
           if (openType !== "hover") return;
           setHovering(false);
@@ -169,18 +202,13 @@ export function ModalWindow({
           console.log("setting hovering true");
           console.log("hovering true");
         }}
-        className={`
-        ${position === "center" ? "center-modal" : ""}
-        ${position === "top" ? "top-modal" : ""}
-        ${position === "bottom" ? "bottom-modal" : ""}
-        ${position === "left" ? "left-modal" : ""}
-        ${position === "right" ? "right-modal" : ""}`}
-        ref={ref}
       >
         {cloneElement(children, {
           onClose: close,
         })}
-      </Box>
+      </ModalWrapper>
+
+      {/* </Box> */}
     </Box>,
     document.body
   );

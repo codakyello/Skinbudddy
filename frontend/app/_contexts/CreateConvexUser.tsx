@@ -1,17 +1,25 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { useUser as useClerkUser } from "@clerk/clerk-react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { User } from "../_utils/types";
+import type { User as AppUser } from "../_utils/types";
+
+type UserState = Omit<Partial<AppUser>, "_id"> & { _id?: string; image?: string };
 
 const GUEST_ID_KEY = "convex_guest_id";
 
 const generateGuestId = () => `guest_${crypto.randomUUID()}`;
 
 type ConvexUserContextValue = {
-  user: User;
+  user: UserState;
   triggerRerender: () => void;
 };
 
@@ -23,13 +31,13 @@ const ConvexUserContext = createContext<ConvexUserContextValue>({
 export default function ConvexUserProvider({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   // clerk lets us know if the user is signed in using sessions
   const { user: clerkUser, isSignedIn } = useClerkUser();
   const createUser = useMutation(api.users.createUser);
   const transferGuestData = useMutation(api.users.transferGuestDataToUser);
-  const [user, setConvexUser] = useState<User>({});
+  const [user, setConvexUser] = useState<UserState>({});
   const [state, setState] = useState(false);
 
   function triggerRerender() {
@@ -50,26 +58,34 @@ export default function ConvexUserProvider({
           await createUser({ userId: guestId, email: "" });
         }
 
-        setConvexUser({ _id: guestId });
-      } else {
-        // Ensure the Convex user exists for the signed-in Clerk user
-        if (clerkUser?.id) {
-          await createUser({
-            userId: clerkUser.id,
-            email: clerkUser.emailAddresses?.[0]?.emailAddress,
-            name: clerkUser.fullName || clerkUser.username || undefined,
-            imageUrl: clerkUser.imageUrl || undefined,
-            clerkId: clerkUser?.id,
-          });
+        if (guestId) {
+          setConvexUser({ _id: guestId, name: "Guest" });
         }
+      } else if (clerkUser?.id) {
+        const email = clerkUser.emailAddresses?.[0]?.emailAddress;
+        const name = clerkUser.fullName || clerkUser.username || undefined;
+        const imageUrl = clerkUser.imageUrl || undefined;
+
+        await createUser({
+          userId: clerkUser.id,
+          email,
+          name,
+          imageUrl,
+          clerkId: clerkUser.id,
+        });
 
         const guestId = localStorage.getItem(GUEST_ID_KEY);
-        if (guestId && clerkUser?.id) {
+        if (guestId) {
           await transferGuestData({ guestId, userId: clerkUser.id });
+          localStorage.removeItem(GUEST_ID_KEY);
         }
-        localStorage.removeItem(GUEST_ID_KEY);
 
-        setConvexUser({ _id: clerkUser.id, ...clerkUser });
+        setConvexUser({
+          _id: clerkUser.id,
+          email,
+          name,
+          image: imageUrl,
+        });
       }
     })();
   }, [isSignedIn, clerkUser, createUser, transferGuestData]);

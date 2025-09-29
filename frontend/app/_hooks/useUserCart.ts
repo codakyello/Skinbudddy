@@ -26,23 +26,3 @@ export default function useUserCart(userId: string) {
 
   return { cart: data?.cart ?? [], isPending, error: null };
 }
-
-//   return { data, isLoading, error };
-// }
-
-// export default function useUserCart(userId: string | undefined) {
-//   const {
-//     data,
-//     isPending,
-//     error: convexError,
-//   } = useQuery(
-//     convexQuery(api.cart.getUserCart, {
-//       userId,
-//     })
-//   );
-//   // const [error, setError] = useState(convexError);
-
-//   if (!data?.res?.success) setError(Error(data?.res?.message));
-
-//   return { cart: data?.cart, isPending, error };
-// }

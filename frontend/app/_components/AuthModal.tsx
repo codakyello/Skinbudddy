@@ -7,22 +7,19 @@ import { FaFacebook } from "react-icons/fa";
 import Input from "./Input";
 import Button from "./Button";
 import CheckBox from "./CheckBox";
-import {  useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
-// import { useQueryClient } from "@tanstack/react-query";
 import SpinnerMini from "./SpinnerMini";
 import { validatePassword } from "../_utils/utils";
 import { validateEmail } from "../_utils/utils";
 import { useClerk, useSignIn, useSignUp } from "@clerk/clerk-react";
 import { useAuth } from "@clerk/nextjs";
+import React from "react";
+import ModalWrapper from "./ModalWrapper";
+import { useModal } from "./Modal";
+import { FormError } from "../_utils/types";
 
-type FormError = {
-  email?: string | null;
-  password?: string | null;
-};
-
-export default function AuthModal({ onClose }: { onClose?: () => void }) {
-
+export default function AuthModal() {
   const [hasAccount, setHasAccount] = useState(true);
 
   // const { authenticated, logout } = useAuth();
@@ -76,14 +73,16 @@ export default function AuthModal({ onClose }: { onClose?: () => void }) {
   //   }
   // };
 
+  const { close } = useModal();
+
   return (
-    <Box className="bg-white p-[3.2rem] w-[43rem] h-screen ">
+    <Box className="w-[43rem] h-screen p-[32px]">
       <Box className="flex justify-between items-center mb-[2.2rem]">
         <h2 className="text-black text-[2rem] font-medium">Sign In</h2>
 
         <TfiClose
           className="text-[#000] cursor-pointer text-[2rem]"
-          onClick={onClose}
+          onClick={close}
         />
       </Box>
 
@@ -92,9 +91,9 @@ export default function AuthModal({ onClose }: { onClose?: () => void }) {
           <button onClick={() => signOut()}>Logout</button>
         </div>
       ) : hasAccount ? (
-        <SignIn onClose={onClose} handleHasAccount={handleHasAccount} />
+        <SignIn onClose={close} handleHasAccount={handleHasAccount} />
       ) : (
-        <SignUp onClose={onClose} handleHasAccount={handleHasAccount} />
+        <SignUp onClose={close} handleHasAccount={handleHasAccount} />
       )}
     </Box>
   );
