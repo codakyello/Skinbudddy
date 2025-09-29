@@ -6,7 +6,7 @@ import AuthModal from "./AuthModal";
 import Link from "next/link";
 import useUserCart from "../_hooks/useUserCart";
 import { useUser } from "../_contexts/CreateConvexUser";
-import Logo from "./Logo";
+// import Logo from "./Logo";
 import NavModal from "./NavModal";
 import Search from "./Search";
 import { BsStars } from "react-icons/bs";
@@ -39,11 +39,11 @@ export default function NavBar() {
         <Box className="w-[1280px] flex items-center gap-[3.2rem]">
           <Search />
 
-          <Box className=" ml-[120px]">
+          {/* <Box className=" ml-[120px]">
             <Link href="/">
               <Logo />
             </Link>
-          </Box>
+          </Box> */}
 
           <Box className="flex justify-end gap-[2.5rem] items-center text-[2.3rem] ml-auto">
             <ModalOpen name="user">
