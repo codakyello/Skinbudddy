@@ -106,17 +106,16 @@ export default function PendingActions() {
             }
             setRoutineReadyAction(action);
             open("routine-ready");
+            if (user?._id) {
+              setStatus({
+                userId: user._id as string,
+                actionId: action.id,
+                status: "completed",
+              }).catch(() => {
+                processedAuto.current.delete(action.id);
+              });
+            }
           }
-        }
-
-        if (user?._id) {
-          setStatus({
-            userId: user._id as string,
-            actionId: action.id,
-            status: "completed",
-          }).catch(() => {
-            processedAuto.current.delete(action.id);
-          });
         }
       });
   }, [data?.actions, setStatus, user?._id]);
@@ -244,10 +243,10 @@ export default function PendingActions() {
       <ModalWindow
         name="routine-ready"
         position="center"
-        className="bg-black/25 z-[1000]"
+        bgClassName="bg-black/25 z-[1000]"
         listenCapturing={true}
       >
-        <Box className="relative max-w-[44rem] w-[90%] bg-white rounded-[1.6rem] shadow-2xl overflow-hidden">
+        <Box className="relative max-w-[44rem] bg-white rounded-[1.6rem] shadow-2xl overflow-hidden">
           <Box className="p-[2.4rem] border-b border-gray-200 text-center bg-[#f6f5ff]">
             <h3 className="text-[2.2rem] font-semibold text-[#2c215d]">
               {routineReadyAction?.prompt || "Your routine is ready"}

@@ -10,20 +10,20 @@ import useDeviceDetection from "../_hooks/useDeviceDetection";
 import { ModalWindow } from "./Modal";
 import { ProductPreviewModal } from "./ProductPreviewModal";
 
-const images = [
-  "/images/product/good-molecules.webp",
-  "/images/product/cerave-daily.png",
-  "/images/product/larosh-moisturizer.png",
-  "/images/product/facefacts-moisturising-gel-cream.webp",
-  "/images/product/good-molecules.webp",
-  "/images/product/cerave-daily.png",
-  "/images/product/larosh-moisturizer.png",
-  "/images/product/facefacts-moisturising-gel-cream.webp",
-  "/images/product/good-molecules.webp",
-  "/images/product/cerave-daily.png",
-  "/images/product/larosh-moisturizer.png",
-  "/images/product/facefacts-moisturising-gel-cream.webp",
-];
+// const images = [
+//   "/images/product/good-molecules.webp",
+//   "/images/product/cerave-daily.png",
+//   "/images/product/larosh-moisturizer.png",
+//   "/images/product/facefacts-moisturising-gel-cream.webp",
+//   "/images/product/good-molecules.webp",
+//   "/images/product/cerave-daily.png",
+//   "/images/product/larosh-moisturizer.png",
+//   "/images/product/facefacts-moisturising-gel-cream.webp",
+//   "/images/product/good-molecules.webp",
+//   "/images/product/cerave-daily.png",
+//   "/images/product/larosh-moisturizer.png",
+//   "/images/product/facefacts-moisturising-gel-cream.webp",
+// ];
 
 export default function Section({
   initialProducts,
@@ -34,11 +34,6 @@ export default function Section({
   products: Product[] | undefined;
   name: string;
 }) {
-  // const { products } = useProducts({
-  //   filters: { isBestseller: true },
-  //   sort: "",
-  // });
-
   const displayedProducts = products || initialProducts;
 
   const [offset, setOffset] = useState(0);
@@ -156,7 +151,7 @@ export default function Section({
               <ProductCard
                 sectionName={name}
                 handleProductToPreview={handleProductToPreview}
-                product={{ ...product, images: [images[i]] }}
+                product={product}
               />
             </Box>
           ))}

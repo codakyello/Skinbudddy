@@ -634,13 +634,9 @@ export const completeOrder = internalMutation({
 
       // Defer heavier post-completion side effects (building pendingActions, etc.)
       // Run shortly after commit without blocking the mutation
-      await ctx.scheduler.runAfter(
-        0,
-        internal.order.postCompleteOrderSideEffects,
-        {
-          orderId: order._id,
-        }
-      );
+      ctx.scheduler.runAfter(0, internal.order.postCompleteOrderSideEffects, {
+        orderId: order._id,
+      });
 
       return {
         success: true,

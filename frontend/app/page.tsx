@@ -25,6 +25,8 @@ export default async function HomePage() {
     }).catch(() => []),
   ]);
 
+  console.log(bestsellers, trending, "bestseller", "trending");
+
   return (
     <>
       <Box className="mx-auto mb-[96px] flex w-full max-w-[1200px] flex-col gap-[24px] px-[16px] pt-[24px] md:flex-row md:items-center">
@@ -37,7 +39,9 @@ export default async function HomePage() {
             <span className="text-[#5a6bff]"> Proven Care</span>
           </h1>
           <p className="mb-[28px] max-w-[40rem] text-[1.6rem] text-[#4a4f63]">
-            Clinically guided routines tailored to Nigeria’s climate, pollution and busy lifestyles. Answer a few questions and SkinBuddy builds the exact plan your skin needs.
+            Clinically guided routines tailored to Nigeria’s climate, pollution
+            and busy lifestyles. Answer a few questions and SkinBuddy builds the
+            exact plan your skin needs.
           </p>
           <div className="flex flex-col gap-[12px] sm:flex-row sm:items-center">
             <Link

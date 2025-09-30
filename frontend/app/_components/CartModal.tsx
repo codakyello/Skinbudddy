@@ -14,20 +14,20 @@ import { useState } from "react";
 import AppError from "../_utils/appError";
 import TransitionLink from "./TransitionLink";
 
-const images = [
-  "/images/product/good-molecules.webp",
-  "/images/product/cerave-daily.png",
-  "/images/product/larosh-moisturizer.png",
-  "/images/product/facefacts-moisturising-gel-cream.webp",
-  "/images/product/good-molecules.webp",
-  "/images/product/cerave-daily.png",
-  "/images/product/larosh-moisturizer.png",
-  "/images/product/facefacts-moisturising-gel-cream.webp",
-  "/images/product/good-molecules.webp",
-  "/images/product/cerave-daily.png",
-  "/images/product/larosh-moisturizer.png",
-  "/images/product/facefacts-moisturising-gel-cream.webp",
-];
+// const images = [
+//   "/images/product/good-molecules.webp",
+//   "/images/product/cerave-daily.png",
+//   "/images/product/larosh-moisturizer.png",
+//   "/images/product/facefacts-moisturising-gel-cream.webp",
+//   "/images/product/good-molecules.webp",
+//   "/images/product/cerave-daily.png",
+//   "/images/product/larosh-moisturizer.png",
+//   "/images/product/facefacts-moisturising-gel-cream.webp",
+//   "/images/product/good-molecules.webp",
+//   "/images/product/cerave-daily.png",
+//   "/images/product/larosh-moisturizer.png",
+//   "/images/product/facefacts-moisturising-gel-cream.webp",
+// ];
 
 export default function CartModal() {
   const { user } = useUser();
@@ -95,7 +95,7 @@ export default function CartModal() {
           {cart && cart.length > 0 ? (
             <>
               <Box className="flex-1 overflow-auto">
-                {cart.map((item: Cart, index: number) => (
+                {cart.map((item: Cart) => (
                   <Box
                     key={item._id}
                     className="relative flex items-center gap-[1.6rem] py-[16px] transition-all duration-300 border-b border-gray-200"
@@ -115,7 +115,7 @@ export default function CartModal() {
                     <Box className="w-[8rem] h-[8rem] overflow-hidden rounded-[1.2rem]flex items-center justify-center">
                       {item?.product?.images ? (
                         <img
-                          src={images.at(index % images.length)}
+                          src={item.product.images.at(0)}
                           alt={item?.product?.name || "Product"}
                           className="object-contain w-full h-full transition-transform duration-300 hover:scale-105"
                         />
