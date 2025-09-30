@@ -205,7 +205,7 @@ export default function CartModal() {
                     View basket
                   </TransitionLink>
                   <TransitionLink
-                    href={"/checkout"}
+                    href={"/cart"}
                     className="flex-1 h-[4.5rem] flex justify-center items-center rounded-[2px] uppercase text-[1.3rem] text-[#fff] bg-[#212529]"
                   >
                     Checkout
