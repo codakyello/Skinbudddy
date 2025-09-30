@@ -112,11 +112,11 @@ export default function SkinQuiz({
   return (
     <Box className="max-w-[980px] w-full mx-auto">
       {/* Progress */}
-      <Box className="flex items-center gap-3 mb-8">
+      <Box className="flex items-center justify-center gap-3 mb-8">
         {steps.map((s, i) => (
           <Box key={s.id} className="flex items-center gap-2">
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+              className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${
                 i <= stepIndex
                   ? "bg-black text-white"
                   : "bg-gray-200 text-gray-500"
@@ -132,9 +132,8 @@ export default function SkinQuiz({
           </Box>
         ))}
       </Box>
-
       <Box className="rounded-lg border border-gray-200 bg-white p-6 md:p-8 shadow-sm">
-        <h2 className="text-2xl md:text-3xl font-semibold mb-1">
+        <h2 className="text-3xl md:text-4xl font-semibold mb-1">
           {steps[stepIndex].title}
         </h2>
         {steps[stepIndex].subtitle && (
@@ -155,7 +154,7 @@ export default function SkinQuiz({
               <button
                 key={t}
                 onClick={() => setProfile((p) => ({ ...p, skinType: t }))}
-                className={`px-4 py-3 rounded-md border text-sm capitalize transition ${
+                className={`px-4 py-3 rounded-md border text-2xl capitalize transition ${
                   profile.skinType === t
                     ? "bg-black text-white border-black"
                     : "bg-white hover:bg-gray-50 border-gray-300"
@@ -194,7 +193,7 @@ export default function SkinQuiz({
                   checked={profile.concerns.includes(c)}
                   onChange={() => toggleConcern(c)}
                 />
-                <span className="capitalize text-sm">
+                <span className="capitalize text-2xl">
                   {c.replaceAll("_", " ")}
                 </span>
               </label>
@@ -224,7 +223,7 @@ export default function SkinQuiz({
                   checked={profile.sensitivities.includes(s)}
                   onChange={() => toggleSensitivity(s)}
                 />
-                <span className="capitalize text-sm">
+                <span className="capitalize text-2xl">
                   {s.replaceAll("_", " ")}
                 </span>
               </label>
@@ -235,7 +234,7 @@ export default function SkinQuiz({
         {step === "routine" && (
           <Box className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="flex items-center justify-between p-3 border rounded-md">
-              <span className="text-sm">Cleanser in routine</span>
+              <span className="text-2xl">Cleanser in routine</span>
               <input
                 type="checkbox"
                 checked={profile.routine.cleanser}
@@ -248,7 +247,7 @@ export default function SkinQuiz({
               />
             </label>
             <label className="flex items-center justify-between p-3 border rounded-md">
-              <span className="text-sm">Moisturizer in routine</span>
+              <span className="text-2xl">Moisturizer in routine</span>
               <input
                 type="checkbox"
                 checked={profile.routine.moisturizer}
@@ -261,7 +260,7 @@ export default function SkinQuiz({
               />
             </label>
             <label className="flex items-center justify-between p-3 border rounded-md">
-              <span className="text-sm">Sunscreen (AM)</span>
+              <span className="text-2xl">Sunscreen (AM)</span>
               <input
                 type="checkbox"
                 checked={profile.routine.sunscreen}
@@ -274,7 +273,7 @@ export default function SkinQuiz({
               />
             </label>
             <label className="flex items-center justify-between p-3 border rounded-md">
-              <span className="text-sm">Treatments/Actives</span>
+              <span className="text-2xl">Treatments/Actives</span>
               <input
                 type="checkbox"
                 checked={profile.routine.treatments}
@@ -287,7 +286,7 @@ export default function SkinQuiz({
               />
             </label>
             <label className="flex items-center justify-between p-3 border rounded-md md:col-span-2">
-              <span className="text-sm">Exfoliation per week</span>
+              <span className="text-2xl">Exfoliation per week</span>
               <select
                 value={profile.routine.exfoliationPerWeek}
                 onChange={(e) =>
@@ -301,7 +300,7 @@ export default function SkinQuiz({
                     },
                   }))
                 }
-                className="border rounded-md px-3 py-2 text-sm"
+                className="border rounded-md px-3 py-2 text-2xl"
               >
                 {[0, 1, 2, 3, 4, 5, 6, 7].map((n) => (
                   <option key={n} value={n}>
@@ -316,7 +315,7 @@ export default function SkinQuiz({
         {step === "environment" && (
           <Box className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="flex items-center justify-between p-3 border rounded-md">
-              <span className="text-sm">Climate</span>
+              <span className="text-2xl">Climate</span>
               <select
                 value={profile.environment.climate}
                 onChange={(e) =>
@@ -329,7 +328,7 @@ export default function SkinQuiz({
                     },
                   }))
                 }
-                className="border rounded-md px-3 py-2 text-sm"
+                className="border rounded-md px-3 py-2 text-2xl"
               >
                 <option value="humid">Humid</option>
                 <option value="dry">Dry</option>
@@ -337,7 +336,7 @@ export default function SkinQuiz({
               </select>
             </label>
             <label className="flex items-center justify-between p-3 border rounded-md">
-              <span className="text-sm">Sun exposure</span>
+              <span className="text-2xl">Sun exposure</span>
               <select
                 value={profile.environment.sunExposure}
                 onChange={(e) =>
@@ -350,7 +349,7 @@ export default function SkinQuiz({
                     },
                   }))
                 }
-                className="border rounded-md px-3 py-2 text-sm"
+                className="border rounded-md px-3 py-2 text-2xl"
               >
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
@@ -363,7 +362,7 @@ export default function SkinQuiz({
         {step === "budgetPrefs" && (
           <Box className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="flex items-center justify-between p-3 border rounded-md">
-              <span className="text-sm">Budget</span>
+              <span className="text-2xl">Budget</span>
               <select
                 value={profile.budget}
                 onChange={(e) =>
@@ -372,7 +371,7 @@ export default function SkinQuiz({
                     budget: e.target.value as SkinProfile["budget"],
                   }))
                 }
-                className="border rounded-md px-3 py-2 text-sm"
+                className="border rounded-md px-3 py-2 text-2xl"
               >
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
@@ -380,7 +379,7 @@ export default function SkinQuiz({
               </select>
             </label>
             <label className="flex items-center justify-between p-3 border rounded-md">
-              <span className="text-sm">Fragrance-free preferred</span>
+              <span className="text-2xl">Fragrance-free preferred</span>
               <input
                 type="checkbox"
                 checked={profile.preferences.fragranceFree}
@@ -396,7 +395,7 @@ export default function SkinQuiz({
               />
             </label>
             <label className="flex items-center justify-between p-3 border rounded-md">
-              <span className="text-sm">Vegan preferred</span>
+              <span className="text-2xl">Vegan preferred</span>
               <input
                 type="checkbox"
                 checked={profile.preferences.vegan}
@@ -409,7 +408,7 @@ export default function SkinQuiz({
               />
             </label>
             <label className="flex items-center justify-between p-3 border rounded-md">
-              <span className="text-sm">Cruelty-free preferred</span>
+              <span className="text-2xl">Cruelty-free preferred</span>
               <input
                 type="checkbox"
                 checked={profile.preferences.crueltyFree}
@@ -432,7 +431,7 @@ export default function SkinQuiz({
           <button
             onClick={handleBack}
             disabled={stepIndex === 0}
-            className={`px-4 py-2 rounded-md border text-sm ${
+            className={`px-4 py-2 rounded-md border text-2xl ${
               stepIndex === 0
                 ? "opacity-40 cursor-not-allowed"
                 : "hover:bg-gray-50"
@@ -443,7 +442,7 @@ export default function SkinQuiz({
           <button
             onClick={handleNext}
             disabled={!canContinue}
-            className={`px-5 py-2.5 rounded-md text-sm font-medium transition ${
+            className={`px-5 py-2.5 rounded-md text-2xl font-medium transition ${
               canContinue
                 ? "bg-black text-white hover:opacity-90"
                 : "bg-gray-300 text-gray-600 cursor-not-allowed"
