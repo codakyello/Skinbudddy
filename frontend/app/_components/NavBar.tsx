@@ -11,6 +11,7 @@ import { useUser } from "../_contexts/CreateConvexUser";
 import NavModal from "./NavModal";
 import Search from "./Search";
 import { BsStars } from "react-icons/bs";
+import Logo from "@/app/_components/Logo";
 
 const nav = [
   { name: "shop", link: "/shop" },
