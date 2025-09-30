@@ -23,6 +23,8 @@ export default function SkinRecommenderPage() {
   const [addingAll, setAddingAll] = useState(false);
   const { open } = useModal();
 
+  console.log(topProducts);
+
   // Backend arg/response types
   type BackendSkinType =
     | "normal"
@@ -222,7 +224,7 @@ export default function SkinRecommenderPage() {
     <Box className="px-[2rem] md:px-[5.6rem] py-10 md:py-16 min-h-[70vh] bg-[#fafafa]">
       <Box className="max-w-[1100px] mx-auto">
         <header className="mb-10 text-center">
-          <h1 className="text-3xl md:text-4xl font-bold font-dmSans">
+          <h1 className="text-4xl md:text-5xl font-bold font-dmSans">
             Find Your Perfect Routine
           </h1>
           <p className="text-gray-600 mt-2 max-w-[680px] mx-auto">

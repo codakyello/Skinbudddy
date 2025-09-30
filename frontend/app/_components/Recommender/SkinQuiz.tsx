@@ -133,7 +133,7 @@ export default function SkinQuiz({
         ))}
       </Box>
       <Box className="rounded-lg border border-gray-200 bg-white p-6 md:p-8 shadow-sm">
-        <h2 className="text-3xl md:text-4xl font-semibold mb-1">
+        <h2 className="text-2xl md:text-3xl font-semibold mb-1">
           {steps[stepIndex].title}
         </h2>
         {steps[stepIndex].subtitle && (

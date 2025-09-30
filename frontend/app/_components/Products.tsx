@@ -55,7 +55,7 @@ export default function Products({ brands }: { brands: Brand[] | undefined }) {
       className={`${isNavSticky && "!mt-[16.5rem]"} mx-[4rem] mt-[3rem] grid grid-cols-[31rem_1fr] gap-x-[1.5rem]`}
     >
       <Box
-        className={`${isSticky ? "fixed top-[104px] w-[310px] h-[550px] " : "h-[450px]"} mt-[32px] pr-[2rem]  overflow-auto`}
+        className={`${isSticky ? "fixed top-[180px] w-[310px] h-[550px] " : "h-[450px]"} pr-[2rem]  overflow-auto`}
       >
         <Sort sortItems={sortItems} />
         <Filters filters={filters} />

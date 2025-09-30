@@ -109,7 +109,7 @@ export default function Search() {
   const showResultsPanel = loading || error || hasSearched;
 
   return (
-    <Box className="relative w-[400px]">
+    <Box className="relative w-full">
       <Box className="relative flex items-center">
         <span className="pointer-events-none absolute left-6 flex h-full items-center text-neutral-400">
           <svg
@@ -132,7 +132,7 @@ export default function Search() {
           value={query}
           onChange={handleSearchInput}
           placeholder="Search products, concerns, ingredients..."
-          className="h-[3.4rem] w-[400px] rounded-full border border-black/5 bg-[#F6F6F8] pl-14 pr-6 text-[1.4rem] font-medium text-neutral-900 outline-none transition focus:border-black focus:bg-white focus:shadow-lg"
+          className="w-full h-[3.4rem] rounded-full border border-black/5 bg-[#F6F6F8] pl-14 pr-6 text-[1.4rem] font-medium text-neutral-900 outline-none transition focus:border-black focus:bg-white focus:shadow-lg"
           aria-label="Search"
         />
       </Box>

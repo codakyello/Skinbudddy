@@ -13,7 +13,7 @@ export default function ActiveFilters() {
 
   return (
     <Box
-      className={`${isSticky && "fixed z-10 left-0 right-0 top-[80px]"} grid border-y-[1px] border-[#e4e4e4] grid-cols-[31rem_1fr] gap-x-[1.5rem] px-[4.5rem] py-[1.2rem] min-h-[60px] items-center bg-white`}
+      className={`${isSticky && "fixed z-10 left-0 right-0 top-[108px]"} grid border-y-[1px] border-[#e4e4e4] grid-cols-[31rem_1fr] gap-x-[1.5rem] px-[4.5rem] py-[1.2rem] min-h-[60px] items-center bg-white`}
     >
       <Box className="flex items-center gap-2">
         <svg
