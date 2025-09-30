@@ -6,7 +6,7 @@ import { Suspense } from "react";
 export default function Page() {
   return (
     <Suspense fallback={"...Loading"}>
-      <Tabs state="local" defaultTab="cart">
+      <Tabs state="url" defaultTab="cart">
         <Box>
           <Box className="text-center uppercase bg-[#eaedf0] text-[1.8rem] py-[4.5rem] font-semibold">
             Shopping cart

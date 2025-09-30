@@ -16,7 +16,7 @@ export const Tabs = ({
   children,
   defaultTab = "",
   state = "url",
-  name,
+  name = "tab",
 }: {
   children: React.ReactNode;
   defaultTab?: string;
@@ -39,7 +39,7 @@ export const Tabs = ({
   const handleTabClick = (tab: string) => {
     if (state === "url") {
       const params = new URLSearchParams(searchParams);
-      params.set("type", tab);
+      params.set("tab", tab);
       const pathname = window.location.pathname;
       router.push(`${pathname}?${params.toString()}`);
     } else {
