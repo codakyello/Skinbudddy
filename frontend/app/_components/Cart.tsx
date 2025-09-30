@@ -23,7 +23,6 @@ export default function Cart() {
     0
   );
   const { user: userDetail } = useUserDetails(user._id as string);
-  console.log(userDetail, "This is userDetails");
   const { handleTabClick } = useTabs();
 
   // error state the same as empty state

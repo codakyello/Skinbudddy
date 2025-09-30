@@ -367,7 +367,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
         <Box className="grid grid-cols-2 gap-[2rem] items-center">
           <Box>
             <FormRow
-              defaultValue={userDetail.firstName}
+              defaultValue={userDetail?.firstName}
               name="firstName"
               label="First name"
               onInputChange={handleInputChange}
@@ -376,7 +376,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
           </Box>
 
           <FormRow
-            defaultValue={userDetail.lastName}
+            defaultValue={userDetail?.lastName}
             name="lastName"
             label="Last name"
             onInputChange={handleInputChange}
@@ -385,7 +385,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
         </Box>
 
         <FormRow
-          defaultValue={userDetail.companyName}
+          defaultValue={userDetail?.companyName}
           name="companyName"
           label="Company name (optional)"
           required={false}
@@ -394,7 +394,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
         />
 
         <FormRow
-          defaultValue={userDetail.country}
+          defaultValue={userDetail?.country}
           name="country"
           label="Country/region"
           onInputChange={handleInputChange}
@@ -402,7 +402,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
         />
 
         <FormRow
-          defaultValue={userDetail.streetAddress}
+          defaultValue={userDetail?.streetAddress}
           name="streetAddress"
           label="street address"
           onInputChange={handleInputChange}
@@ -410,14 +410,14 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
         />
 
         <FormRow
-          defaultValue={userDetail.additionalAddress}
+          defaultValue={userDetail?.additionalAddress}
           name="additionalAddress"
           required={false}
           onInputChange={handleInputChange}
         />
 
         <FormRow
-          defaultValue={userDetail.state}
+          defaultValue={userDetail?.state}
           name="state"
           label="state"
           onInputChange={handleInputChange}
@@ -425,7 +425,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
         />
 
         <FormRow
-          defaultValue={userDetail.city}
+          defaultValue={userDetail?.city}
           name="city"
           label="city"
           onInputChange={handleInputChange}
@@ -433,7 +433,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
         />
 
         <FormRow
-          defaultValue={userDetail.phone}
+          defaultValue={userDetail?.phone}
           name="phone"
           label="phone"
           onInputChange={handleInputChange}
@@ -441,7 +441,7 @@ export function CheckoutForm({ userDetail }: { userDetail: User }) {
         />
 
         <FormRow
-          defaultValue={userDetail.email}
+          defaultValue={userDetail?.email}
           name="email"
           inputType="email"
           label="email address"
