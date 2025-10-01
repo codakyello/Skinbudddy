@@ -197,6 +197,7 @@ export default function PendingActions() {
         name="pending-actions"
         position="center"
         listenCapturing={true}
+        bgClassName="p-[2rem]"
         className="bg-black/25 z-[1000]"
       >
         <Box className="relative max-w-[56rem] w-[95%] bg-white rounded-[1.2rem] shadow-2xl overflow-hidden">
