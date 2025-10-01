@@ -78,7 +78,7 @@ export default function CartModal({ onClose }: { onClose?: () => void }) {
 
   return (
     <Box
-      className={`relative bg-white z-20 overflow-y-auto w-full md:w-[45.5rem] p-[30px] h-screen shadow-2xl `}
+      className={`relative bg-white z-20 overflow-y-auto w-full md:w-[45.5rem] p-[30px] h-[100dvh] shadow-2xl `}
     >
       <button onClick={onClose} className="absolute top-[2.5rem] right-[2rem]">
         <IoCloseOutline className="h-[3rem] w-[3rem]" />

@@ -10,6 +10,7 @@ import { useUser } from "../_contexts/CreateConvexUser";
 import NavModal from "./NavModal";
 import Search from "./Search";
 import { BsStars } from "react-icons/bs";
+import { usePathname } from "next/navigation";
 
 const nav = [
   { name: "home", link: "/" },
@@ -35,6 +36,8 @@ export default function NavBar() {
     }, 0) || 0;
 
   const { open } = useModal();
+  const pathname = usePathname();
+
   return (
     <Box className="fixed w-full z-[99]">
       <Box className="py-[1.5rem] bg-white flex px-[2rem] gap-[3.2rem] items-center justify-center border-b">
@@ -57,17 +60,6 @@ export default function NavBar() {
             <span className="block w-[18px] h-[2px] rounded-lg bg-neutral-800"></span>
             <span className="block w-[18px] h-[2px] rounded-lg bg-neutral-800"></span>
             <span className="block w-[18px] h-[2px] rounded-lg bg-neutral-800"></span>
-          </Box>
-
-          <Box className="md:hidden">
-            <ModalWindow
-              name="mobile-nav"
-              position="left"
-              bgClassName="z-[999]"
-              className=" w-full"
-            >
-              <SideBar />
-            </ModalWindow>
           </Box>
 
           <Box className="flex justify-end gap-[2.5rem] items-center text-[2.3rem]">
@@ -181,7 +173,8 @@ export default function NavBar() {
             </li>
           </ul>
         </Box>
-        {/* Modal menu for shop */}
+
+        {/* Modal menu for nav menu */}
         <ModalWindow bgClassName="z-[999]" name="shop" openType="hover">
           <NavModal />
         </ModalWindow>
@@ -191,6 +184,18 @@ export default function NavBar() {
         <ModalWindow bgClassName="z-[999]" name="brands" openType="hover">
           <NavModal />
         </ModalWindow>
+
+        <Box className="md:hidden">
+          <ModalWindow
+            name="mobile-nav"
+            position="left"
+            bgClassName="z-[999]"
+            className=" w-full"
+          >
+            <SideBar />
+          </ModalWindow>
+        </Box>
+
         <ModalWindow
           bgClassName="z-[999]"
           name="speak to an expert"
@@ -224,6 +229,7 @@ export default function NavBar() {
 }
 
 function SideBar({ onClose }: { onClose?: () => void }) {
+  const pathname = usePathname();
   return (
     <Box className=" w-full flex h-screen flex-col gap-4 p-[2rem]">
       {/* {isOpen && (
@@ -250,6 +256,10 @@ function SideBar({ onClose }: { onClose?: () => void }) {
             {nav.map((item) => (
               <li key={item.name}>
                 <Link
+                  onClick={() => {
+                    // close immediately because there is no navigation
+                    if (pathname === item.link) onClose?.();
+                  }}
                   href={item.link}
                   className="flex py-6 cursor-pointer w-full"
                 >

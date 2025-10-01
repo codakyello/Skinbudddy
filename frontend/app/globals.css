@@ -54,6 +54,10 @@ body {
   font-weight: 400;
 }
 
+input {
+  font-size: 16px;
+}
+
 input:focus-visible {
   border: 1px solid var(--input-border-color-focus);
   outline: none;

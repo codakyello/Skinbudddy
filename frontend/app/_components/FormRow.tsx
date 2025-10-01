@@ -41,11 +41,11 @@ export function FormRow({
       </Box>
 
       {error ? (
-        <p className="text-[#e10000] text-[1.3rem] pt-[.8rem] mb-[1rem]">
+        <p className="text-[#e10000] text-[1.2rem] pt-[.1rem] mb-[.5rem]">
           {error}
         </p>
       ) : (
-        <p className="text-[#e10000] opacity-0 text-[1.3rem] pt-[.8rem] mb-[1rem]">
+        <p className="text-[#e10000] opacity-0 text-[1.3rem] pt-[.1rem] mb-[.5rem]">
           {"error"}
         </p>
       )}
