@@ -197,7 +197,7 @@ export default function PendingActions() {
         name="pending-actions"
         position="center"
         listenCapturing={true}
-        bgClassName="p-[2rem]"
+        bgClassName="px-[2rem]"
         className="bg-black/25 z-[1000]"
       >
         <Box className="relative max-w-[56rem] w-[95%] bg-white rounded-[1.2rem] shadow-2xl overflow-hidden">
@@ -244,7 +244,7 @@ export default function PendingActions() {
       <ModalWindow
         name="routine-ready"
         position="center"
-        bgClassName="bg-black/25 z-[1000]"
+        bgClassName="bg-black/25 z-[1000] px-[2rem]"
         listenCapturing={true}
       >
         <Box className="relative max-w-[44rem] bg-white rounded-[1.6rem] shadow-2xl overflow-hidden">
