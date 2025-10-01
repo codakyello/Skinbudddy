@@ -12,6 +12,7 @@ import Search from "./Search";
 import { BsStars } from "react-icons/bs";
 
 const nav = [
+  { name: "home", link: "/" },
   { name: "shop", link: "/shop" },
   { name: "best sellers", link: "/" },
   { name: "brands", link: "/" },
