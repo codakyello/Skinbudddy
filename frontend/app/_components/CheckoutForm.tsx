@@ -369,7 +369,7 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
             <FormRow
               defaultValue={userDetail?.firstName}
               name="firstName"
-              label="First name"
+              label="First name*"
               onInputChange={handleInputChange}
               error={errors.firstName || ""}
             />
@@ -378,7 +378,7 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
           <FormRow
             defaultValue={userDetail?.lastName}
             name="lastName"
-            label="Last name"
+            label="Last name*"
             onInputChange={handleInputChange}
             error={errors.lastName || ""}
           />
@@ -396,7 +396,7 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
         <FormRow
           defaultValue={userDetail?.country}
           name="country"
-          label="Country/region"
+          label="Country/region*"
           onInputChange={handleInputChange}
           error={errors.country || ""}
         />
@@ -404,7 +404,7 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
         <FormRow
           defaultValue={userDetail?.streetAddress}
           name="streetAddress"
-          label="street address"
+          label="Street address*"
           onInputChange={handleInputChange}
           error={errors.streetAddress || ""}
         />
@@ -419,7 +419,7 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
         <FormRow
           defaultValue={userDetail?.state}
           name="state"
-          label="state"
+          label="State*"
           onInputChange={handleInputChange}
           error={errors.state || ""}
         />
@@ -427,7 +427,7 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
         <FormRow
           defaultValue={userDetail?.city}
           name="city"
-          label="city"
+          label="City*"
           onInputChange={handleInputChange}
           error={errors.city || ""}
         />
@@ -435,7 +435,7 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
         <FormRow
           defaultValue={userDetail?.phone}
           name="phone"
-          label="phone"
+          label="Phone*"
           onInputChange={handleInputChange}
           error={errors.phone || ""}
         />
@@ -444,13 +444,13 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
           defaultValue={userDetail?.email}
           name="email"
           inputType="email"
-          label="email address"
+          label="Email address*"
           onInputChange={handleInputChange}
           error={errors.email || ""}
         />
 
         {hasCoreProducts && allCoreProductCanBeInRoutine && (
-          <Box className="flex gap-3 mb-[3rem] mt-[-1rem] items-center">
+          <Box className="flex gap-3 mb-[3rem] mt-[-1rem] items-start">
             <CheckBox
               className="!h-[16px]"
               id="create-routine"
