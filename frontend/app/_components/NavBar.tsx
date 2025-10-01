@@ -36,7 +36,6 @@ export default function NavBar() {
     }, 0) || 0;
 
   const { open } = useModal();
-  const pathname = usePathname();
 
   return (
     <Box className="fixed w-full z-[99]">
