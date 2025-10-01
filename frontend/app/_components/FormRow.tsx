@@ -45,7 +45,7 @@ export function FormRow({
           {error}
         </p>
       ) : (
-        <p className="text-[#e10000] opacity-0 text-[1.3rem] pt-[.1rem] mb-[.5rem]">
+        <p className="text-[#e10000] opacity-0 text-[1.2rem] pt-[.1rem] mb-[.5rem]">
           {"error"}
         </p>
       )}
