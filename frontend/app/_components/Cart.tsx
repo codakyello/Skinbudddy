@@ -42,7 +42,7 @@ export default function Cart() {
 
   return (
     <Box className="overflow-hidden mx-auto max-w-[1100px] ">
-      <Box className="flex gap-[10rem] mt-[6rem] mb-[4rem]  py-[3rem] justify-center border-t border-b border-gray-200">
+      <Box className="hidden md:flex gap-[10rem] mt-[6rem] py-[3rem] justify-center border-t border-b border-gray-200">
         {tabs.map((tab, index) => (
           <Tab key={tab.name} tab={tab.name}>
             <TabHeader number={index + 1} title={tab.title} />

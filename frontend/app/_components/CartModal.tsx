@@ -13,6 +13,7 @@ import { formatPrice } from "../_utils/utils";
 import { useState } from "react";
 import AppError from "../_utils/appError";
 import TransitionLink from "./TransitionLink";
+import { IoCloseOutline } from "react-icons/io5";
 
 // const images = [
 //   "/images/product/good-molecules.webp",
@@ -29,7 +30,7 @@ import TransitionLink from "./TransitionLink";
 //   "/images/product/facefacts-moisturising-gel-cream.webp",
 // ];
 
-export default function CartModal() {
+export default function CartModal({ onClose }: { onClose?: () => void }) {
   const { user } = useUser();
   const { cart, isPending } = useUserCart(user._id as string);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -38,8 +39,6 @@ export default function CartModal() {
   const removeFromCart = useMutation(api.cart.removeFromCart);
   // const generateOrderToken = useMutation(api.order.generateOrderToken);
   const [orderDiscrepancies] = useState<Record<string, string>>({});
-
-  console.log(cart, "This are cart");
 
   const handleUpdateCartQuantity = async function (
     quantity: number,
@@ -79,8 +78,11 @@ export default function CartModal() {
 
   return (
     <Box
-      className={`bg-white z-20 overflow-y-auto w-[45.5rem] p-[30px] h-screen shadow-2xl `}
+      className={`relative bg-white z-20 overflow-y-auto w-full md:w-[45.5rem] p-[30px] h-screen shadow-2xl `}
     >
+      <button onClick={onClose} className="absolute top-[2.5rem] right-[2rem]">
+        <IoCloseOutline className="h-[3rem] w-[3rem]" />
+      </button>
       {isPending ? (
         <Box className="w-full h-full flex items-center justify-center bg-white">
           <ClipLoader color="#000" size={50} />

@@ -353,7 +353,7 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
 
   return (
     <>
-      <p className="text-[1.3rem] text-[#777]">
+      <p className="text-[1.3rem] text-[#777] mt-[4rem]">
         Returning Customer?{" "}
         <span className="text-[#444]">Click Here to Login</span>
       </p>
@@ -482,10 +482,11 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
         </Box>
       </form>
       <ModalWindow
-        bgClassName="bg-black/25 z-[9999]"
+        bgClassName="bg-black/25 z-[9999] px-[2rem]"
         name="routine-suggestions"
         position="center"
         listenCapturing={false}
+        className="max-w-[90rem] h-[70vh] rounded-[10px]"
       >
         <RoutineSuggestionsModal handleSkip={handleSkip} />
       </ModalWindow>

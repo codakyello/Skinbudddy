@@ -172,7 +172,7 @@ export function RoutineSuggestionsModal({
   if (!essentials) return null;
 
   return (
-    <Box className="relative z-[20] w-[90rem] bg-white rounded-[1.2rem] shadow-2xl overflow-hidden">
+    <Box className="relative flex flex-col z-[20] w-full h-full bg-white rounded-[1.2rem] shadow-2xl overflow-hidden">
       <button
         onClick={() => {
           handleSkip?.();
@@ -184,12 +184,12 @@ export function RoutineSuggestionsModal({
         <IoCloseOutline className="h-[3rem] w-[3rem]" />
       </button>
 
-      <Box className="p-[2.4rem] border-b border-gray-200">
+      <Box className="h-auto p-[2rem] border-b border-gray-200">
         <h3 className="text-[2rem] font-semibold">Complete your routine</h3>
         <p className="text-[1.4rem] text-gray-600 mt-[0.6rem]">{message}</p>
       </Box>
 
-      <Box className="max-h-[70vh] overflow-auto p-[2rem] grid gap-[2rem]">
+      <Box className="h-full overflow-auto p-[2rem] grid gap-[2rem]">
         {sections.map((s) => {
           const raw = essentials?.[s.key];
           const items: EssentialsProduct[] = Array.isArray(raw) ? raw : [];
@@ -287,7 +287,7 @@ export function RoutineSuggestionsModal({
         })}
       </Box>
 
-      <Box className="p-[2rem] border-t border-gray-200 flex gap-[1rem] justify-end">
+      <Box className="p-[2rem] h-auto  border-t border-gray-200 flex gap-[1rem] justify-end">
         <button
           onClick={() => {
             handleSkip?.();

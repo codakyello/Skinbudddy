@@ -139,14 +139,16 @@ export default function Section({
 
         <Box
           key={displayLimit}
-          className="flex gap-x-[4rem]  no-scrollbar transition-transform duration-300 ease-out"
+          className={`flex ${isMobile ? "gap-[2rem]" : "gap-x-[4rem] "}  no-scrollbar transition-transform duration-300 ease-out`}
           style={{ transform: `translateX(${offset}px)` }}
         >
           {displayedProducts.map((product: Product, i: number) => (
             <Box
               key={`${i}-${displayLimit}`} // 👈 force re-render when displayLimit changes
               className="product-card"
-              style={{ flex: `0 0 calc(${100 / displayLimit}% - 4rem)` }}
+              style={{
+                flex: `0 0 calc(${100 / displayLimit}% - ${isMobile ? "1rem" : isTablet ? "2.66rem" : "3rem"})`,
+              }}
             >
               <ProductCard
                 sectionName={name}
