@@ -179,16 +179,24 @@ export default function NavBar() {
             </ul>
           </Box>
           {/* Modal menu for shop */}
-          <ModalWindow name="shop" openType="hover">
+          <ModalWindow bgClassName="z-[999]" name="shop" openType="hover">
             <NavModal />
           </ModalWindow>
-          <ModalWindow name="best sellers" openType="hover">
+          <ModalWindow
+            bgClassName="z-[999]"
+            name="best sellers"
+            openType="hover"
+          >
             <NavModal />
           </ModalWindow>
-          <ModalWindow name="brands" openType="hover">
+          <ModalWindow bgClassName="z-[999]" name="brands" openType="hover">
             <NavModal />
           </ModalWindow>
-          <ModalWindow name="speak to an expert" openType="hover">
+          <ModalWindow
+            bgClassName="z-[999]"
+            name="speak to an expert"
+            openType="hover"
+          >
             <NavModal />
           </ModalWindow>
         </Modal>

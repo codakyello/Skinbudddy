@@ -60,24 +60,26 @@ const stepBadgePalette = [
   "bg-rose-100 text-rose-700",
 ];
 
-const SECTION_META: Record<DayPeriod | "either", { title: string; icon: string; badgeClass: string }>
-  = {
-    am: {
-      title: "Morning Routine",
-      icon: "☀️",
-      badgeClass: "bg-amber-50 text-amber-600",
-    },
-    pm: {
-      title: "Evening Routine",
-      icon: "🌙",
-      badgeClass: "bg-indigo-50 text-indigo-600",
-    },
-    either: {
-      title: "Anytime Routine",
-      icon: "✨",
-      badgeClass: "bg-slate-50 text-slate-600",
-    },
-  };
+const SECTION_META: Record<
+  DayPeriod | "either",
+  { title: string; icon: string; badgeClass: string }
+> = {
+  am: {
+    title: "Morning Routine",
+    icon: "☀️",
+    badgeClass: "bg-amber-50 text-amber-600",
+  },
+  pm: {
+    title: "Evening Routine",
+    icon: "🌙",
+    badgeClass: "bg-indigo-50 text-indigo-600",
+  },
+  either: {
+    title: "Anytime Routine",
+    icon: "✨",
+    badgeClass: "bg-slate-50 text-slate-600",
+  },
+};
 
 function humanize(value?: string | null): string | null {
   if (!value) return null;
@@ -134,7 +136,8 @@ function StepCard({
   const product = step.product ?? null;
   const brand = getBrand(product);
   const categoryLabel =
-    humanize(step.category) || humanize(step.categorySlug) ||
+    humanize(step.category) ||
+    humanize(step.categorySlug) ||
     getPrimaryCategory(product);
   const frequencyLabel = frequencyLabels[step.frequency];
   const stepBadgeClass = stepBadgePalette[index % stepBadgePalette.length];
@@ -145,8 +148,8 @@ function StepCard({
 
   return (
     <li className="list-none">
-      <div className="group flex gap-4 rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_20px_40px_-30px_rgba(15,23,42,0.45)] ring-1 ring-black/[0.04]">
-        <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl bg-slate-100">
+      <div className="group flex gap-4 rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_20px_40px_-30px_rgba(15,23,42,0.45)] ring-1 ring-black/[0.04] md:gap-5 md:p-5 lg:p-6">
+        <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl bg-slate-100 md:h-24 md:w-24">
           <Image
             src={typeof imageSrc === "string" ? imageSrc : fallbackImage}
             alt={productName}
@@ -161,39 +164,37 @@ function StepCard({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               {brand && (
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 md:text-sm">
                   {brand}
                 </p>
               )}
-              <p className="truncate text-lg font-semibold text-slate-900">
+              <p className="truncate text-lg font-semibold text-slate-900 md:text-xl">
                 {productName}
               </p>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500 md:text-base">
                 {categoryLabel && (
                   <span className="font-medium text-slate-600">
                     {categoryLabel}
                   </span>
                 )}
-                {frequencyLabel && (
-                  <span>
-                    • {frequencyLabel}
-                  </span>
-                )}
+                {frequencyLabel && <span>• {frequencyLabel}</span>}
               </div>
             </div>
 
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${stepBadgeClass}`}>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-semibold ${stepBadgeClass}`}
+            >
               Step {stepNumber}
             </span>
           </div>
 
           {step.notes && (
-            <p className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            <p className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-600 md:text-base">
               {step.notes}
             </p>
           )}
 
-          <div className="mt-4 flex gap-1">
+          <div className="mt-4 flex gap-1 md:gap-1.5">
             {Array.from({ length: total }).map((_, dotIndex) => (
               <span
                 key={dotIndex}
@@ -212,37 +213,45 @@ function StepCard({
 function RoutineSection({
   period,
   steps,
+  className,
 }: {
   period: DayPeriod | "either";
   steps: PopulatedStep[];
+  className?: string;
 }) {
   if (!steps.length) return null;
 
   const meta = SECTION_META[period];
   const total = steps.length;
 
+  const sectionClassName = ["flex flex-col gap-6", className]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <section className="mt-10">
+    <section className={sectionClassName}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xl" aria-hidden>
               {meta.icon}
             </span>
-            <h2 className="text-xl font-semibold text-slate-900">{meta.title}</h2>
+            <h2 className="text-xl font-semibold text-slate-900 md:text-2xl">
+              {meta.title}
+            </h2>
           </div>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-500 md:text-base">
             {total} {total === 1 ? "step" : "steps"}
           </p>
         </div>
         <span
-          className={`rounded-full px-3 py-1 text-xs font-semibold ${meta.badgeClass}`}
+          className={`rounded-full px-3 py-1 text-xs font-semibold md:text-sm ${meta.badgeClass}`}
         >
           {period.toUpperCase()}
         </span>
       </div>
 
-      <ol className="space-y-4">
+      <ol className="flex flex-col gap-4 md:gap-5">
         {steps.map((step, index) => (
           <StepCard key={step.id} step={step} index={index} total={total} />
         ))}
@@ -264,7 +273,9 @@ export default function RoutineDetailPage() {
     return (
       <div className="mx-auto w-full max-w-4xl px-6 py-12">
         <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Your Routine</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">
+            Your Routine
+          </h1>
           <p className="mt-3 text-sm text-slate-500">
             Sign in to view and manage your personalized skincare routine.
           </p>
@@ -321,11 +332,11 @@ export default function RoutineDetailPage() {
   ].filter(Boolean);
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-6 py-10">
-      <div className="flex items-center justify-between gap-4">
+    <div className="mx-auto w-full max-w-[120rem] px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+      <div className="flex flex-col items-stretch gap-4 md:flex-row md:items-center md:justify-between">
         <Link
           href="/routine"
-          className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-800"
+          className="flex items-center gap-2 self-start rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-800 md:text-base"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -345,20 +356,20 @@ export default function RoutineDetailPage() {
         </Link>
 
         <div className="flex flex-1 flex-col items-center text-center">
-          <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400 md:text-sm">
             My Routine
           </span>
-          <h1 className="mt-2 text-3xl font-semibold text-slate-900">
+          <h1 className="mt-2 text-3xl font-semibold text-slate-900 md:text-4xl">
             {routine?.name || "Routine"}
           </h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-slate-500 md:text-base">
             {subtitleParts.join(" • ")}
           </p>
         </div>
 
         <button
           type="button"
-          className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg transition hover:bg-slate-800"
+          className="flex h-12 w-12 items-center justify-center self-end rounded-full bg-slate-900 text-white shadow-lg transition hover:bg-slate-800"
           aria-label="Add step"
         >
           <svg
@@ -369,34 +380,40 @@ export default function RoutineDetailPage() {
             strokeWidth="1.5"
             className="h-6 w-6"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 4.5v15m7.5-7.5h-15"
+            />
           </svg>
         </button>
       </div>
 
       <div className="mt-8 flex flex-wrap items-center gap-3">
-        <button className="rounded-full bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-600 transition hover:bg-indigo-100">
+        <button className="rounded-full bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-600 transition hover:bg-indigo-100 md:text-base">
           Insights
         </button>
-        <button className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-800">
+        <button className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-800 md:text-base">
           Share
         </button>
-        <button className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-800">
+        <button className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-800 md:text-base">
           Jump to morning ▾
         </button>
         <div className="ml-auto flex items-center gap-2">
-          <button className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800">
+          <button className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800 md:text-sm">
             Edit details
           </button>
-          <span className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white">
+          <span className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white md:text-sm">
             {am.length + pm.length + either.length}/{totalSteps || 0}
           </span>
         </div>
       </div>
 
-      <RoutineSection period="am" steps={am} />
-      <RoutineSection period="pm" steps={pm} />
-      <RoutineSection period="either" steps={either} />
+      <div className="mt-12 flex flex-col gap-12 lg:grid lg:grid-cols-2 lg:gap-12">
+        <RoutineSection period="am" steps={am} className="gap-6" />
+        <RoutineSection period="pm" steps={pm} className="gap-6" />
+      </div>
+      <RoutineSection period="either" steps={either} className="mt-12 gap-6" />
     </div>
   );
 }

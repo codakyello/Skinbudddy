@@ -19,7 +19,7 @@ import { FormRow } from "./FormRow";
 import { RoutineSuggestionsModal } from "./RoutineSuggestionsModal";
 import CheckBox from "./CheckBox";
 
-export function CheckoutForm({ userDetail }: { userDetail: User }) {
+export function CheckoutForm({ userDetail }: { userDetail?: User }) {
   const createOrder = useMutation(api.order.createOrder);
   const [isInitiating, setIsInitiating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
