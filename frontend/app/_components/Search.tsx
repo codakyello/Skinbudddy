@@ -132,7 +132,7 @@ export default function Search() {
           value={query}
           onChange={handleSearchInput}
           placeholder="Search products, concerns, ingredients..."
-          className="w-full h-[3.4rem] rounded-full border border-black/5 bg-[#F6F6F8] pl-14 pr-6 text-[1.6px] font-medium text-neutral-900 outline-none transition focus:border-black focus:bg-white focus:shadow-lg"
+          className="w-full h-[3.4rem] rounded-full border border-black/5 bg-[#F6F6F8] pl-14 pr-6 text-[16px] font-medium text-neutral-900 outline-none transition focus:border-black focus:bg-white focus:shadow-lg"
           aria-label="Search"
         />
       </Box>
