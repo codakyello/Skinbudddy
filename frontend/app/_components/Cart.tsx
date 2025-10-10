@@ -1,7 +1,7 @@
 "use client";
 import { Box } from "@chakra-ui/react";
 import { useUser } from "../_contexts/CreateConvexUser";
-import useUserCart from "../_hooks/useUserCart";
+import useUserCart, { CartEntry } from "../_hooks/useUserCart";
 import useTabs, { Tab, TabHeader, TabWindow } from "./Tabs";
 import CartTable from "./CartTable";
 import { formatPrice } from "../_utils/utils";
@@ -18,15 +18,15 @@ const tabs = [
 export default function Cart() {
   const { user } = useUser();
   const { cart, isPending, error } = useUserCart(user._id as string);
-  const totalPrice = cart?.reduce(
-    (acc, item) => (item.product?.price ?? 0) * (item.quantity ?? 0) + acc,
-    0
-  );
+  const totalPrice = (cart ?? []).reduce<number>((acc: number, item: CartEntry) => {
+    const itemTotal = (item.product?.price ?? 0) * (item.quantity ?? 0);
+    return acc + itemTotal;
+  }, 0);
   const { user: userDetail } = useUserDetails(user._id as string);
   const { handleTabClick } = useTabs();
 
   // error state the same as empty state
-  if ((!isPending && cart.length < 1) || error)
+  if ((!isPending && (cart?.length ?? 0) < 1) || error)
     return (
       <Box className="font-semibold py-[2rem] px-[2rem]">
         Your cart is currently empty

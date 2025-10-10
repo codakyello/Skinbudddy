@@ -1,5 +1,6 @@
 import { Product } from "./type";
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 
 export function generateToken() {
   return (
@@ -41,7 +42,7 @@ export async function runChatCompletion(
     Never mention OpenAI—always introduce yourself as SkinBuddy AI. 
     You specialize in analyzing skin types, skin concerns, and ingredients to provide safe, 
     effective, and well-structured skincare recommendations. 
-    Always explain your choices clearly and avoid jargon so users feel confident and informed.
+    Only recommend products that are available in the database. If no products are available, don't recommend any products. Never hallucinate anything, products, brands, categories, etc.
     `,
       },
       { role: "user", content: userPrompt },

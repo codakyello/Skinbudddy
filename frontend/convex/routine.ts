@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { action, query, internalMutation } from "./_generated/server";
-import { runChatCompletion, generateToken } from "./_utils/internalUtils";
+import { internal } from "./_generated/api";
+import { generateToken, runChatCompletion } from "./_utils/internalUtils";
+
 import {
   SkinConcern,
   SkinType,
@@ -36,7 +38,7 @@ export const createRoutine = action({
     { productIds, skinConcerns, skinType, userId, pendingActionId, orderId }
   ) => {
     try {
-      const internalAny = (await import("./_generated/api")).internal as any;
+      const internalAny = internal as any;
       // Try to identify user
       //   const identity = (ctx as any).auth?.getUserIdentity
       //     ? await (ctx as any).auth.getUserIdentity()
@@ -292,14 +294,25 @@ export const createRoutine = action({
 
       let parsed: any;
       try {
+        if (typeof data !== "string" || !data.trim()) {
+          throw new Error("Chat completion did not return valid string data.");
+        }
         parsed = JSON.parse(data);
-      } catch {
-        const match = data.match(/\{[\s\S]*\}/);
-        if (match) {
+      } catch (error) {
+        const match = (typeof data === "string" ? data : "").match(
+          /\{[\s\S]*\}/
+        );
+        if (match && match[0]) {
           parsed = JSON.parse(match[0]);
         } else {
-          throw new Error("Model did not return valid JSON");
+          throw new Error(
+            "Model did not return valid JSON and could not be parsed."
+          );
         }
+      }
+
+      if (!parsed) {
+        throw new Error("Parsed routine data is undefined.");
       }
 
       console.log(parsed, "This is parsed");
@@ -342,9 +355,7 @@ export const createRoutine = action({
         let orderCounter = 1;
 
         for (const s of list) {
-          const catRaw = String(s?.category ?? "")
-            .toLowerCase()
-            .trim();
+          const catRaw = s?.category?.toString().toLowerCase().trim() ?? "";
           const category = catRaw === "moisturiser" ? "moisturizer" : catRaw;
           if (!allowedCats.has(category)) continue;
 
@@ -461,7 +472,6 @@ export const createRoutine = action({
       // Persist routine
       let savedId: any = null;
       try {
-        const internalAny = (await import("./_generated/api")).internal as any;
         const saveRes = await ctx.runMutation(internalAny.routine.saveRoutine, {
           routine,
         });
@@ -562,58 +572,58 @@ export const getUserRoutines = query({
   },
 });
 
-export const getUserRoutine = query({
-  args: { routineId: v.id("routines") },
-  handler: async (ctx, { routineId }) => {
-    try {
-      const identity = (ctx as any).auth?.getUserIdentity
-        ? await (ctx as any).auth.getUserIdentity()
-        : null;
-      const externalUserId = identity?.subject ?? identity?.tokenIdentifier;
+// export const getUserRoutine = query({
+//   args: { routineId: v.id("routines") },
+//   handler: async (ctx, { routineId }) => {
+//     try {
+//       const identity = (ctx as any).auth?.getUserIdentity
+//         ? await (ctx as any).auth.getUserIdentity()
+//         : null;
+//       const externalUserId = identity?.subject ?? identity?.tokenIdentifier;
 
-      if (!externalUserId)
-        return {
-          success: false,
-          message: "You must be logged in to get routine",
-        };
+//       if (!externalUserId)
+//         return {
+//           success: false,
+//           message: "You must be logged in to get routine",
+//         };
 
-      const routine = await ctx.db.get(routineId);
+//       const routine = await ctx.db.get(routineId);
 
-      if (!routine)
-        return {
-          success: false,
-          message: "No routine with that Id was found",
-        };
+//       if (!routine)
+//         return {
+//           success: false,
+//           message: "No routine with that Id was found",
+//         };
 
-      // Ensure the authenticated user owns this routine
-      if ((routine as any).userId !== externalUserId) {
-        return {
-          success: false,
-          message: "You do not have access to this routine.",
-        } as const;
-      }
+//       // Ensure the authenticated user owns this routine
+//       if ((routine as any).userId !== externalUserId) {
+//         return {
+//           success: false,
+//           message: "You do not have access to this routine.",
+//         } as const;
+//       }
 
-      return {
-        success: true,
-        routine,
-      };
-    } catch (err) {
-      console.error("getUserRoutine failed", {
-        routineId,
-        message: (err as any)?.message,
-      });
-      // Return a generic error to avoid leaking internals
-      return {
-        success: false,
-        message:
-          "Something went wrong fetching that routine. Please try again.",
-      } as const;
-    }
-  },
-});
+//       return {
+//         success: true,
+//         routine,
+//       };
+//     } catch (err) {
+//       console.error("getUserRoutine failed", {
+//         routineId,
+//         message: (err as any)?.message,
+//       });
+//       // Return a generic error to avoid leaking internals
+//       return {
+//         success: false,
+//         message:
+//           "Something went wrong fetching that routine. Please try again.",
+//       } as const;
+//     }
+//   },
+// });
 
 // Returns a single routine with steps populated with product objects
-export const getUserRoutinePopulated = query({
+export const getUserRoutine = query({
   args: { routineId: v.id("routines"), userId: v.string() },
   handler: async (ctx, { routineId, userId }) => {
     // const identity = (ctx as any).auth?.getUserIdentity

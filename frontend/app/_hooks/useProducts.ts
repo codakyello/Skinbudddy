@@ -16,7 +16,7 @@ export default function useProducts({
     isBestseller?: boolean;
     isDiscounted?: boolean;
     category?: string[];
-    brand?: string;
+    brand?: string[];
     size?: string[];
     price?: { minPrice: string; maxPrice: string };
   };
@@ -29,17 +29,13 @@ export default function useProducts({
   const {
     category = [],
     size = [],
-    brand,
+    brand = [],
     isNew,
     isTrending,
     isBestseller,
     isDiscounted,
   } = filters;
-  const {
-    data: products,
-    isPending,
-    error,
-  } = useQuery(
+  const { data, isPending, error } = useQuery(
     convexQuery(api.products.getAllProducts, {
       // best practice so we dont send undefined values to backend
       filters: {
@@ -47,9 +43,9 @@ export default function useProducts({
         ...(isTrending && { isTrending }),
         ...(isBestseller && { isBestseller }),
         ...(isDiscounted && { isDiscounted }),
-        ...(category.length > 0 && { category }),
+        ...(category.length > 0 && { categorySlugs: category }),
         ...(size.length > 0 && { size }),
-        ...(brand && { brand }),
+        ...(brand.length > 0 && { brandSlugs: brand }),
       },
       sort,
       page,
@@ -57,6 +53,8 @@ export default function useProducts({
       limit,
     })
   );
+
+  const products = data?.products as Product[] | undefined;
 
   return { products, isPending, error };
 }

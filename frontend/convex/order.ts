@@ -119,147 +119,157 @@ export const createOrder = mutation({
       createRoutine,
     }
   ) => {
-    const cartItems = await ctx.db
-      .query("carts")
-      .filter((q) => q.eq(q.field("userId"), userId))
-      .collect();
+    try {
+      const cartItems = await ctx.db
+        .query("carts")
+        .filter((q) => q.eq(q.field("userId"), userId))
+        .collect();
 
-    if (cartItems.length === 0) {
-      return { success: false, message: "Cart is empty", statusCode: 400 };
-    }
-
-    const discrepancies: Array<{
-      cartId: Id<"carts">;
-      productId: Id<"products">;
-      reason: string;
-    }> = [];
-
-    let totalAmount = 0;
-
-    for (const item of cartItems) {
-      const product = await ctx.db.get(item.productId);
-      if (!product) throw new Error("Product not found");
-
-      const sizeIndex = product.sizes?.findIndex((s) => s.id === item.sizeId);
-      if (sizeIndex === -1 || sizeIndex === undefined) {
-        throw new Error("Size not found");
+      if (cartItems.length === 0) {
+        return { success: false, message: "Cart is empty", statusCode: 400 };
       }
-      if (product.sizes) {
-        const size = product.sizes[sizeIndex]!;
-        if (item.quantity > size.stock) {
-          discrepancies.push({
-            cartId: item._id,
-            productId: product._id,
-            reason: `Ordered ${item.quantity}, only ${size.stock} left in stock`,
-          });
-        } else {
-          const price = (size.price || 0) - (size.discount || 0);
-          totalAmount += price * item.quantity;
+
+      const discrepancies: Array<{
+        cartId: Id<"carts">;
+        productId: Id<"products">;
+        reason: string;
+      }> = [];
+
+      let totalAmount = 0;
+
+      for (const item of cartItems) {
+        const product = await ctx.db.get(item.productId);
+        if (!product) throw new Error("Product not found");
+
+        const sizeIndex = product.sizes?.findIndex((s) => s.id === item.sizeId);
+        if (sizeIndex === -1 || sizeIndex === undefined) {
+          throw new Error("Size not found");
+        }
+        if (product.sizes) {
+          const size = product.sizes[sizeIndex]!;
+          if (item.quantity > size.stock) {
+            discrepancies.push({
+              cartId: item._id,
+              productId: product._id,
+              reason: `Ordered ${item.quantity}, only ${size.stock} left in stock`,
+            });
+          } else {
+            const price = (size.price || 0) - (size.discount || 0);
+            totalAmount += price * item.quantity;
+          }
         }
       }
-    }
 
-    if (discrepancies.length > 0) {
-      return {
-        success: false,
-        discrepancies,
-        message: "One or more of your orders has an issue",
-      } as any;
-    }
-
-    const orderItems = await Promise.all(
-      cartItems.map(async (item) => {
-        const product = await ctx.db.get(item.productId);
-        const size = product?.sizes?.find((s) => s.id === item.sizeId);
-        const price = (size?.price || 0) - (size?.discount || 0);
+      if (discrepancies.length > 0) {
         return {
-          productId: item.productId,
-          sizeId: item.sizeId,
-          quantity: item.quantity,
-          price,
-        };
-      })
-    );
-
-    const effectiveType = orderType ?? "normal";
-
-    // Optional token generation for pay-for-me flow
-    let token: string | undefined;
-    let tokenExpiry: number | undefined;
-    if (effectiveType === "pay_for_me") {
-      token = generateToken();
-      for (let i = 0; i < 5; i++) {
-        const existing = await ctx.db
-          .query("orders")
-          .withIndex("by_token", (q) => q.eq("token", token!))
-          .first();
-        if (!existing) break;
-        token = generateToken();
+          success: false,
+          discrepancies,
+          message: "One or more of your orders has an issue",
+        } as any;
       }
-      tokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24h
-    }
 
-    const orderId = await ctx.db.insert("orders", {
-      userId,
-      items: orderItems,
-      totalAmount,
-      status: "draft",
-      createdAt: Date.now(),
-      address,
-      city,
-      state,
-      phone,
-      email,
-      firstName,
-      lastName,
-      companyName,
-      country,
-      streetAddress,
-      deliveryNote,
-      orderType: effectiveType,
-      createRoutine,
-      ...(effectiveType === "pay_for_me" ? { token, tokenExpiry } : {}),
-    });
+      const orderItems = await Promise.all(
+        cartItems.map(async (item) => {
+          const product = await ctx.db.get(item.productId);
+          const size = product?.sizes?.find((s) => s.id === item.sizeId);
+          const price = (size?.price || 0) - (size?.discount || 0);
+          return {
+            productId: item.productId,
+            sizeId: item.sizeId,
+            quantity: item.quantity,
+            price,
+          };
+        })
+      );
 
-    // Update the user's saved billing profile with latest checkout info (if user doc exists)
-    const userDoc = await ctx.db
-      .query("users")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .first();
+      const effectiveType = orderType ?? "normal";
 
-    if (userDoc) {
-      const userPatch: any = {
-        // Keep a simple canonical address for quick display/search
-        address: address,
-        // Store granular fields too (schema supports these)
-        streetAddress: streetAddress,
-        additionalAddress: additionalAddress,
-        fullAddress:
-          fullAddress ??
-          [streetAddress, additionalAddress].filter(Boolean).join(", "),
+      // Optional token generation for pay-for-me flow
+      let token: string | undefined;
+      let tokenExpiry: number | undefined;
+      if (effectiveType === "pay_for_me") {
+        token = generateToken();
+        for (let i = 0; i < 5; i++) {
+          const existing = await ctx.db
+            .query("orders")
+            .withIndex("by_token", (q) => q.eq("token", token!))
+            .first();
+          if (!existing) break;
+          token = generateToken();
+        }
+        tokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24h
+      }
+
+      const orderId = await ctx.db.insert("orders", {
+        userId,
+        items: orderItems,
+        totalAmount,
+        status: "draft",
+        createdAt: Date.now(),
+        address,
         city,
         state,
-        country,
-        companyName,
+        phone,
+        email,
         firstName,
         lastName,
-        email,
-        phone,
-      };
-
-      // Avoid writing explicit undefined values
-      Object.keys(userPatch).forEach((k) => {
-        if (typeof userPatch[k] === "undefined") delete (userPatch as any)[k];
+        companyName,
+        country,
+        streetAddress,
+        deliveryNote,
+        orderType: effectiveType,
+        createRoutine,
+        ...(effectiveType === "pay_for_me" ? { token, tokenExpiry } : {}),
       });
 
-      await ctx.db.patch(userDoc._id, userPatch);
-    }
+      // Update the user's saved billing profile with latest checkout info (if user doc exists)
+      const userDoc = await ctx.db
+        .query("users")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .first();
 
-    return {
-      success: true,
-      orderId,
-      ...(effectiveType === "pay_for_me" ? { token, tokenExpiry } : {}),
-    } as const;
+      if (userDoc) {
+        const userPatch: any = {
+          // Keep a simple canonical address for quick display/search
+          address: address,
+          // Store granular fields too (schema supports these)
+          streetAddress: streetAddress,
+          additionalAddress: additionalAddress,
+          fullAddress:
+            fullAddress ??
+            [streetAddress, additionalAddress].filter(Boolean).join(", "),
+          city,
+          state,
+          country,
+          companyName,
+          firstName,
+          lastName,
+          email,
+          phone,
+        };
+
+        // Avoid writing explicit undefined values
+        Object.keys(userPatch).forEach((k) => {
+          if (typeof userPatch[k] === "undefined") delete (userPatch as any)[k];
+        });
+
+        await ctx.db.patch(userDoc._id, userPatch);
+      }
+
+      return {
+        success: true,
+        orderId,
+        ...(effectiveType === "pay_for_me" ? { token, tokenExpiry } : {}),
+      } as const;
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+          ? err
+          : "Unable to create order.";
+      return { success: false, message };
+    }
   },
 });
 
@@ -280,44 +290,48 @@ export const createOrderReference = mutation({
     userId: v.string(),
   },
   handler: async (ctx, { orderId, reference, userId }) => {
-    const order = await ctx.db.get(orderId);
-    if (!order) {
-      return { success: false, message: "Order not found", statusCode: 404 };
-    }
-    // if (order.reference) {
-    //   return {
-    //     success: false,
-    //     message: "Order already has a reference",
-    //     statusCode: 400,
-    //   };
-    // }
-    if (order.userId !== userId) {
-      return { success: false, message: "Forbidden", statusCode: 403 };
-    }
-    await ctx.db.patch(orderId, { status: "pending" });
+    try {
+      const order = await ctx.db.get(orderId);
+      if (!order) {
+        return { success: false, message: "Order not found", statusCode: 404 };
+      }
+      // if (order.reference) {
+      //   return {
+      //     success: false,
+      //     message: "Order already has a reference",
+      //     statusCode: 400,
+      //   };
+      // }
+      if (order.userId !== userId) {
+        return { success: false, message: "Forbidden", statusCode: 403 };
+      }
+      await ctx.db.patch(orderId, { status: "pending" });
 
-    // Idempotently create reference: avoid duplicates
-    const existingRef = await ctx.db
-      .query("orderReferences")
-      .withIndex("by_reference", (q) => q.eq("reference", reference))
-      .first();
-    if (!existingRef) {
-      await ctx.db.insert("orderReferences", {
-        orderId: order._id,
-        reference,
-        status: "pending",
-        createdAt: Date.now(),
-      });
-    } else if (existingRef.status === "pending") {
-      // ensure it's pending; otherwise, leave as-is
-      await ctx.db.patch(existingRef._id, { status: "pending" });
+      // Idempotently create reference: avoid duplicates
+      const existingRef = await ctx.db
+        .query("orderReferences")
+        .withIndex("by_reference", (q) => q.eq("reference", reference))
+        .first();
+      if (!existingRef) {
+        await ctx.db.insert("orderReferences", {
+          orderId: order._id,
+          reference,
+          status: "pending",
+          createdAt: Date.now(),
+        });
+      } else if (existingRef.status === "pending") {
+        // ensure it's pending; otherwise, leave as-is
+        await ctx.db.patch(existingRef._id, { status: "pending" });
+      }
+      await ctx.db.patch(orderId, {
+        paymentVerifyStatus: "pending",
+        paymentVerifyAttempts: 0,
+        nextPaymentVerifyAt: Date.now(),
+      } as any);
+      return { success: true, message: "Order updated" };
+    } catch (err) {
+      return { success: false };
     }
-    await ctx.db.patch(orderId, {
-      paymentVerifyStatus: "pending",
-      paymentVerifyAttempts: 0,
-      nextPaymentVerifyAt: Date.now(),
-    } as any);
-    return { success: true, message: "Order updated" };
   },
 });
 
@@ -1636,7 +1650,7 @@ export const postCompleteOrderSideEffects = internalAction({
         )
       );
       const products: Doc<"products">[] = productDocsRaw.filter(
-        (p): p is Doc<"products"> => p !== null
+        (p: Doc<"products"> | null): p is Doc<"products"> => p !== null
       );
 
       // Build category map
@@ -1650,22 +1664,22 @@ export const postCompleteOrderSideEffects = internalAction({
       );
       const categoryMap = new Map<Id<"categories">, Doc<"categories">>(
         categoryDocsRaw
-          .filter((c): c is Doc<"categories"> => c !== null)
-          .map((c) => [c._id as Id<"categories">, c])
+          .filter((c: Doc<"categories"> | null): c is Doc<"categories"> => c !== null)
+          .map((c: Doc<"categories">) => [c._id as Id<"categories">, c])
       );
 
       // Enrich products with populated categories
-      const enriched = products.map((p) => ({
+      const enriched = products.map((p: Doc<"products">) => ({
         ...p,
         categories: (p.categories as Id<"categories">[])
           .map((cid) => categoryMap.get(cid) || null)
-          .filter((c): c is Doc<"categories"> => c !== null),
+          .filter((c: Doc<"categories"> | null): c is Doc<"categories"> => c !== null),
       }));
 
       // Checks
       const hasCategory = (slug: string) =>
         enriched.some(
-          (prod) =>
+          (prod: typeof enriched[number]) =>
             prod.categories.some(
               (c) => (c.slug || c.name)?.toLowerCase() === slug
             ) && prod.canBeInRoutine

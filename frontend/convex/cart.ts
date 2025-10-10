@@ -164,18 +164,23 @@ export const getUserCart = query({
       return { success: true, cart: cartWithProducts };
     } catch (error) {
       // captureSentryError(ctx, error, userId);
-      throw error;
+      // normally; we dont throw error from backend
+      // lets leave it since we are in a get request, we want to trigeer error boundary
+      // return { success: false, message: "Something went wrong!" };
+      throw new Error("Error getting user's cart");
     }
   },
 });
 
 // Bonus: Update cart item quantity
+// Todo: Authenticate the user updating cart quantity
 export const updateCartQuantity = mutation({
   args: {
     cartId: v.id("carts"),
+    userId: v.string(),
     quantity: v.number(),
   },
-  handler: async (ctx, { cartId, quantity }) => {
+  handler: async (ctx, { cartId, quantity, userId }) => {
     try {
       const cart = await ctx.db.get(cartId);
       if (!cart)
@@ -184,6 +189,14 @@ export const updateCartQuantity = mutation({
           message: "Cart item not found",
           statusCode: 404,
         };
+
+      if (cart.userId !== userId) {
+        return {
+          success: false,
+          message: "Unauthorized",
+          statusCode: 403,
+        };
+      }
 
       const product = await ctx.db.get(cart.productId);
       if (!product)
@@ -217,28 +230,43 @@ export const updateCartQuantity = mutation({
     } catch (error) {
       // For updateCartQuantity, we don't have direct userId from args
       // captureSentryError(ctx, error);
-      throw error;
+
+      return { success: false, message: "Something went wrong!" };
     }
   },
 });
 
 // Bonus: Remove item from cart
+// Todo
+// it should take a userId to confirm, so others dont delete other carts
 export const removeFromCart = mutation({
   args: {
     cartId: v.id("carts"),
+    userId: v.string(),
   },
-  handler: async (ctx, { cartId }) => {
+  handler: async (ctx, { cartId, userId }) => {
     try {
       const cart = await ctx.db.get(cartId);
+
       if (!cart) {
         return { success: false, message: "Cart not found", statusCode: 404 };
+      }
+      if (cart.userId !== userId) {
+        return {
+          success: false,
+          message: "Unauthorized",
+          statusCode: 403,
+        };
       }
       await ctx.db.delete(cartId);
       return { success: true, removed: true, cartId };
     } catch (error) {
+      return { success: false, message: "Something went wrong!" };
+
       // For removeFromCart, we don't have direct userId from args
       // captureSentryError(ctx, error);
-      throw error;
+      // we cant throw from backend
+      // throw error;
     }
   },
 });
@@ -256,9 +284,13 @@ export const clearCart = mutation({
         .collect();
 
       await Promise.all(cartItems.map((item) => ctx.db.delete(item._id)));
+
+      return { success: true, message: "Clear user cart successfully" };
     } catch (error) {
       // captureSentryError(ctx, error, userId);
-      throw error;
+      // throw error;
+
+      return { success: false, message: "Something went wrong!" };
     }
   },
 });
@@ -442,7 +474,7 @@ export const bulkAddCartItems = mutation({
         updatedIds,
       } as const;
     } catch (error) {
-      throw error;
+      return { success: false, message: "Something went wrong!" };
     }
   },
 });

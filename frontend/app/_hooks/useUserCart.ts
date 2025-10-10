@@ -2,6 +2,20 @@ import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import AppError from "../_utils/appError";
+import type { Doc } from "@/convex/_generated/dataModel";
+
+type PopulatedProduct = (Doc<"products"> & {
+  originalPrice?: number;
+  price?: number;
+  size?: number;
+  unit?: string;
+  stock?: number;
+  categories?: Array<Doc<"categories">>;
+}) | null;
+
+export type CartEntry = Doc<"carts"> & {
+  product: PopulatedProduct;
+};
 
 export default function useUserCart(userId: string) {
   const {
@@ -11,18 +25,22 @@ export default function useUserCart(userId: string) {
   } = useQuery(convexQuery(api.cart.getUserCart, { userId }));
 
   // If Convex threw → pass that along
+  const emptyCart: CartEntry[] = [];
+
   if (convexError) {
-    return { cart: [], isPending, error: convexError };
+    return { cart: emptyCart, isPending, error: convexError };
   }
 
   // If Convex returned a structured error
   if (data && !data.success) {
     return {
-      cart: [],
+      cart: emptyCart,
       isPending,
       error: new AppError(data.message as string, data?.statusCode),
     };
   }
 
-  return { cart: data?.cart ?? [], isPending, error: null };
+  const cart = (data?.cart ?? []) as CartEntry[];
+
+  return { cart, isPending, error: null as Error | null };
 }

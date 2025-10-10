@@ -5,9 +5,9 @@ import { fetchQuery } from "convex/nextjs";
 import { Suspense } from "react";
 
 export default async function Page() {
-  let brands;
+  let result;
   try {
-    brands = await fetchQuery(api.brands.getAllBrands);
+    result = await fetchQuery(api.brands.getAllBrands);
   } catch (err) {
     if (err instanceof Error) {
       console.log("Failed to fetch brands", err.message);
@@ -15,6 +15,8 @@ export default async function Page() {
       console.log("Unknown error occurred");
     }
   }
+
+  const brands = result?.brands;
 
   return (
     <Suspense fallback={"...loading"}>

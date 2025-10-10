@@ -1,6 +1,7 @@
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/convex/_generated/api";
+import type { Doc } from "@/convex/_generated/dataModel";
 
 // export function useBrands() {
 //   const brands = useQuery(api.brands.getAllBrands);
@@ -8,11 +9,11 @@ import { api } from "@/convex/_generated/api";
 // }
 
 export default function useBrands() {
-  const {
-    data: brands,
-    isPending,
-    error,
-  } = useQuery(convexQuery(api.brands.getAllBrands, {}));
+  const { data, isPending, error } = useQuery(
+    convexQuery(api.brands.getAllBrands, {})
+  );
+
+  const brands = data?.brands as Doc<"brands">[] | undefined;
 
   return { brands, isPending, error };
 }

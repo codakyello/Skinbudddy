@@ -1,10 +1,12 @@
 import { v } from "convex/values";
 import { action, mutation, query, internalQuery } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { Id, Doc } from "./_generated/dataModel";
 import OpenAI from "openai";
 // import { captureSentryError } from "./_utils/sentry";
 import products from "../products.json";
-// Avoid importing `api` here to prevent circular type inference in this module
+// Convex internal helper import is static to avoid runtime dynamic import failures.
 import { SkinConcern, SkinType } from "./schema";
 import { AHA_BHA_SET, DRYING_ALCOHOLS } from "../convex/_utils/products";
 import { Product, Brand } from "./_utils/type";
@@ -32,6 +34,27 @@ function normalizeIngredient(raw: string): string {
     .join("_"); // unify with underscores
 }
 
+const normalizeText = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const toTokenSet = (input: string) =>
+  new Set(
+    normalizeText(input)
+      .split(" ")
+      .filter((token) => token.length > 0)
+  );
+
+const jaccardSimilarity = (a: Set<string>, b: Set<string>) => {
+  const intersection = [...a].filter((token) => b.has(token)).length;
+  const union = new Set([...a, ...b]).size || 1;
+  return intersection / union;
+};
+
 export const recommend = action({
   args: {
     skinConcern: v.array(SkinConcern),
@@ -53,7 +76,7 @@ export const recommend = action({
     );
     try {
       // Pull raw products via an internal query to avoid action ctx.db access
-      const internalAny = (await import("./_generated/api")).internal as any;
+      const internalAny = internal as any;
       const all = await ctx.runQuery(
         internalAny.products._getAllProductsRaw,
         {}
@@ -286,16 +309,14 @@ export const recommend = action({
 
       // Fetch full product docs for the recommended ids using an internal query
       recommendations = await ctx.runQuery(
-        (await import("./_generated/api")).internal.products
-          ._getProductsByIdsRaw,
+        internal.products._getProductsByIdsRaw,
         { ids }
       );
 
       // Best‑effort: persist these recommendations for the current user
       try {
-        const internalApi = (await import("./_generated/api")).internal;
         const res = await ctx.runMutation(
-          internalApi.recommendations._saveRecommendations,
+          internal.recommendations._saveRecommendations,
           {
             recommendations: ids,
             userId: skinProfile.userId, // remove this, just for test
@@ -371,8 +392,7 @@ export const recommend = action({
 
           const now = Date.now();
           const name = `AI Routine · ${String(skinProfile.skinType)} · ${skinProfile.skinConcern.join(", ")}`;
-          const internalApi = (await import("./_generated/api")).internal;
-          const save = await ctx.runMutation(internalApi.routine.saveRoutine, {
+          const save = await ctx.runMutation(internal.routine.saveRoutine, {
             routine: {
               userId: skinProfile.userId,
               name,
@@ -538,7 +558,8 @@ export const getAllProducts = query({
         discount: v.optional(v.number()),
         isTrending: v.optional(v.boolean()),
         isNew: v.optional(v.boolean()),
-        brandSlug: v.optional(v.string()),
+        brandSlugs: v.optional(v.array(v.string())),
+        categorySlugs: v.optional(v.array(v.string())),
       })
     ),
     limit: v.optional(v.number()),
@@ -550,6 +571,7 @@ export const getAllProducts = query({
     search: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    console.log("inside get all products");
     try {
       const filters = args.filters;
       const sort = args.sort;
@@ -558,8 +580,14 @@ export const getAllProducts = query({
 
       // 🧪 Apply Filters
       if (filters) {
-        const { isBestseller, isNew, isTrending, discount, brandSlug } =
-          filters;
+        const {
+          isBestseller,
+          isNew,
+          isTrending,
+          discount,
+          brandSlugs,
+          categorySlugs,
+        } = filters;
 
         if (isBestseller) {
           products = products.filter((p) => p.isBestseller);
@@ -577,15 +605,45 @@ export const getAllProducts = query({
           products = products.filter((p) => p.discount && p.discount > 0);
         }
 
-        if (brandSlug) {
-          // Optionally, find brand ID by name if needed
+        if (Array.isArray(brandSlugs) && brandSlugs.length) {
           const brandDocs = await ctx.db
             .query("brands")
-            .filter((q) => q.eq(q.field("slug"), brandSlug))
+            .filter((q) =>
+              q.or(...brandSlugs.map((slug) => q.eq(q.field("slug"), slug)))
+            )
             .collect();
-          const brandId = brandDocs[0]?._id;
-          if (brandId) {
-            products = products.filter((p) => p.brandId === brandId);
+          const brandIds = new Set(
+            brandDocs.map((doc) => doc?._id).filter(Boolean)
+          );
+          if (brandIds.size) {
+            products = products.filter((p) =>
+              p.brandId ? brandIds.has(p.brandId) : false
+            );
+          } else {
+            products = [];
+          }
+        }
+
+        if (Array.isArray(categorySlugs) && categorySlugs.length) {
+          const categoryDocs = await ctx.db
+            .query("categories")
+            .filter((q) =>
+              q.or(...categorySlugs.map((slug) => q.eq(q.field("slug"), slug)))
+            )
+            .collect();
+          const categoryIds = new Set(
+            categoryDocs.map((doc) => doc?._id).filter(Boolean)
+          );
+          if (categoryIds.size) {
+            products = products.filter((product) =>
+              Array.isArray(product.categories)
+                ? product.categories.some((categoryId) =>
+                    categoryIds.has(categoryId)
+                  )
+                : false
+            );
+          } else {
+            products = [];
           }
         }
       }
@@ -617,7 +675,7 @@ export const getAllProducts = query({
       }
 
       // Return products with sizes sorted ascending and with populated brand/categories
-      return await Promise.all(
+      const productsPopulated = await Promise.all(
         products.map(async (item) => {
           const sizesSorted = Array.isArray(item.sizes)
             ? [...item.sizes].sort((a, b) => (a.size ?? 0) - (b.size ?? 0))
@@ -636,6 +694,7 @@ export const getAllProducts = query({
               : [];
 
             return {
+              success: true,
               ...item,
               sizes: sizesSorted,
               categories,
@@ -643,15 +702,468 @@ export const getAllProducts = query({
             };
           } catch (err) {
             return {
+              success: true,
               ...item,
               sizes: sizesSorted,
             };
           }
         })
       );
+
+      return { success: true, products: productsPopulated };
     } catch (error) {
+      console.log(" get all products failed", error);
       // captureSentryError(ctx, error);
-      throw error;
+      throw new Error("Error getting all products");
+    }
+  },
+});
+
+// convex/products.ts (add this)
+type ResolvedProductSummary = {
+  id: Id<"products">;
+  slug?: string;
+  name?: string;
+  description?: string;
+  images?: string[];
+  sizes: unknown;
+  brand: unknown;
+  categories: unknown;
+  score?: number;
+  nameMatchCount?: number;
+};
+
+type SearchProductsByQueryArgs = {
+  nameQuery?: string;
+  categoryQuery?: string;
+  brandQuery?: string;
+  limit?: number;
+};
+
+type SearchProductsByQueryResult =
+  | {
+      success: false;
+      reason:
+        | "ambiguous_or_not_found"
+        | "brand_not_found"
+        | "category_not_found";
+      categoryOptions: unknown[];
+      brandOptions: unknown[];
+    }
+  | {
+      success: true;
+      filters: { categorySlugs: string[]; brandSlugs: string[] };
+      products: ResolvedProductSummary[];
+    };
+
+const MINIMUM_FUZZY_SCORE = 0.2;
+
+// pass in a categoryQuery dosent have to be exactly the same name, system resolves it and sends the closest matching query, same for brandslug too
+
+async function searchProductsByQueryImpl(
+  ctx: QueryCtx,
+  { nameQuery, categoryQuery, brandQuery, limit }: SearchProductsByQueryArgs
+): Promise<SearchProductsByQueryResult> {
+  const normalizedNameQuery =
+    typeof nameQuery === "string" ? normalizeText(nameQuery) : "";
+  const hasNameQuery = normalizedNameQuery.length > 0;
+  const nameTokens = hasNameQuery
+    ? new Set(
+        normalizedNameQuery.split(" ").filter((token) => token.length > 0)
+      )
+    : null;
+
+  const categoryResolution: { slugs: string[]; options?: unknown[] } =
+    categoryQuery?.trim()
+      ? await ctx.runQuery(internal.categories.resolveCategorySlugs, {
+          categoryQuery,
+        })
+      : { slugs: [] };
+  const brandResolution: { slugs: string[]; options?: unknown[] } =
+    brandQuery?.trim()
+      ? await ctx.runQuery(internal.brands.resolveBrandSlugs, { brandQuery })
+      : { slugs: [] };
+
+  const categorySlugs = Array.isArray(categoryResolution.slugs)
+    ? categoryResolution.slugs
+    : [];
+
+  const brandSlugs = Array.isArray(brandResolution.slugs)
+    ? brandResolution.slugs
+    : [];
+
+  if (!categorySlugs.length && !brandSlugs.length && !hasNameQuery) {
+    return {
+      success: false,
+      reason: "ambiguous_or_not_found",
+      categoryOptions: categoryResolution.options ?? [],
+      brandOptions: brandResolution.options ?? [],
+    };
+  }
+
+  console.log(categorySlugs, brandSlugs, "slugs");
+
+  let products = await ctx.db.query("products").collect();
+
+  if (brandSlugs.length) {
+    const brandDocs = await Promise.all(
+      brandSlugs.map((slug) =>
+        ctx.db
+          .query("brands")
+          .withIndex("by_slug", (q) => q.eq("slug", slug))
+          .unique()
+      )
+    );
+    const brandIds = new Set(
+      brandDocs
+        .filter((doc): doc is Doc<"brands"> => Boolean(doc))
+        .map((doc) => doc._id)
+    );
+    if (!brandIds.size) {
+      return {
+        success: false,
+        reason: "brand_not_found",
+        categoryOptions: categoryResolution.options ?? [],
+        brandOptions: brandResolution.options ?? [],
+      };
+    }
+    products = products.filter((product) =>
+      product.brandId ? brandIds.has(product.brandId as Id<"brands">) : false
+    );
+  }
+
+  if (categorySlugs.length) {
+    const categoryDocs = await Promise.all(
+      categorySlugs.map((slug) =>
+        ctx.db
+          .query("categories")
+          .withIndex("by_slug", (q) => q.eq("slug", slug))
+          .unique()
+      )
+    );
+    const categoryIds = new Set(
+      categoryDocs
+        .filter((doc): doc is Doc<"categories"> => Boolean(doc))
+        .map((doc) => doc._id)
+    );
+    if (!categoryIds.size) {
+      return {
+        success: false,
+        reason: "category_not_found",
+        categoryOptions: categoryResolution.options ?? [],
+        brandOptions: brandResolution.options ?? [],
+      };
+    }
+    products = products.filter((product) =>
+      Array.isArray(product.categories)
+        ? product.categories.some((categoryId) =>
+            categoryIds.has(categoryId as Id<"categories">)
+          )
+        : false
+    );
+  }
+
+  if (!products.length) {
+    return {
+      success: true,
+      filters: {
+        categorySlugs,
+        brandSlugs,
+      },
+      products: [],
+    };
+  }
+
+  const brandCache = new Map<Id<"brands">, Doc<"brands"> | null>();
+  const categoryCache = new Map<Id<"categories">, Doc<"categories"> | null>();
+
+  const enriched: ResolvedProductSummary[] = await Promise.all(
+    products.map(async (item) => {
+      const sizesSorted = Array.isArray(item.sizes)
+        ? [...item.sizes].sort((a, b) => (a.size ?? 0) - (b.size ?? 0))
+        : item.sizes;
+
+      try {
+        let brandDoc: Doc<"brands"> | null = null;
+        if (item.brandId) {
+          if (brandCache.has(item.brandId)) {
+            brandDoc = brandCache.get(item.brandId) ?? null;
+          } else {
+            const fetched = await ctx.db.get(item.brandId);
+            brandDoc = fetched ?? null;
+            brandCache.set(item.brandId, brandDoc);
+          }
+        }
+
+        const categoryDocs = Array.isArray(item.categories)
+          ? (
+              await Promise.all(
+                item.categories.map((catId: Id<"categories">) => {
+                  if (categoryCache.has(catId)) {
+                    return categoryCache.get(catId) ?? null;
+                  }
+                  return ctx.db.get(catId).then((doc) => {
+                    categoryCache.set(catId, doc ?? null);
+                    return doc ?? null;
+                  });
+                })
+              )
+            ).filter(Boolean)
+          : [];
+
+        const productNameTokens =
+          hasNameQuery && item.name
+            ? toTokenSet(String(item.name))
+            : new Set<string>();
+        const categoryTokens =
+          hasNameQuery && categoryDocs.length
+            ? toTokenSet(
+                categoryDocs.map((doc) => String(doc?.name ?? "")).join(" ")
+              )
+            : new Set<string>();
+        const brandNameTokens =
+          hasNameQuery && brandDoc?.name
+            ? toTokenSet(String(brandDoc.name))
+            : new Set<string>();
+        const brandSlugNormalized =
+          hasNameQuery && typeof brandDoc?.slug === "string"
+            ? normalizeText(String(brandDoc.slug))
+            : "";
+
+        let nameScore = 0;
+        let nameMatchCount = hasNameQuery ? 0 : undefined;
+        if (hasNameQuery && nameTokens && nameTokens.size) {
+          const overlap = [...nameTokens].filter((token) =>
+            productNameTokens.has(token)
+          ).length;
+          const recall = overlap / nameTokens.size;
+          nameMatchCount = overlap;
+          nameScore = Math.max(
+            jaccardSimilarity(nameTokens, productNameTokens),
+            recall
+          );
+        }
+        const categoryScore =
+          hasNameQuery && nameTokens
+            ? jaccardSimilarity(nameTokens, categoryTokens)
+            : 0;
+        const brandScore =
+          hasNameQuery && nameTokens
+            ? brandSlugs.length && typeof brandDoc?.slug === "string"
+              ? brandSlugs.some(
+                  (slug) => normalizeText(slug) === brandSlugNormalized
+                )
+                ? 0.25
+                : jaccardSimilarity(nameTokens, brandNameTokens) * 0.2
+              : jaccardSimilarity(nameTokens, brandNameTokens) * 0.2
+            : 0;
+        const keywordBoost =
+          hasNameQuery && nameTokens
+            ? [...nameTokens].some((token) =>
+                [
+                  "moisturiser",
+                  "moisturizer",
+                  "cream",
+                  "lotion",
+                  "hydrating",
+                ].includes(token)
+              )
+              ? 0.15
+              : 0
+            : 0;
+
+        const score = hasNameQuery
+          ? nameScore * 0.6 + categoryScore * 0.25 + brandScore + keywordBoost
+          : 1;
+
+        const summary: ResolvedProductSummary & { nameMatchCount?: number } = {
+          id: item._id,
+          slug: item.slug,
+          name: item.name,
+          description: item.description,
+          images: item.images,
+          sizes: sizesSorted,
+          brand: brandDoc,
+          categories: categoryDocs,
+          score,
+          nameMatchCount,
+        };
+        return summary;
+      } catch {
+        const fallback: ResolvedProductSummary & { nameMatchCount?: number } = {
+          id: item._id,
+          slug: item.slug,
+          name: item.name,
+          description: item.description,
+          images: item.images,
+          sizes: sizesSorted,
+          brand: null,
+          categories: [],
+          score: hasNameQuery ? 0 : 1,
+          nameMatchCount: hasNameQuery ? 0 : undefined,
+        };
+        return fallback;
+      }
+    })
+  );
+
+  // console.log(products, "beofre name search");
+  let workingProducts = enriched;
+  if (hasNameQuery) {
+    const withTokenMatches = workingProducts.filter(
+      (product) =>
+        typeof (product as any).nameMatchCount === "number" &&
+        ((product as any).nameMatchCount as number) > 0
+    );
+    if (withTokenMatches.length) {
+      workingProducts = withTokenMatches;
+    } else {
+      return {
+        success: true,
+        filters: {
+          categorySlugs,
+          brandSlugs,
+        },
+        products: [],
+      };
+    }
+  }
+
+  let finalProducts: ResolvedProductSummary[];
+  if (hasNameQuery) {
+    const maxResults =
+      typeof limit === "number" && limit > 0 ? Math.min(limit, 50) : 8;
+    const minimumScore =
+      categorySlugs.length || brandSlugs.length ? 0.05 : MINIMUM_FUZZY_SCORE;
+    finalProducts = workingProducts
+      .filter((product) => (product.score ?? 0) >= minimumScore)
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+      .slice(0, maxResults)
+      .map(({ nameMatchCount, ...rest }) => rest);
+  } else {
+    const limitValue =
+      typeof limit === "number" && limit > 0 ? Math.min(limit, 100) : undefined;
+    const limited =
+      typeof limitValue === "number"
+        ? workingProducts.slice(0, limitValue)
+        : workingProducts;
+    finalProducts = limited.map(({ nameMatchCount, ...rest }) => ({
+      ...rest,
+      score: undefined,
+    }));
+  }
+
+  // console.log(finalProducts, "This are the final products");
+
+  return {
+    success: true,
+    filters: {
+      categorySlugs,
+      brandSlugs,
+    },
+    products: finalProducts,
+  };
+}
+
+export const searchProducts = query({
+  args: {
+    query: v.string(),
+    brandSlug: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { query, brandSlug, limit }) => {
+    const normalizedQuery = normalizeText(query);
+    if (!normalizedQuery) {
+      return { success: true, results: [] };
+    }
+
+    const response = await searchProductsByQueryImpl(ctx, {
+      nameQuery: query,
+      brandQuery: brandSlug,
+      limit,
+    });
+
+    if (!response.success) {
+      if (response.reason === "brand_not_found") {
+        return { success: true, results: [] };
+      }
+      return {
+        success: false,
+        results: [],
+        message:
+          response.reason === "category_not_found"
+            ? "Category not found."
+            : "No products matched the query.",
+      };
+    }
+
+    return {
+      success: true,
+      results: response.products.map(({ score, ...rest }) => ({
+        ...rest,
+        score,
+      })),
+    };
+  },
+});
+
+// Unified product search entry point for name, brand, and category filters
+export const searchProductsByQuery = query({
+  args: {
+    nameQuery: v.optional(v.string()),
+    categoryQuery: v.optional(v.string()),
+    brandQuery: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: (ctx, args): Promise<SearchProductsByQueryResult> =>
+    searchProductsByQueryImpl(ctx, args),
+});
+
+export const getProduct = query({
+  args: {
+    slug: v.string(),
+  },
+  handler: async (ctx, { slug }) => {
+    try {
+      const product = await ctx.db
+        .query("products")
+        .filter((q) => q.eq(q.field("slug"), slug))
+        .first();
+
+      if (!product) return { success: false, message: "No product found" };
+
+      const sizesSorted = Array.isArray(product.sizes)
+        ? [...product.sizes].sort((a, b) => (a.size ?? 0) - (b.size ?? 0))
+        : product.sizes;
+
+      try {
+        const brand = product.brandId
+          ? await ctx.db.get(product.brandId)
+          : null;
+        const categories = Array.isArray(product.categories)
+          ? (
+              await Promise.all(
+                product.categories.map((catId: Id<"categories">) =>
+                  ctx.db.get(catId)
+                )
+              )
+            ).filter(Boolean)
+          : [];
+
+        return {
+          ...product,
+          sizes: sizesSorted,
+          categories,
+          brand,
+        };
+      } catch {
+        return {
+          ...product,
+          sizes: sizesSorted,
+        };
+      }
+    } catch (err) {
+      throw new Error("Error getting product");
     }
   },
 });

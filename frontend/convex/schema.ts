@@ -182,7 +182,7 @@ export default defineSchema({
 
   brands: defineTable({
     name: v.string(),
-    slug: v.optional(v.string()),
+    slug: v.string(),
     logoUrl: v.optional(v.string()),
     description: v.optional(v.string()),
     createdAt: v.number(),
@@ -443,4 +443,54 @@ export default defineSchema({
     image: v.optional(v.string()), // category image for banners
     createdAt: v.number(),
   }).index("by_slug", ["slug"]),
+
+  conversationSessions: defineTable({
+    userId: v.optional(v.string()),
+    pinnedMessageIds: v.optional(v.array(v.id("conversationMessages"))),
+    rollingSummary: v.optional(v.string()),
+    rollingSummaryTokens: v.optional(v.number()),
+    midSummary: v.optional(v.string()),
+    midSummaryTokens: v.optional(v.number()),
+    totalTokens: v.number(),
+    messageCount: v.number(),
+    lastSummaryAt: v.optional(v.number()),
+    config: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_createdAt", ["createdAt"]),
+
+  conversationMessages: defineTable({
+    sessionId: v.id("conversationSessions"),
+    index: v.number(),
+    role: v.union(
+      v.literal("user"),
+      v.literal("assistant"),
+      v.literal("system")
+    ),
+    content: v.string(),
+    tokens: v.number(),
+    pinned: v.optional(v.boolean()),
+    tier: v.optional(
+      v.union(v.literal("recent"), v.literal("mid"), v.literal("historical"))
+    ),
+    summary: v.optional(v.string()),
+    embedding: v.optional(v.array(v.number())),
+    createdAt: v.number(),
+  })
+    .index("by_sessionId", ["sessionId"])
+    .index("by_sessionId_index", ["sessionId", "index"]),
+
+  conversationSummaries: defineTable({
+    sessionId: v.id("conversationSessions"),
+    tier: v.union(v.literal("mid"), v.literal("historical")),
+    summary: v.string(),
+    tokens: v.number(),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_sessionId", ["sessionId"])
+    .index("by_sessionId_tier", ["sessionId", "tier"]),
 });

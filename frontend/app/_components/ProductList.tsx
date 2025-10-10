@@ -5,12 +5,13 @@ import useProducts from "../_hooks/useProducts";
 import ProductCardSkeleton from "./ProductCardSkeleton";
 import useSticky from "../_hooks/useSticky";
 import { useFilters } from "../_hooks/useFilters";
+import type { Product } from "../_utils/types";
 
 export default function ProductList() {
   const { filters } = useFilters();
   const { products, isPending, error } = useProducts({
     filters: {
-      brand: filters.brand?.[0],
+      brand: filters.brand,
       category: filters.category,
       isBestseller: filters.bestseller?.[0] === "true",
       isDiscounted: filters.discount?.[0] === "true",
@@ -35,16 +36,16 @@ export default function ProductList() {
       </Box>
       <Box className="grid gap-[1.3rem]  grid-cols-[repeat(auto-fill,minmax(250px,1fr))]">
         {isPending &&
-          Array.from({ length: 15 }).map((_, i) => (
-            <ProductCardSkeleton key={i} />
+          Array.from({ length: 15 }).map((_, index) => (
+            <ProductCardSkeleton key={index} />
           ))}
 
         {!error &&
           !isPending &&
-          products?.map((product, i) => (
+          products?.map((product: Product) => (
             <ProductCard
               selectClassName="bg-[#fff]"
-              key={i}
+              key={product._id}
               product={product}
             />
           ))}

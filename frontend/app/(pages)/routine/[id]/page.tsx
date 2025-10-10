@@ -264,7 +264,7 @@ export default function RoutineDetailPage() {
   const params = useParams<{ id: string }>();
   const { user } = useUser();
   const rid = params?.id as string;
-  const result = useQuery(api.routine.getUserRoutinePopulated, {
+  const result = useQuery(api.routine.getUserRoutine, {
     userId: user?._id as string,
     routineId: rid as Id<"routines">,
   }) as GetRoutinePopulatedResult | undefined;

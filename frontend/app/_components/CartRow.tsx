@@ -10,9 +10,11 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Minus, Plus, X } from "lucide-react";
 import AppError from "../_utils/appError";
+import { useUser } from "../_contexts/CreateConvexUser";
 
 export default function CartRow({ item }: { item: Cart }) {
   const [isUpdating, setIsUpdating] = useState(false);
+  const { user } = useUser();
   const [isDeleting, setIsDeleting] = useState(false);
   const updateCartQuantity = useMutation(api.cart.updateCartQuantity);
   const removeFromCart = useMutation(api.cart.removeFromCart);
@@ -23,7 +25,11 @@ export default function CartRow({ item }: { item: Cart }) {
   ) {
     try {
       setIsUpdating(true);
-      const res = await updateCartQuantity({ quantity, cartId });
+      const res = await updateCartQuantity({
+        quantity,
+        cartId,
+        userId: user?._id as string,
+      });
       if (!res.success) throw new AppError(res.message as string);
       toast.success("Cart updated successfully");
     } catch (err) {
@@ -37,7 +43,7 @@ export default function CartRow({ item }: { item: Cart }) {
   const handleDeleteCartItem = async function (cartId: Id<"carts">) {
     try {
       setIsDeleting(true);
-      const res = await removeFromCart({ cartId });
+      const res = await removeFromCart({ userId: user._id as string, cartId });
       if (!res.success) throw new AppError(res.message as string);
       toast.success("Cart item deleted successfully");
     } catch (err) {

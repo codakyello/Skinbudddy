@@ -1,8 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import { Box } from "@chakra-ui/react";
 import ClipLoader from "react-spinners/ClipLoader";
-import useUserCart from "../_hooks/useUserCart";
-import { Cart } from "../_utils/types";
+import useUserCart, { CartEntry } from "../_hooks/useUserCart";
 import { useUser } from "../_contexts/CreateConvexUser";
 import { X, Minus, Plus } from "lucide-react";
 import { useMutation } from "convex/react";
@@ -46,7 +45,11 @@ export default function CartModal({ onClose }: { onClose?: () => void }) {
   ) {
     try {
       setIsUpdating(true);
-      const res = await updateCartQuantity({ quantity, cartId });
+      const res = await updateCartQuantity({
+        quantity,
+        cartId,
+        userId: user._id as string,
+      });
       if (!res.success) throw new AppError(res.message as string);
       toast.success("Cart updated successfully");
     } catch (err) {
@@ -57,15 +60,16 @@ export default function CartModal({ onClose }: { onClose?: () => void }) {
     }
   };
 
-  const totalPrice = cart?.reduce(
-    (acc, item) => (item.product?.price ?? 0) * (item.quantity ?? 0) + acc,
+  const totalPrice = cart.reduce<number>(
+    (acc: number, item: CartEntry) =>
+      (item.product?.price ?? 0) * (item.quantity ?? 0) + acc,
     0
   );
 
   const handleDeleteCartItem = async function (cartId: Id<"carts">) {
     try {
       setIsDeleting(true);
-      const res = await removeFromCart({ cartId });
+      const res = await removeFromCart({ cartId, userId: user._id as string });
       if (!res.success) throw new AppError(res.message as string);
       toast.success("Cart item deleted successfully");
     } catch (err) {
@@ -77,8 +81,9 @@ export default function CartModal({ onClose }: { onClose?: () => void }) {
   };
 
   return (
+    // find a more dynamic height for safari browsers for phone to account for url bar
     <Box
-      className={`relative bg-white z-20 overflow-y-auto w-full md:w-[45.5rem] p-[30px] h-[100svh] shadow-2xl `}
+      className={`relative bg-white z-20 overflow-y-auto w-full md:w-[45.5rem] p-[30px] h-screen shadow-2xl `}
     >
       <button onClick={onClose} className="absolute top-[2.5rem] right-[2rem]">
         <IoCloseOutline className="h-[3rem] w-[3rem]" />
@@ -94,10 +99,10 @@ export default function CartModal({ onClose }: { onClose?: () => void }) {
               Shopping Bag
             </p>
           </Box>
-          {cart && cart.length > 0 ? (
+          {cart.length > 0 ? (
             <>
               <Box className="flex-1 overflow-auto">
-                {cart.map((item: Cart) => (
+                {cart.map((item: CartEntry) => (
                   <Box
                     key={item._id}
                     className="relative flex items-center gap-[1.6rem] py-[16px] transition-all duration-300 border-b border-gray-200"

@@ -19,13 +19,11 @@ export default async function HomePage() {
   const [bestsellers, trending] = await Promise.all([
     fetchQuery(api.products.getAllProducts, {
       filters: { isBestseller: true },
-    }).catch(() => []),
+    }).catch(() => ({ products: [] })),
     fetchQuery(api.products.getAllProducts, {
       filters: { isTrending: true },
-    }).catch(() => []),
+    }).catch(() => ({ products: [] })),
   ]);
-
-  console.log(bestsellers, trending, "bestseller", "trending");
 
   return (
     <>
@@ -67,9 +65,9 @@ export default async function HomePage() {
       </Box>
 
       <Box className="flex flex-col gap-[48px]">
-        <SectionBestSeller initialProducts={bestsellers} />
+        <SectionBestSeller initialProducts={bestsellers.products} />
 
-        <SectionTrending initialProducts={trending} />
+        <SectionTrending initialProducts={trending.products} />
       </Box>
     </>
   );

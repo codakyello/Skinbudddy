@@ -4,7 +4,7 @@ import { ModalHoverOpen, ModalOpen, ModalWindow, useModal } from "./Modal";
 import CartModal from "./CartModal";
 import AuthModal from "./AuthModal";
 import Link from "next/link";
-import useUserCart from "../_hooks/useUserCart";
+import useUserCart, { CartEntry } from "../_hooks/useUserCart";
 import { useUser } from "../_contexts/CreateConvexUser";
 // import Logo from "./Logo";
 import NavModal from "./NavModal";
@@ -30,10 +30,10 @@ export default function NavBar() {
   const { cart } = useUserCart(userId);
   // Fetch routines to optionally show direct link to latest
 
-  const totalCartItems =
-    cart?.reduce((acc, item) => {
-      return acc + item.quantity;
-    }, 0) || 0;
+  const totalCartItems = cart.reduce<number>(
+    (acc: number, item: CartEntry) => acc + (item.quantity ?? 0),
+    0
+  );
 
   const { open } = useModal();
 
@@ -97,11 +97,11 @@ export default function NavBar() {
             </svg>
 
             {/* <ModalHoverOpen
-              openCondition={cart && cart?.length > 0}
+              openCondition={cart.length > 0}
               name="cart"
             >
               <Link href={"/cart"} className="relative cursor-pointer">
-                {cart && cart?.length > 0 && (
+                {cart.length > 0 && (
                   <span
                     className={`absolute -top-2 -right-4 transition-all duration-500  rounded-full w-[2rem] h-[2rem] flex items-center justify-center text-[1rem] group-hover:bg-[var(--color-primary)] bg-[var(--color-primary)] text-white`}
                   >
@@ -128,7 +128,7 @@ export default function NavBar() {
 
             <ModalOpen name="cart">
               <Box className="relative cursor-pointer">
-                {cart && cart?.length > 0 && (
+                {cart.length > 0 && (
                   <span
                     className={`absolute -top-2 -right-4 transition-all duration-500  rounded-full w-[2rem] h-[2rem] flex items-center justify-center text-[1rem] group-hover:bg-[var(--color-primary)] bg-[var(--color-primary)] text-white`}
                   >

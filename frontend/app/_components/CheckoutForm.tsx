@@ -2,8 +2,7 @@ import { Box } from "@chakra-ui/react";
 import { toast } from "sonner";
 import AppError from "../_utils/appError";
 import { useMutation, useQuery } from "convex/react";
-import { useUser } from "../_contexts/CreateConvexUser";
-import useUserCart from "../_hooks/useUserCart";
+import useUserCart, { CartEntry } from "../_hooks/useUserCart";
 import { api } from "@/convex/_generated/api";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Id } from "@/convex/_generated/dataModel";
@@ -18,6 +17,7 @@ import {
 import { FormRow } from "./FormRow";
 import { RoutineSuggestionsModal } from "./RoutineSuggestionsModal";
 import CheckBox from "./CheckBox";
+import { useUser } from "../_contexts/CreateConvexUser";
 
 export function CheckoutForm({ userDetail }: { userDetail?: User }) {
   const createOrder = useMutation(api.order.createOrder);
@@ -66,12 +66,12 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
     // fragranceFree: true, // uncomment if you want to force FF
   });
   const products = cart
-    .map((item) => item.product)
+    .map((item: CartEntry) => item.product)
     .filter(Boolean) as Product[];
-  if (cart.length < 1) return;
+  if (cart.length < 1) return null;
 
   const anyProductCanBeInRoutine = cart.some(
-    (item) => item.product?.canBeInRoutine
+    (item: CartEntry) => item.product?.canBeInRoutine
   );
 
   const hasCoreProducts = ["moisturiser", "cleanser", "sunscreen"].every(
@@ -240,8 +240,9 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
       if (!res.success) throw new AppError(res.message as string);
       if (!orderId) throw new AppError("Order ID not found after creation");
 
-      const totalAmount = cart.reduce(
-        (acc, item) => (item.product?.price ?? 0) * (item.quantity ?? 0) + acc,
+      const totalAmount = cart.reduce<number>(
+        (acc: number, item: CartEntry) =>
+          (item.product?.price ?? 0) * (item.quantity ?? 0) + acc,
         0
       );
 

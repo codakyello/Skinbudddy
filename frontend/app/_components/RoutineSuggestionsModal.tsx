@@ -2,7 +2,7 @@
 import { Box } from "@chakra-ui/react";
 import { IoCloseOutline } from "react-icons/io5";
 import { useUser } from "../_contexts/CreateConvexUser";
-import useUserCart from "../_hooks/useUserCart";
+import useUserCart, { CartEntry } from "../_hooks/useUserCart";
 import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
@@ -47,10 +47,10 @@ export function RoutineSuggestionsModal({
   const { user } = useUser();
   const { cart } = useUserCart(user._id as string);
   // Build a stable list of selected product IDs from the cart
-  const selectedProductIds = useMemo(() => {
-    return (cart || [])
-      .map((item) => item.product?._id)
-      .filter(Boolean) as Id<"products">[];
+  const selectedProductIds = useMemo<Id<"products">[]>(() => {
+    return cart
+      .map((item: CartEntry) => item.product?._id)
+      .filter((id): id is Id<"products"> => Boolean(id));
   }, [cart]);
 
   // --- Routine message helpers ---
@@ -75,7 +75,7 @@ export function RoutineSuggestionsModal({
   }
 
   // Pull routine-capable items from cart
-  const allProductsInCart = (cart ?? []).map((i) => i.product);
+  const allProductsInCart = cart.map((item: CartEntry) => item.product);
 
   const routineCartProducts: EssentialsProduct[] = (
     allProductsInCart.filter((p) => p !== null && p !== undefined) as Product[]
