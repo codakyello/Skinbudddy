@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowUpRight, ChevronDown, Search } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { useUser } from "@/app/_contexts/CreateConvexUser";
 
 const TOPICS = ["Dry Skin", "Acne Care", "Anti-Aging", "SPF Routine"];
