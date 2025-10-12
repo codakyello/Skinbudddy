@@ -363,17 +363,14 @@ export default function ChatPage() {
         processPayload(buffer);
       }
 
-      const resolvedContent = finalReply.length
-        ? finalReply
-        : accumulated;
+      const resolvedContent = finalReply.length ? finalReply : accumulated;
 
       const hasProducts = finalProducts.length > 0;
 
       updateAssistant({
-        content:
-          resolvedContent.length
-            ? resolvedContent
-            : "I rounded up a few options—let me know if anything catches your eye!",
+        content: resolvedContent.length
+          ? resolvedContent
+          : "I rounded up a few options—let me know if anything catches your eye!",
         products: hasProducts ? finalProducts : undefined,
       });
 
@@ -475,7 +472,7 @@ export default function ChatPage() {
                       ) : null}
                     </div>
                   ) : (
-                    <div className="max-w-[72%] rounded-[22px] bg-[#1b1f26] px-5 py-4 text-[14px] leading-[2] text-white ">
+                    <div className="max-w-[72%] rounded-[22px] bg-[#1b1f26] py-[7px] px-[14px] text-[14px] leading-[2] text-white ">
                       {message.content}
                     </div>
                   )}

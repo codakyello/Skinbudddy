@@ -14,14 +14,17 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     start(controller) {
       const send = async (payload: unknown) => {
-        controller.enqueue(
-          encoder.encode(`${JSON.stringify(payload)}\n`)
-        );
+        controller.enqueue(encoder.encode(`${JSON.stringify(payload)}\n`));
       };
 
       (async () => {
         try {
-          const { message, sessionId: incomingSessionId, userId, config } = body;
+          const {
+            message,
+            sessionId: incomingSessionId,
+            userId,
+            config,
+          } = body;
 
           if (!message || typeof message !== "string") {
             throw new Error("Missing `message` in request body");
@@ -32,21 +35,29 @@ export async function POST(req: NextRequest) {
           if (incomingSessionId) {
             sessionId = incomingSessionId as Id<"conversationSessions">;
           } else {
-            const created = await fetchMutation(api.conversation.createSession, {
-              userId: userId ?? undefined,
-              config: config ?? undefined,
-            });
+            const created = await fetchMutation(
+              api.conversation.createSession,
+              {
+                userId: userId ?? undefined,
+                config: config ?? undefined,
+              }
+            );
             sessionId = created.sessionId;
           }
 
-          const appendUser = await fetchMutation(api.conversation.appendMessage, {
-            sessionId,
-            role: "user",
-            content: message,
-          });
+          const appendUser = await fetchMutation(
+            api.conversation.appendMessage,
+            {
+              sessionId,
+              role: "user",
+              content: message + `My userId: ${userId}`,
+            }
+          );
 
           if (appendUser.needsSummary) {
-            await fetchAction(api.conversation.recomputeSummaries, { sessionId });
+            await fetchAction(api.conversation.recomputeSummaries, {
+              sessionId,
+            });
           }
 
           const context = await fetchQuery(api.conversation.getContext, {
@@ -88,7 +99,9 @@ export async function POST(req: NextRequest) {
           );
 
           if (appendAssistant.needsSummary) {
-            await fetchAction(api.conversation.recomputeSummaries, { sessionId });
+            await fetchAction(api.conversation.recomputeSummaries, {
+              sessionId,
+            });
           }
 
           await send({
@@ -104,7 +117,9 @@ export async function POST(req: NextRequest) {
           await send({
             type: "error",
             message:
-              error instanceof Error ? error.message : "Unexpected error occurred",
+              error instanceof Error
+                ? error.message
+                : "Unexpected error occurred",
           });
         } finally {
           controller.close();
