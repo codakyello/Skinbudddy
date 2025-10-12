@@ -10,13 +10,12 @@ import ProductCard from "@/app/_components/ProductCard";
 import type { Product, Size } from "@/app/_utils/types";
 import { Box } from "@chakra-ui/react";
 
-const TOPICS = ["Dry Skin", "Acne Care", "Anti-Aging", "SPF Routine"];
+// const TOPICS = ["Dry Skin", "Acne Care", "Anti-Aging", "SPF Routine"];
 
 const SUGGESTIONS = [
-  "Recommend a gentle cleanser for sensitive skin",
-  "Which sunscreen works best under makeup?",
-  "Help me build an evening routine for acne",
-  "How do I layer vitamin C and retinol safely?",
+  "Build me a skincare routine for my skin type and concerns",
+  "Explain which ingredients I should or shouldn’t combine",
+  "Recommend products that actually work for my current skin issues",
 ];
 
 type ChatRole = "assistant" | "user";
@@ -399,39 +398,47 @@ export default function ChatPage() {
     await sendMessage(suggestion);
   };
 
-  return (
-    <main className="flex min-h-screen flex-col font-['Inter'] text-[#2f1f53]">
-      <div className="flex flex-1 flex-col items-center px-8 pb-36 pt-24">
-        <div className="w-full max-w-[78rem]">
-          <header className="text-center">
-            <h1 className="text-[38px] font-semibold tracking-[-0.02em] text-[#331d62] md:text-[46px]">
-              How can I help you?
-            </h1>
-          </header>
+  const hasMessages = messages.length;
 
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            {TOPICS.map((topic) => (
-              <button
-                key={topic}
-                className="flex items-center gap-2 rounded-full border border-[#e2d7ff] bg-white px-5 py-2 text-[15px] font-medium text-[#5e3fb0] shadow-sm transition hover:border-[#d0bfff] hover:bg-[#f6f0ff]"
-              >
-                {topic}
-              </button>
-            ))}
-          </div>
+  return (
+    <main className="flex min-h-screen  md:min-h-[calc(100vh-100px)]  flex-col font-['Inter'] text-[#2f1f53]">
+      <div
+        className={`flex flex-1 flex-col items-center ${hasMessages < 1 && "justify-center"} px-8 pb-36 pt-[6rem] md:pt-0`}
+      >
+        <div className="w-full max-w-[78rem]">
+          {hasMessages < 1 && (
+            <>
+              <header className="text-center">
+                <h1 className="text-[38px] font-semibold tracking-[-0.02em] text-[#331d62] md:text-[46px]">
+                  How can I help you?
+                </h1>
+              </header>
+
+              {/* <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                {TOPICS.map((topic) => (
+                  <button
+                    key={topic}
+                    className="flex items-center gap-2 rounded-full border border-[#e2d7ff] bg-white px-5 py-2 text-[15px] font-medium text-[#5e3fb0] shadow-sm transition hover:border-[#d0bfff] hover:bg-[#f6f0ff]"
+                  >
+                    {topic}
+                  </button>
+                ))}
+              </div> */}
+            </>
+          )}
 
           {messages.length === 0 ? (
-            <section className="mt-12 space-y-3 rounded-3xl border border-transparent bg-white/80 p-7 backdrop-blur-md shadow-[0_24px_50px_-28px_rgba(73,41,132,0.35)]">
+            <section className="mt-8 space-y-3 rounded-3xl border border-transparent bg-white/80 p-7 backdrop-blur-md ">
               {SUGGESTIONS.map((suggestion) => (
                 <button
                   key={suggestion}
                   onClick={() => handleSuggestion(suggestion)}
-                  className="flex w-full items-center justify-between rounded-[22px] px-5 py-4 text-left transition hover:bg-[#f1eaff]"
+                  className="flex w-full items-center justify-between rounded-[22px] px-5 py-4 text-left transition hover:bg-[#f2f2f2]"
                 >
                   <span className="text-[16px] font-medium tracking-[-0.01em]">
                     {suggestion}
                   </span>
-                  <ArrowUpRight className="h-5 w-5 text-[#b79dff]" />
+                  <ArrowUpRight className="h-7 w-7 text-[#aaa]" />
                 </button>
               ))}
             </section>
@@ -453,7 +460,10 @@ export default function ChatPage() {
                               product._id ?? product.slug ?? index
                             )}`;
                             return (
-                              <Box key={productKey} className="min-w-[25rem]">
+                              <Box
+                                key={productKey}
+                                className="min-w-[25rem] mb-[20px]"
+                              >
                                 <ProductCard product={product} />
                               </Box>
                             );
@@ -472,7 +482,7 @@ export default function ChatPage() {
                       ) : null}
                     </div>
                   ) : (
-                    <div className="max-w-[72%] rounded-[22px] bg-[#1b1f26] py-[7px] px-[14px] text-[14px] leading-[2] text-white ">
+                    <div className="max-w-[72%] rounded-[18px] bg-[#1b1f26] py-[8px] px-[16px] text-[14px] leading-[1.5] text-white ">
                       {message.content}
                     </div>
                   )}
@@ -485,9 +495,9 @@ export default function ChatPage() {
                       <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#d2c0ff] border-t-[#8e70da] animate-spin" />
                     </span> */}
                     <div className="flex gap-2">
-                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#bfa4ff]" />
-                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#bfa4ff] [animation-delay:0.18s]" />
-                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#bfa4ff] [animation-delay:0.36s]" />
+                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26]" />
+                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.18s]" />
+                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.36s]" />
                     </div>
                   </div>
                 </div>
@@ -499,49 +509,52 @@ export default function ChatPage() {
       </div>
 
       <footer className="sticky bottom-0 z-[999] flex w-full justify-center pt-8 px-4">
-        <div className="w-full max-w-[80rem] rounded-t-[10px] border border-[#e5d9ff] bg-white/95 p-6 shadow-[0_32px_70px_-38px_rgba(70,47,128,0.55)] backdrop-blur">
+        <div className="w-full max-w-[80rem] rounded-t-[10px]  bg-white/95 p-6 shadow-[0_32px_70px_-38px_rgba(70,47,128,0.55)] backdrop-blur">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="relative flex items-end gap-4">
-              <div className="flex-1">
-                <textarea
-                  rows={2}
-                  placeholder="Type your message here…"
-                  value={inputValue}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    if (value.length <= MAX_INPUT_LENGTH) {
-                      setInputValue(value);
-                      if (error) setError(null);
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      if (canSubmit) {
-                        event.preventDefault();
-                        void sendMessage(inputValue);
+            <div className="relative items-end gap-4">
+              <div className="flex-1 ">
+                <div className="relative">
+                  <textarea
+                    rows={1}
+                    placeholder="Ask anything"
+                    value={inputValue}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value.length <= MAX_INPUT_LENGTH) {
+                        setInputValue(value);
+                        if (error) setError(null);
                       }
-                    }
-                  }}
-                  className="w-full  resize-none rounded-[22px] border border-[#dfcdfc] bg-[#faf7ff] px-5 py-4 text-[16px] leading-relaxed text-[#36255a] placeholder:text-[#b39fdd] focus:border-[#ccb4ff] focus:outline-none focus:ring-2 focus:ring-[#d8c6ff]"
-                  maxLength={MAX_INPUT_LENGTH}
-                  aria-label="Message input"
-                />
-                <div className="mt-2 flex items-center justify-between text-[12px] text-[#9578da]">
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        if (canSubmit) {
+                          event.preventDefault();
+                          void sendMessage(inputValue);
+                        }
+                      }
+                    }}
+                    className="resize-none rounded-[25px] py-[10px] pr-[40px] pl-[12px] bg-[#f2f2f2] leading-relaxed text-[#36255a] focus-visible:border-none"
+                    maxLength={MAX_INPUT_LENGTH}
+                    aria-label="Message input"
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={!canSubmit}
+                    className="absolute right-[5px] top-[17%] flex h-12 w-12 items-center justify-center rounded-[18px] disabled:bg-[#dcdcdd] disabled:text-[#888]  bg-[#1b1f26] text-white shadow-lg shadow-[#f882b0]/35 transition hover:brightness-110 disabled:cursor-not-allowed disabled:from-[#f2b5c9] disabled:to-[#f2b5c9]"
+                  >
+                    <ArrowUpRight className="h-6 w-6 " />
+                    <span className="sr-only">Send message</span>
+                  </button>
+                </div>
+
+                <div className="mt-2 flex items-center justify-between text-[12px] text-[#888]">
                   <span>
                     {inputValue.trim().length} / {MAX_INPUT_LENGTH}
                   </span>
                   {error && <span className="text-[#ff3e73]">{error}</span>}
                 </div>
               </div>
-
-              <button
-                type="submit"
-                disabled={!canSubmit}
-                className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-gradient-to-r from-[#f882b0] to-[#f15e99] text-white shadow-lg shadow-[#f882b0]/35 transition hover:brightness-110 disabled:cursor-not-allowed disabled:from-[#f2b5c9] disabled:to-[#f2b5c9]"
-              >
-                <ArrowUpRight className="h-6 w-6" />
-                <span className="sr-only">Send message</span>
-              </button>
             </div>
           </form>
         </div>

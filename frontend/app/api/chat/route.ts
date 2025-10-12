@@ -64,12 +64,14 @@ export async function POST(req: NextRequest) {
             sessionId = created.sessionId;
           }
 
+          // causes some level of letency
+          // cant we append this after ai response
           const appendUser = await fetchMutation(
             api.conversation.appendMessage,
             {
               sessionId,
               role: "user",
-              content: message + `My userId: ${userId}`,
+              content: message + ` My userId: ${userId}`,
             }
           );
 
@@ -84,6 +86,8 @@ export async function POST(req: NextRequest) {
           const context = await fetchQuery(api.conversation.getContext, {
             sessionId,
           });
+
+          console.log(context, "This is conversation history");
 
           const completion = await callOpenAI({
             messages: context.messages,

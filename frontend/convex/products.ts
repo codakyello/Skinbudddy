@@ -1294,7 +1294,7 @@ async function searchProductsByQueryImpl(
       .filter((product) => (product.score ?? 0) >= minimumScore)
       .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
       .slice(0, maxResults)
-      .map(({ nameMatchCount, ...rest }) => ({ ...rest }));
+      .map(({ score, ...rest }) => ({ ...rest, score }));
   } else {
     const limitValue =
       typeof limit === "number" && limit > 0 ? Math.min(limit, 100) : undefined;
@@ -1302,7 +1302,7 @@ async function searchProductsByQueryImpl(
       typeof limitValue === "number"
         ? workingProducts.slice(0, limitValue)
         : workingProducts;
-    finalProducts = limited.map(({ nameMatchCount, score, ...rest }) => ({
+    finalProducts = limited.map(({ score, ...rest }) => ({
       ...rest,
       score: undefined,
     }));

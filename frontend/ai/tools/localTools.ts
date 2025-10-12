@@ -84,6 +84,106 @@ const productFiltersParameters = {
 
 const ensureApi = async () => api;
 
+type SanitizedSize = {
+  id: string;
+  size: number;
+  unit: string;
+  price: number;
+  discount?: number;
+  stock?: number;
+};
+
+type SanitizedProduct = {
+  _id: string;
+  slug?: string;
+  name?: string;
+  description?: string;
+  images: string[];
+  sizes: SanitizedSize[];
+  brand?: { name?: string; slug?: string };
+  score?: number;
+};
+
+const toNumber = (value: unknown): number | undefined => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+};
+
+const extractRelevantProductInfo = (product: unknown): SanitizedProduct | null => {
+  if (!product || typeof product !== "object") return null;
+  const raw = product as Record<string, unknown>;
+
+  const idValue = raw._id ?? raw.id;
+  const slugValue = raw.slug;
+  const _id = typeof idValue === "string" ? idValue : undefined;
+  const slug = typeof slugValue === "string" ? slugValue : undefined;
+  if (!_id && !slug) return null;
+
+  const images = Array.isArray(raw.images)
+    ? raw.images.filter((img): img is string => typeof img === "string")
+    : [];
+
+  const sizes = Array.isArray(raw.sizes)
+    ? raw.sizes
+        .map((size) => {
+          if (!size || typeof size !== "object") return null;
+          const sizeRecord = size as Record<string, unknown>;
+          const sizeIdValue = sizeRecord.id ?? sizeRecord._id;
+          const sizeId = typeof sizeIdValue === "string" ? sizeIdValue : undefined;
+          if (!sizeId) return null;
+
+          const sizeValue = toNumber(sizeRecord.size) ?? 0;
+          const unit = typeof sizeRecord.unit === "string" ? sizeRecord.unit : "";
+          const price = toNumber(sizeRecord.price) ?? 0;
+          const discount = toNumber(sizeRecord.discount);
+          const stock = toNumber(sizeRecord.stock);
+
+          const sanitized: SanitizedSize = {
+            id: sizeId,
+            size: Number.isFinite(sizeValue) ? sizeValue : 0,
+            unit,
+            price: Number.isFinite(price) ? price : 0,
+          };
+
+          if (discount != null) sanitized.discount = discount;
+          if (stock != null) sanitized.stock = stock;
+
+          return sanitized;
+        })
+        .filter((size): size is SanitizedSize => Boolean(size))
+    : [];
+
+  const brandRaw = raw.brand;
+  const brand =
+    brandRaw && typeof brandRaw === "object"
+      ? {
+          name:
+            typeof (brandRaw as Record<string, unknown>).name === "string"
+              ? ((brandRaw as Record<string, unknown>).name as string)
+              : undefined,
+          slug:
+            typeof (brandRaw as Record<string, unknown>).slug === "string"
+              ? ((brandRaw as Record<string, unknown>).slug as string)
+              : undefined,
+        }
+      : undefined;
+
+  return {
+    _id: _id ?? (slug as string),
+    slug,
+    name: typeof raw.name === "string" ? raw.name : undefined,
+    description:
+      typeof raw.description === "string" ? raw.description : undefined,
+    images,
+    sizes,
+    brand,
+  };
+};
+
 const localTools: ToolSpec[] = [
   {
     name: "searchProductsByQuery",
@@ -162,7 +262,23 @@ const localTools: ToolSpec[] = [
         );
       }
 
-      return response;
+      return {
+        ...response,
+        products: Array.isArray(response.products)
+          ? response.products
+              .map((product) => {
+                const info = extractRelevantProductInfo(product);
+                if (!info) return null;
+                const score =
+                  typeof (product as Record<string, unknown>).score ===
+                  "number"
+                    ? ((product as Record<string, unknown>).score as number)
+                    : undefined;
+                return score != null ? { ...info, score } : info;
+              })
+              .filter((product): product is SanitizedProduct => Boolean(product))
+          : [],
+      };
     },
   },
   {
@@ -189,13 +305,55 @@ const localTools: ToolSpec[] = [
         userId: input.userId,
       });
 
-      // lets remove the images so llm dosent render it
-      return userCart.cart.map((c) => ({
-        product: {
-          ...c.product,
-          images: undefined,
-        },
-      }));
+      const sanitizedCart = Array.isArray(userCart?.cart)
+        ? userCart.cart.map((item: Record<string, unknown>) => ({
+            ...item,
+            product: extractRelevantProductInfo(item.product),
+          }))
+        : [];
+
+      return {
+        ...userCart,
+        cart: sanitizedCart,
+      };
+    },
+  },
+  {
+    name: "getProduct",
+    description: "Retrieves a single product by its slug (URL-friendly identifier).",
+    parameters: {
+      type: "object",
+      properties: {
+        slug: { type: "string" },
+      },
+      required: ["slug"],
+      additionalProperties: false,
+    },
+    schema: z
+      .object({
+        slug: z.string(),
+      })
+      .strict(),
+    handler: async (rawInput) => {
+      const input = z.object({ slug: z.string() }).parse(rawInput);
+      const apiModule = await ensureApi();
+      const result = await fetchQuery(apiModule.products.getProduct, {
+        slug: input.slug,
+      });
+
+      if (!result) {
+        return result;
+      }
+
+      const sanitized = extractRelevantProductInfo(result);
+      if (!sanitized) {
+        return result;
+      }
+
+      return {
+        ...result,
+        ...sanitized,
+      };
     },
   },
   {
@@ -373,10 +531,19 @@ const localTools: ToolSpec[] = [
                 : input.filters.skinTypes,
             }
           : undefined;
-      return fetchQuery(apiModule.products.getAllProducts, {
+      const response = await fetchQuery(apiModule.products.getAllProducts, {
         filters,
         sort: input.sort,
       });
+
+      return {
+        ...response,
+        products: Array.isArray(response?.products)
+          ? response.products
+              .map((product: unknown) => extractRelevantProductInfo(product))
+              .filter((product): product is SanitizedProduct => Boolean(product))
+          : [],
+      };
     },
   },
 ];

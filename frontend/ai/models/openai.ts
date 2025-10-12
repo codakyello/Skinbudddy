@@ -247,6 +247,7 @@ export async function callOpenAI({
             result: result ?? null,
           });
 
+          // pushing the tool reslult here
           chatMessages.push({
             role: "tool",
             tool_call_id: toolCall.id,
@@ -275,7 +276,7 @@ export async function callOpenAI({
         chatMessages.push({
           role: "developer",
           content:
-            "You have the products returned in the previous tool call. Write one friendly paragraph (1–2 sentences) explaining how the selection fits the user. Do not enumerate the individual products; reference them collectively (e.g., 'The cleansers above…') and offer to help with next steps like adding to cart, comparing, or getting more detail.",
+            "You have the products returned in the previous tool call. Write one friendly paragraph (1–2 sentences) explaining how the selection fits the user. Do not enumerate the individual products; reference them if plural or it if singular collectively and offer to help with next steps like adding to cart, comparing, or getting more detail.",
         });
       }
 
