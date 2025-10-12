@@ -17,6 +17,25 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(`${JSON.stringify(payload)}\n`));
       };
 
+      const scheduled: Promise<void>[] = [];
+      const schedule = (promise: Promise<unknown>) => {
+        scheduled.push(
+          promise
+            .then(() => undefined)
+            .catch((error) =>
+              console.error("Background persistence error:", error)
+            )
+        );
+      };
+
+      const finalize = () => {
+        Promise.allSettled(scheduled)
+          .catch((error) =>
+            console.error("Failed waiting for background tasks:", error)
+          )
+          .finally(() => controller.close());
+      };
+
       (async () => {
         try {
           const {
@@ -55,9 +74,11 @@ export async function POST(req: NextRequest) {
           );
 
           if (appendUser.needsSummary) {
-            await fetchAction(api.conversation.recomputeSummaries, {
-              sessionId,
-            });
+            schedule(
+              fetchAction(api.conversation.recomputeSummaries, {
+                sessionId,
+              })
+            );
           }
 
           const context = await fetchQuery(api.conversation.getContext, {
@@ -77,32 +98,34 @@ export async function POST(req: NextRequest) {
           const assistantMessage = completion.reply;
           const toolOutputs = completion.toolOutputs ?? [];
           const products = completion.products ?? [];
+          const displayProducts = Boolean(completion.displayProducts);
 
           if (products.length) {
-            await fetchMutation(api.conversation.appendMessage, {
-              sessionId,
-              role: "tool",
-              content: JSON.stringify({
-                name: "searchProductsByQuery",
-                products,
-              }),
-            });
+            schedule(
+              fetchMutation(api.conversation.appendMessage, {
+                sessionId,
+                role: "tool",
+                content: JSON.stringify({
+                  name: "searchProductsByQuery",
+                  products,
+                }),
+              })
+            );
           }
 
-          const appendAssistant = await fetchMutation(
-            api.conversation.appendMessage,
-            {
+          schedule(
+            fetchMutation(api.conversation.appendMessage, {
               sessionId,
               role: "assistant",
               content: assistantMessage,
-            }
+            }).then((result) => {
+              if (result?.needsSummary) {
+                return fetchAction(api.conversation.recomputeSummaries, {
+                  sessionId,
+                });
+              }
+            })
           );
-
-          if (appendAssistant.needsSummary) {
-            await fetchAction(api.conversation.recomputeSummaries, {
-              sessionId,
-            });
-          }
 
           await send({
             type: "final",
@@ -110,6 +133,7 @@ export async function POST(req: NextRequest) {
             sessionId,
             toolOutputs,
             products,
+            displayProducts,
           });
         } catch (error: unknown) {
           console.error("Error calling openAI", error);
@@ -122,7 +146,7 @@ export async function POST(req: NextRequest) {
                 : "Unexpected error occurred",
           });
         } finally {
-          controller.close();
+          finalize();
         }
       })();
     },

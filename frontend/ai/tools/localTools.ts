@@ -135,23 +135,26 @@ const localTools: ToolSpec[] = [
         ? input.ingredientQueries.map((value) => value.trim()).filter(Boolean)
         : undefined;
 
-      const response = await fetchQuery(apiModule.products.searchProductsByQuery, {
-        nameQuery: input.nameQuery,
-        categoryQuery: input.categoryQuery,
-        brandQuery: input.brandQuery,
-        skinTypes: canonicalSkinTypes.length ? canonicalSkinTypes : undefined,
-        skinTypeQueries: unresolvedSkinTypeQueries.length
-          ? unresolvedSkinTypeQueries
-          : undefined,
-        skinConcerns: canonicalSkinConcerns.length
-          ? canonicalSkinConcerns
-          : undefined,
-        skinConcernQueries: unresolvedSkinConcernQueries.length
-          ? unresolvedSkinConcernQueries
-          : undefined,
-        ingredientQueries: cleanedIngredientQueries,
-        limit: input.limit,
-      });
+      const response = await fetchQuery(
+        apiModule.products.searchProductsByQuery,
+        {
+          nameQuery: input.nameQuery,
+          categoryQuery: input.categoryQuery,
+          brandQuery: input.brandQuery,
+          skinTypes: canonicalSkinTypes.length ? canonicalSkinTypes : undefined,
+          skinTypeQueries: unresolvedSkinTypeQueries.length
+            ? unresolvedSkinTypeQueries
+            : undefined,
+          skinConcerns: canonicalSkinConcerns.length
+            ? canonicalSkinConcerns
+            : undefined,
+          skinConcernQueries: unresolvedSkinConcernQueries.length
+            ? unresolvedSkinConcernQueries
+            : undefined,
+          ingredientQueries: cleanedIngredientQueries,
+          limit: input.limit,
+        }
+      );
 
       if (!response?.success) {
         throw new Error(
@@ -182,9 +185,17 @@ const localTools: ToolSpec[] = [
     handler: async (rawInput) => {
       const input = z.object({ userId: z.string() }).parse(rawInput);
       const apiModule = await ensureApi();
-      return fetchQuery(apiModule.cart.getUserCart, {
+      const userCart = await fetchQuery(apiModule.cart.getUserCart, {
         userId: input.userId,
       });
+
+      // lets remove the images so llm dosent render it
+      return userCart.cart.map((c) => ({
+        product: {
+          ...c.product,
+          images: undefined,
+        },
+      }));
     },
   },
   {
@@ -356,7 +367,9 @@ const localTools: ToolSpec[] = [
               skinTypes: Array.isArray(input.filters.skinTypes)
                 ? input.filters.skinTypes
                     .map((value) => resolveSkinType(String(value)))
-                    .filter((value): value is SkinTypeCanonical => Boolean(value))
+                    .filter((value): value is SkinTypeCanonical =>
+                      Boolean(value)
+                    )
                 : input.filters.skinTypes,
             }
           : undefined;

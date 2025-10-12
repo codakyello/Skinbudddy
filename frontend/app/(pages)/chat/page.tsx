@@ -148,25 +148,25 @@ const normalizeProductArray = (items: unknown[]): Product[] => {
   return Array.from(byId.values());
 };
 
-const extractProductsFromToolOutputs = (outputs: unknown): Product[] => {
-  if (!Array.isArray(outputs)) return [];
-  const candidateKeys = ["products", "results", "items", "recommendations"];
-  const collected: Product[] = [];
+// const extractProductsFromToolOutputs = (outputs: unknown): Product[] => {
+//   if (!Array.isArray(outputs)) return [];
+//   const candidateKeys = ["products", "results", "items", "recommendations"];
+//   const collected: Product[] = [];
 
-  outputs.forEach((output) => {
-    if (!isRecord(output)) return;
-    const result = isRecord(output.result) ? output.result : null;
-    if (!result) return;
+//   outputs.forEach((output) => {
+//     if (!isRecord(output)) return;
+//     const result = isRecord(output.result) ? output.result : null;
+//     if (!result) return;
 
-    candidateKeys.forEach((key) => {
-      const value = result[key as keyof typeof result];
-      if (!Array.isArray(value)) return;
-      collected.push(...normalizeProductArray(value));
-    });
-  });
+//     candidateKeys.forEach((key) => {
+//       const value = result[key as keyof typeof result];
+//       if (!Array.isArray(value)) return;
+//       collected.push(...normalizeProductArray(value));
+//     });
+//   });
 
-  return normalizeProductArray(collected);
-};
+//   return normalizeProductArray(collected);
+// };
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -307,6 +307,7 @@ export default function ChatPage() {
       let finalReply = "";
       let finalSessionId: string | null = null;
       let finalProducts: Product[] = [];
+      let displayProductsFlag = false;
 
       const processPayload = (line: string) => {
         const trimmed = line.trim();
@@ -318,6 +319,7 @@ export default function ChatPage() {
           products?: unknown[];
           sessionId?: string;
           message?: string;
+          displayProducts?: boolean;
         };
 
         if (payload.type === "delta" && typeof payload.token === "string") {
@@ -335,6 +337,9 @@ export default function ChatPage() {
           }
           if (typeof payload.sessionId === "string") {
             finalSessionId = payload.sessionId;
+          }
+          if (typeof payload.displayProducts === "boolean") {
+            displayProductsFlag = payload.displayProducts;
           }
           return;
         }
@@ -370,8 +375,11 @@ export default function ChatPage() {
       updateAssistant({
         content: resolvedContent.length
           ? resolvedContent
-          : "I rounded up a few options—let me know if anything catches your eye!",
-        products: hasProducts ? finalProducts : undefined,
+          : displayProductsFlag
+            ? "I rounded up a few options—let me know if anything catches your eye!"
+            : "All set! Let me know if you need anything else.",
+        products:
+          hasProducts && displayProductsFlag ? finalProducts : undefined,
       });
 
       if (finalSessionId) {
