@@ -98,7 +98,6 @@ export async function POST(req: NextRequest) {
           const assistantMessage = completion.reply;
           const toolOutputs = completion.toolOutputs ?? [];
           const products = completion.products ?? [];
-          const displayProducts = Boolean(completion.displayProducts);
 
           if (products.length) {
             schedule(
@@ -133,7 +132,6 @@ export async function POST(req: NextRequest) {
             sessionId,
             toolOutputs,
             products,
-            displayProducts,
           });
         } catch (error: unknown) {
           console.error("Error calling openAI", error);

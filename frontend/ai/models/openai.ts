@@ -99,7 +99,6 @@ export async function callOpenAI({
   reply: string;
   toolOutputs?: ToolOutput[];
   products?: unknown[];
-  displayProducts?: boolean;
   updatedContext?: object;
 }> {
   const tools = toolSpecs;
@@ -276,7 +275,7 @@ export async function callOpenAI({
         chatMessages.push({
           role: "developer",
           content:
-            "You have the products returned in the previous tool call. Decide whether the user explicitly asked to review product recommendations. If yes, write one friendly paragraph (≤2 sentences) referencing them collectively (e.g., 'The cleansers above…') and offer help with next steps. If the user did not request a product list (e.g., they only wanted to update their cart), respond to their request briefly without listing the products. In all cases, append the marker [[DISPLAY_PRODUCTS:true]] or [[DISPLAY_PRODUCTS:false]] at the very end of your reply (after any punctuation, with no extra words). Do not mention the marker to the user.",
+            "You have the products returned in the previous tool call. Write one friendly paragraph (1–2 sentences) explaining how the selection fits the user. Do not enumerate the individual products; reference them collectively (e.g., 'The cleansers above…') and offer to help with next steps like adding to cart, comparing, or getting more detail.",
         });
       }
 
@@ -291,7 +290,9 @@ export async function callOpenAI({
     toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
 
   let displayProducts = false;
-  const markerMatch = finalContent.match(/\[\[DISPLAY_PRODUCTS:(true|false)\]\]\s*$/i);
+  const markerMatch = finalContent.match(
+    /\[\[DISPLAY_PRODUCTS:(true|false)\]\]\s*$/i
+  );
   if (markerMatch) {
     displayProducts = markerMatch[1].toLowerCase() === "true";
     finalContent = finalContent.slice(0, markerMatch.index).trimEnd();
@@ -309,6 +310,5 @@ export async function callOpenAI({
     reply: replyText,
     toolOutputs,
     products: products.length ? products : undefined,
-    displayProducts,
   };
 }
