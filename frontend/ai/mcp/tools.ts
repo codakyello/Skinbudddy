@@ -4,6 +4,12 @@ import { pathToFileURL } from "node:url";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { fetchMutation, fetchQuery } from "convex/nextjs";
 import type { Id } from "../../convex/_generated/dataModel";
+import {
+  resolveSkinConcern,
+  resolveSkinType,
+  type SkinConcernCanonical,
+  type SkinTypeCanonical,
+} from "../../shared/skinMappings.js";
 type ApiModule = typeof import("../../convex/_generated/api");
 
 type SearchProduct = {
@@ -74,6 +80,21 @@ const productFiltersSchema = z
       .array(z.string())
       .optional()
       .describe("Filter by category slug"),
+    skinTypes: z
+      .array(
+        z.enum([
+          "normal",
+          "oily",
+          "dry",
+          "combination",
+          "sensitive",
+          "mature",
+          "acne-prone",
+          "all",
+        ])
+      )
+      .optional()
+      .describe("Filter by skin type"),
   })
   .optional();
 
@@ -136,115 +157,6 @@ const searchProducts = async ({
 };
 
 export function registerTools(server: McpServer) {
-  // lets extend this to name too, this is a better fuzzy search method
-
-  // mcp: searchProductsByQuery
-  // server.tool(
-  //   "searchProductsByQuery",
-  //   "First step for vague product requests. Fuzzy finds candidates by name/brand; returns sizes and score. Fuzzy search by natural-language query; returns best-matching products.",
-  //   {
-  //     query: z.string().describe(`e.g. "cerave moisturiser"`),
-  //     brandSlug: z.string().optional().describe(`e.g. "cerave"`),
-  //     limit: z.number().int().min(1).max(20).optional().default(8),
-  //   },
-  //   async ({ query, brandSlug, limit }) => {
-  //     const { success, results, message } = await searchProducts({
-  //       query,
-  //       brandSlug,
-  //       limit,
-  //     });
-
-  //     if (!success) {
-  //       return fail(message ?? "Failed to search products");
-  //     }
-
-  //     return ok({ success: true, results });
-  //   }
-  // );
-
-  // mcp: addToCartByQuery
-  // server.tool(
-  //   "addToCartByQuery",
-  //   "Add by natural-language name; resolves product & size server-side.",
-  //   {
-  //     userId: z.string(),
-  //     query: z.string().describe(`e.g. "cerave moisturiser"`),
-  //     brandSlug: z.string().optional(),
-  //     sizeLabel: z.string().optional().describe(`e.g. "89ml", "PM 52ml"`),
-  //     quantity: z.number().int().min(1).optional().default(1),
-  //   },
-  //   async ({ userId, query, brandSlug, sizeLabel, quantity }) => {
-  //     const api = await getApi();
-  //     const { success, results, message } = await searchProducts({
-  //       query,
-  //       brandSlug,
-  //     });
-
-  //     if (!success) {
-  //       return fail(message ?? "Failed to search products before add-to-cart");
-  //     }
-
-  //     if (!results.length) {
-  //       return ok({ success: false, reason: "not_found" });
-  //     }
-
-  //     const [bestMatch, secondBest] = results;
-  //     const bestScore =
-  //       bestMatch && typeof bestMatch.score === "number" ? bestMatch.score : 0;
-  //     const secondScore =
-  //       secondBest && typeof secondBest.score === "number"
-  //         ? secondBest.score
-  //         : 0;
-
-  //     if (results.length > 1 && bestScore - secondScore < 0.15) {
-  //       return ok({
-  //         success: false,
-  //         reason: "ambiguous",
-  //         options: results.slice(0, 5),
-  //       });
-  //     }
-  //     const product = bestMatch as SearchProduct;
-
-  //     const norm = (s: string) => s.toLowerCase().trim();
-  //     let sizeId: string | undefined;
-  //     const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
-
-  //     if (sizeLabel && sizes.length > 0) {
-  //       sizeId = (sizes as Array<Record<string, any>>).find(
-  //         (s) => norm((s.label ?? s.name ?? "") as string) === norm(sizeLabel)
-  //       )?.id as string | undefined;
-  //     }
-  //     if (!sizeId && sizes.length === 1) {
-  //       sizeId = (sizes[0] as Record<string, any>).id as string | undefined;
-  //     }
-  //     if (!sizeId) {
-  //       return ok({
-  //         success: false,
-  //         reason: "need_size",
-  //         product: { id: product.id, slug: product.slug, name: product.name },
-  //         sizeOptions:
-  //           sizes.map((s: any) => ({
-  //             id: s.id,
-  //             label: s.label ?? s.name,
-  //           })) ?? [],
-  //       });
-  //     }
-
-  //     const safeQuantity = quantity ?? 1;
-  //     const addRes = await fetchMutation(api.cart.createCart, {
-  //       userId,
-  //       productId: product.id as Id<"products">,
-  //       sizeId,
-  //       quantity: safeQuantity,
-  //     });
-  //     return ok({
-  //       success: Boolean(addRes?.success),
-  //       added: { product: product.name, sizeId, quantity: safeQuantity },
-  //       backend: addRes,
-  //     });
-  //   }
-  // );
-
   server.tool(
     "searchProductsByQuery",
     "List products using free‑text queries for category, brand, or name. The tool resolves fuzzy text (e.g., 'moisturiser', 'face crem', 'cerave') to exact DB slugs, then lists products.",
@@ -259,12 +171,30 @@ export function registerTools(server: McpServer) {
         .string()
         .optional()
         .describe(
-          "Free‑text category, e.g. 'moisturisers', 'face crem', 'sunscreen'"
+          "Free-text category, e.g. 'moisturisers', 'face crem', 'sunscreen'"
         ),
       brandQuery: z
         .string()
         .optional()
-        .describe("Free‑text brand, e.g. 'cerave', 'la roche'"),
+        .describe("Free-text brand, e.g. 'cerave', 'la roche'"),
+      skinTypes: z
+        .array(z.string().min(1))
+        .optional()
+        .describe(
+          "Skin types to prioritise (synonyms OK), e.g. ['sensitive', 'acne prone']"
+        ),
+      skinConcerns: z
+        .array(z.string().min(1))
+        .optional()
+        .describe(
+          "Skin concerns to target (synonyms OK), e.g. ['dark spots', 'dryness']"
+        ),
+      ingredientQueries: z
+        .array(z.string().min(1))
+        .optional()
+        .describe(
+          "Specific ingredients to include, e.g. ['hyaluronic acid', 'niacinamide', 'retinol']"
+        ),
       limit: z
         .number()
         .int()
@@ -273,12 +203,72 @@ export function registerTools(server: McpServer) {
         .optional()
         .describe("Max items to return (default from backend)"),
     },
-    async ({ nameQuery, categoryQuery, brandQuery, limit }) => {
+    async ({
+      nameQuery,
+      categoryQuery,
+      brandQuery,
+      skinTypes,
+      skinConcerns,
+      ingredientQueries,
+      limit,
+    }) => {
       const api = await getApi();
+
+      const processValues = <T extends string>(
+        values: string[] | undefined,
+        resolver: (input: string) => T | null
+      ): { canonical: T[]; unresolved: string[] } => {
+        const canonical = new Set<T>();
+        const unresolved: string[] = [];
+
+        if (Array.isArray(values)) {
+          values.forEach((raw) => {
+            const normalized =
+              typeof raw === "string" ? raw.trim() : String(raw ?? "").trim();
+            if (!normalized) return;
+            const resolved = resolver(normalized);
+            if (resolved) {
+              canonical.add(resolved);
+            } else {
+              unresolved.push(normalized);
+            }
+          });
+        }
+
+        return { canonical: Array.from(canonical), unresolved };
+      };
+
+      const {
+        canonical: canonicalSkinTypes,
+        unresolved: unresolvedSkinTypeQueries,
+      } = processValues<SkinTypeCanonical>(skinTypes, resolveSkinType);
+      const {
+        canonical: canonicalSkinConcerns,
+        unresolved: unresolvedSkinConcernQueries,
+      } = processValues<SkinConcernCanonical>(
+        skinConcerns,
+        resolveSkinConcern
+      );
+
+      const cleanedIngredientQueries = Array.isArray(ingredientQueries)
+        ? ingredientQueries.map((value) => value.trim()).filter(Boolean)
+        : undefined;
+
       const response = await fetchQuery(api.products.searchProductsByQuery, {
         nameQuery,
         categoryQuery,
         brandQuery,
+        skinTypes: canonicalSkinTypes.length ? canonicalSkinTypes : undefined,
+        skinTypeQueries: unresolvedSkinTypeQueries.length
+          ? unresolvedSkinTypeQueries
+          : undefined,
+        skinConcerns: canonicalSkinConcerns.length
+          ? canonicalSkinConcerns
+          : undefined,
+        skinConcernQueries: unresolvedSkinConcernQueries.length
+          ? unresolvedSkinConcernQueries
+          : undefined,
+        ingredientQueries: cleanedIngredientQueries,
         limit,
       });
 

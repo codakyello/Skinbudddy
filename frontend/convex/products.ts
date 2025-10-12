@@ -11,6 +11,12 @@ import { SkinConcern, SkinType } from "./schema";
 import { AHA_BHA_SET, DRYING_ALCOHOLS } from "../convex/_utils/products";
 import { Product, Brand } from "./_utils/type";
 import { runChatCompletion } from "./_utils/internalUtils";
+import {
+  resolveSkinConcern,
+  resolveSkinType,
+  type SkinConcernCanonical,
+  type SkinTypeCanonical,
+} from "../shared/skinMappings.js";
 
 export const IngredientSensitivity = v.union(
   v.literal("alcohol"),
@@ -560,6 +566,7 @@ export const getAllProducts = query({
         isNew: v.optional(v.boolean()),
         brandSlugs: v.optional(v.array(v.string())),
         categorySlugs: v.optional(v.array(v.string())),
+        skinTypes: v.optional(v.array(SkinType)),
       })
     ),
     limit: v.optional(v.number()),
@@ -587,6 +594,7 @@ export const getAllProducts = query({
           discount,
           brandSlugs,
           categorySlugs,
+          skinTypes,
         } = filters;
 
         if (isBestseller) {
@@ -645,6 +653,26 @@ export const getAllProducts = query({
           } else {
             products = [];
           }
+        }
+
+        if (Array.isArray(skinTypes) && skinTypes.length) {
+          const requested = new Set(
+            skinTypes.map((type) => String(type).toLowerCase())
+          );
+
+          products = products.filter((product) => {
+            const types = Array.isArray(product.skinType)
+              ? product.skinType.map((t: string) => String(t).toLowerCase())
+              : [];
+
+            if (!types.length) return false;
+            if (types.includes("all")) return true;
+
+            for (const type of types) {
+              if (requested.has(type)) return true;
+            }
+            return false;
+          });
         }
       }
 
@@ -720,16 +748,24 @@ export const getAllProducts = query({
 });
 
 // convex/products.ts (add this)
-type ResolvedProductSummary = {
+type ProductCardSize = {
+  id: string;
+  size: number;
+  unit: string;
+  price: number;
+  discount?: number;
+  stock?: number;
+};
+
+type ProductCardSummary = {
   id: Id<"products">;
-  slug?: string;
-  name?: string;
+  slug: string;
+  name: string;
   description?: string;
-  images?: string[];
-  sizes: unknown;
-  brand: unknown;
-  categories: unknown;
+  images: string[];
+  sizes: ProductCardSize[];
   score?: number;
+  brand?: { name?: string; slug?: string };
   nameMatchCount?: number;
 };
 
@@ -737,6 +773,11 @@ type SearchProductsByQueryArgs = {
   nameQuery?: string;
   categoryQuery?: string;
   brandQuery?: string;
+  skinTypes?: (typeof SkinType.type)[];
+  skinTypeQueries?: string[];
+  skinConcerns?: (typeof SkinConcern.type)[];
+  skinConcernQueries?: string[];
+  ingredientQueries?: string[];
   limit?: number;
 };
 
@@ -752,8 +793,14 @@ type SearchProductsByQueryResult =
     }
   | {
       success: true;
-      filters: { categorySlugs: string[]; brandSlugs: string[] };
-      products: ResolvedProductSummary[];
+      filters: {
+        categorySlugs: string[];
+        brandSlugs: string[];
+        skinTypes?: (typeof SkinType.type)[];
+        skinConcerns?: (typeof SkinConcern.type)[];
+        ingredientQueries?: string[];
+      };
+      products: ProductCardSummary[];
     };
 
 const MINIMUM_FUZZY_SCORE = 0.2;
@@ -762,7 +809,17 @@ const MINIMUM_FUZZY_SCORE = 0.2;
 
 async function searchProductsByQueryImpl(
   ctx: QueryCtx,
-  { nameQuery, categoryQuery, brandQuery, limit }: SearchProductsByQueryArgs
+  {
+    nameQuery,
+    categoryQuery,
+    brandQuery,
+    skinTypes,
+    skinTypeQueries,
+    skinConcerns,
+    skinConcernQueries,
+    ingredientQueries,
+    limit,
+  }: SearchProductsByQueryArgs
 ): Promise<SearchProductsByQueryResult> {
   const normalizedNameQuery =
     typeof nameQuery === "string" ? normalizeText(nameQuery) : "";
@@ -788,11 +845,65 @@ async function searchProductsByQueryImpl(
     ? categoryResolution.slugs
     : [];
 
+  console.log(categorySlugs, "This is the category slug");
+
   const brandSlugs = Array.isArray(brandResolution.slugs)
     ? brandResolution.slugs
     : [];
 
-  if (!categorySlugs.length && !brandSlugs.length && !hasNameQuery) {
+  console.log(brandSlugs, "This is the brand slug");
+
+  const requestedSkinTypeSet = new Set<SkinTypeCanonical>();
+  if (Array.isArray(skinTypes)) {
+    skinTypes.forEach((value) => {
+      const resolved = resolveSkinType(String(value));
+      if (resolved) requestedSkinTypeSet.add(resolved);
+    });
+  }
+  if (Array.isArray(skinTypeQueries)) {
+    skinTypeQueries.forEach((value) => {
+      const resolved = resolveSkinType(String(value));
+      if (resolved) requestedSkinTypeSet.add(resolved);
+    });
+  }
+  const requestedSkinTypes = Array.from(requestedSkinTypeSet);
+
+  const requestedSkinConcernSet = new Set<SkinConcernCanonical>();
+  if (Array.isArray(skinConcerns)) {
+    skinConcerns.forEach((value) => {
+      const resolved = resolveSkinConcern(String(value));
+      if (resolved) requestedSkinConcernSet.add(resolved);
+    });
+  }
+  if (Array.isArray(skinConcernQueries)) {
+    skinConcernQueries.forEach((value) => {
+      const resolved = resolveSkinConcern(String(value));
+      if (resolved) requestedSkinConcernSet.add(resolved);
+    });
+  }
+  const requestedSkinConcerns = Array.from(requestedSkinConcernSet);
+
+  const ingredientQueryRaw = Array.from(
+    new Set(
+      Array.isArray(ingredientQueries)
+        ? ingredientQueries
+            .map((value) => String(value).trim())
+            .filter((value) => value.length > 0)
+        : []
+    )
+  );
+  const normalizedIngredientQueries = ingredientQueryRaw.map((value) =>
+    normalizeIngredient(value)
+  );
+
+  if (
+    !categorySlugs.length &&
+    !brandSlugs.length &&
+    !hasNameQuery &&
+    !requestedSkinTypes.length &&
+    !requestedSkinConcerns.length &&
+    !normalizedIngredientQueries.length
+  ) {
     return {
       success: false,
       reason: "ambiguous_or_not_found",
@@ -863,12 +974,70 @@ async function searchProductsByQueryImpl(
     );
   }
 
+  if (requestedSkinTypes.length) {
+    const requestedSet = new Set<string>(requestedSkinTypes);
+    products = products.filter((product) => {
+      const productTypes = Array.isArray(product.skinType)
+        ? product.skinType.map((t: string) => String(t).toLowerCase())
+        : [];
+
+      if (!productTypes.length) return false;
+      if (productTypes.includes("all")) return true;
+
+      for (const type of productTypes) {
+        if (requestedSet.has(type)) return true;
+      }
+      return false;
+    });
+  }
+
+  if (requestedSkinConcerns.length) {
+    const concernSet = new Set<string>(requestedSkinConcerns);
+    products = products.filter((product) => {
+      const productConcerns = Array.isArray(product.concerns)
+        ? product.concerns.map((concern: string) =>
+            normalizeText(String(concern)).replace(/\s+/g, "-")
+          )
+        : [];
+
+      if (!productConcerns.length) return false;
+      if (productConcerns.includes("all")) return true;
+
+      return productConcerns.some((concern) => concernSet.has(concern));
+    });
+  }
+
+  if (normalizedIngredientQueries.length) {
+    products = products.filter((product) => {
+      const productIngredients = Array.isArray(product.ingredients)
+        ? product.ingredients.map((ingredient: string) =>
+            normalizeIngredient(ingredient)
+          )
+        : [];
+
+      if (!productIngredients.length) return false;
+
+      return normalizedIngredientQueries.every((needle) =>
+        productIngredients.some(
+          (ingredient) => ingredient === needle || ingredient.includes(needle)
+        )
+      );
+    });
+  }
+
   if (!products.length) {
     return {
       success: true,
       filters: {
         categorySlugs,
         brandSlugs,
+        ...(requestedSkinTypes.length ? { skinTypes: requestedSkinTypes } : {}),
+        ...(requestedSkinConcerns.length
+          ? { skinConcerns: requestedSkinConcerns }
+          : {}),
+        ...(normalizedIngredientQueries.length
+          ? { ingredientQueries: normalizedIngredientQueries }
+          : {}),
       },
       products: [],
     };
@@ -877,11 +1046,13 @@ async function searchProductsByQueryImpl(
   const brandCache = new Map<Id<"brands">, Doc<"brands"> | null>();
   const categoryCache = new Map<Id<"categories">, Doc<"categories"> | null>();
 
-  const enriched: ResolvedProductSummary[] = await Promise.all(
+  const enriched: ProductCardSummary[] = await Promise.all(
     products.map(async (item) => {
       const sizesSorted = Array.isArray(item.sizes)
-        ? [...item.sizes].sort((a, b) => (a.size ?? 0) - (b.size ?? 0))
-        : item.sizes;
+        ? [...item.sizes]
+            .filter((size) => typeof size?.id === "string")
+            .sort((a, b) => (a.size ?? 0) - (b.size ?? 0))
+        : [];
 
       try {
         let brandDoc: Doc<"brands"> | null = null;
@@ -908,7 +1079,7 @@ async function searchProductsByQueryImpl(
                   });
                 })
               )
-            ).filter(Boolean)
+            ).filter((doc): doc is Doc<"categories"> => Boolean(doc))
           : [];
 
         const productNameTokens =
@@ -918,7 +1089,7 @@ async function searchProductsByQueryImpl(
         const categoryTokens =
           hasNameQuery && categoryDocs.length
             ? toTokenSet(
-                categoryDocs.map((doc) => String(doc?.name ?? "")).join(" ")
+                categoryDocs.map((doc) => String(doc.name ?? "")).join(" ")
               )
             : new Set<string>();
         const brandNameTokens =
@@ -929,6 +1100,12 @@ async function searchProductsByQueryImpl(
           hasNameQuery && typeof brandDoc?.slug === "string"
             ? normalizeText(String(brandDoc.slug))
             : "";
+        const productIngredientsNormalized =
+          normalizedIngredientQueries.length && Array.isArray(item.ingredients)
+            ? item.ingredients.map((ingredient: string) =>
+                normalizeIngredient(ingredient)
+              )
+            : [];
 
         let nameScore = 0;
         let nameMatchCount = hasNameQuery ? 0 : undefined;
@@ -971,34 +1148,112 @@ async function searchProductsByQueryImpl(
               ? 0.15
               : 0
             : 0;
+        const ingredientScore =
+          hasNameQuery && normalizedIngredientQueries.length
+            ? normalizedIngredientQueries.some((needle) =>
+                productIngredientsNormalized.some((ingredient) =>
+                  ingredient.includes(needle)
+                )
+              )
+              ? 0.1
+              : 0
+            : 0;
 
         const score = hasNameQuery
-          ? nameScore * 0.6 + categoryScore * 0.25 + brandScore + keywordBoost
+          ? nameScore * 0.6 +
+            categoryScore * 0.25 +
+            brandScore +
+            keywordBoost +
+            ingredientScore
           : 1;
 
-        const summary: ResolvedProductSummary & { nameMatchCount?: number } = {
+        const sizes: ProductCardSize[] = Array.isArray(sizesSorted)
+          ? sizesSorted
+              .map((size) => {
+                if (!size || typeof size !== "object") return null;
+                const id = typeof size.id === "string" ? size.id : undefined;
+                const sizeValue = Number(size.size ?? 0);
+                const unit = typeof size.unit === "string" ? size.unit : "";
+                const price = Number(size.price ?? 0);
+                const discount =
+                  typeof size.discount === "number" ? size.discount : undefined;
+                const stock =
+                  typeof size.stock === "number" ? size.stock : undefined;
+                if (!id) return null;
+                return {
+                  id,
+                  size: Number.isFinite(sizeValue) ? sizeValue : 0,
+                  unit,
+                  price: Number.isFinite(price) ? price : 0,
+                  discount,
+                  stock,
+                } as ProductCardSize;
+              })
+              .filter((size): size is ProductCardSize => Boolean(size))
+          : [];
+
+        const summary: ProductCardSummary = {
           id: item._id,
-          slug: item.slug,
-          name: item.name,
-          description: item.description,
-          images: item.images,
-          sizes: sizesSorted,
-          brand: brandDoc,
-          categories: categoryDocs,
+          slug: String(item.slug ?? ""),
+          name: String(item.name ?? ""),
+          description:
+            typeof item.description === "string" ? item.description : undefined,
+          images: Array.isArray(item.images)
+            ? item.images.filter(
+                (img): img is string => typeof img === "string"
+              )
+            : [],
+          sizes,
           score,
+          brand: brandDoc
+            ? {
+                name:
+                  typeof brandDoc.name === "string" ? brandDoc.name : undefined,
+                slug:
+                  typeof brandDoc.slug === "string" ? brandDoc.slug : undefined,
+              }
+            : undefined,
           nameMatchCount,
         };
         return summary;
       } catch {
-        const fallback: ResolvedProductSummary & { nameMatchCount?: number } = {
+        const fallbackSizes: ProductCardSize[] = Array.isArray(item.sizes)
+          ? item.sizes
+              .map((size) => {
+                if (!size || typeof size !== "object") return null;
+                const id = typeof size.id === "string" ? size.id : undefined;
+                if (!id) return null;
+                const sizeValue = Number(size.size ?? 0);
+                const unit = typeof size.unit === "string" ? size.unit : "";
+                const price = Number(size.price ?? 0);
+                const discount =
+                  typeof size.discount === "number" ? size.discount : undefined;
+                const stock =
+                  typeof size.stock === "number" ? size.stock : undefined;
+                return {
+                  id,
+                  size: Number.isFinite(sizeValue) ? sizeValue : 0,
+                  unit,
+                  price: Number.isFinite(price) ? price : 0,
+                  discount,
+                  stock,
+                } as ProductCardSize;
+              })
+              .filter((size): size is ProductCardSize => Boolean(size))
+          : [];
+
+        const fallback: ProductCardSummary = {
           id: item._id,
-          slug: item.slug,
-          name: item.name,
-          description: item.description,
-          images: item.images,
-          sizes: sizesSorted,
-          brand: null,
-          categories: [],
+          slug: String(item.slug ?? ""),
+          name: String(item.name ?? ""),
+          description:
+            typeof item.description === "string" ? item.description : undefined,
+          images: Array.isArray(item.images)
+            ? item.images.filter(
+                (img): img is string => typeof img === "string"
+              )
+            : [],
+          sizes: fallbackSizes,
           score: hasNameQuery ? 0 : 1,
           nameMatchCount: hasNameQuery ? 0 : undefined,
         };
@@ -1029,7 +1284,7 @@ async function searchProductsByQueryImpl(
     }
   }
 
-  let finalProducts: ResolvedProductSummary[];
+  let finalProducts: ProductCardSummary[];
   if (hasNameQuery) {
     const maxResults =
       typeof limit === "number" && limit > 0 ? Math.min(limit, 50) : 8;
@@ -1039,7 +1294,7 @@ async function searchProductsByQueryImpl(
       .filter((product) => (product.score ?? 0) >= minimumScore)
       .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
       .slice(0, maxResults)
-      .map(({ nameMatchCount, ...rest }) => rest);
+      .map(({ nameMatchCount, ...rest }) => ({ ...rest }));
   } else {
     const limitValue =
       typeof limit === "number" && limit > 0 ? Math.min(limit, 100) : undefined;
@@ -1047,7 +1302,7 @@ async function searchProductsByQueryImpl(
       typeof limitValue === "number"
         ? workingProducts.slice(0, limitValue)
         : workingProducts;
-    finalProducts = limited.map(({ nameMatchCount, ...rest }) => ({
+    finalProducts = limited.map(({ nameMatchCount, score, ...rest }) => ({
       ...rest,
       score: undefined,
     }));
@@ -1060,6 +1315,13 @@ async function searchProductsByQueryImpl(
     filters: {
       categorySlugs,
       brandSlugs,
+      ...(requestedSkinTypes.length ? { skinTypes: requestedSkinTypes } : {}),
+      ...(requestedSkinConcerns.length
+        ? { skinConcerns: requestedSkinConcerns }
+        : {}),
+      ...(normalizedIngredientQueries.length
+        ? { ingredientQueries: normalizedIngredientQueries }
+        : {}),
     },
     products: finalProducts,
   };
@@ -1113,6 +1375,11 @@ export const searchProductsByQuery = query({
     nameQuery: v.optional(v.string()),
     categoryQuery: v.optional(v.string()),
     brandQuery: v.optional(v.string()),
+    skinTypes: v.optional(v.array(SkinType)),
+    skinTypeQueries: v.optional(v.array(v.string())),
+    skinConcerns: v.optional(v.array(SkinConcern)),
+    skinConcernQueries: v.optional(v.array(v.string())),
+    ingredientQueries: v.optional(v.array(v.string())),
     limit: v.optional(v.number()),
   },
   handler: (ctx, args): Promise<SearchProductsByQueryResult> =>

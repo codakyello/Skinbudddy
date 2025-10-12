@@ -13,6 +13,18 @@ export const createCart = mutation({
   },
   handler: async (ctx, { userId, productId, quantity, sizeId }) => {
     try {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .unique();
+      if (!user) {
+        return {
+          success: false,
+          message: "User not found",
+          statusCode: 404,
+        };
+      }
+
       // Check if item already exists in cart
       const existingCartItem = await ctx.db
         .query("carts")

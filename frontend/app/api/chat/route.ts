@@ -25,12 +25,6 @@ export async function POST(req: NextRequest) {
         config: config ?? undefined,
       });
       sessionId = created.sessionId;
-
-      fetchMutation(api.conversation.appendMessage, {
-        sessionId,
-        role: "user",
-        content: `This is my userid: ${userId}`,
-      });
     }
 
     const appendUser = await fetchMutation(api.conversation.appendMessage, {
@@ -38,9 +32,6 @@ export async function POST(req: NextRequest) {
       role: "user",
       content: message,
     });
-
-    //Test sake not produ
-    // lets append user id message too
 
     if (appendUser.needsSummary) {
       await fetchAction(api.conversation.recomputeSummaries, { sessionId });
@@ -50,12 +41,28 @@ export async function POST(req: NextRequest) {
       sessionId,
     });
 
+    console.log(context, "This is previous context");
+
     const completion = await callOpenAI({
       messages: context.messages,
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
+      sessionId,
     });
 
     const assistantMessage = completion.reply;
+    const toolOutputs = completion.toolOutputs ?? [];
+    const products = completion.products ?? [];
+
+    if (products.length) {
+      await fetchMutation(api.conversation.appendMessage, {
+        sessionId,
+        role: "tool",
+        content: JSON.stringify({
+          name: "searchProductsByQuery",
+          products,
+        }),
+      });
+    }
 
     const appendAssistant = await fetchMutation(
       api.conversation.appendMessage,
@@ -72,9 +79,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "ran successfully",
       sessionId,
-      result: { reply: assistantMessage, context },
+      result: { reply: assistantMessage, context, toolOutputs, products },
     });
   } catch (error: unknown) {
     console.error("Error calling openAI", error);

@@ -12,7 +12,7 @@ import type { Id } from "./_generated/dataModel";
 import OpenAI from "openai";
 import { internal } from "./_generated/api";
 
-type ConversationRole = "user" | "assistant" | "system";
+type ConversationRole = "user" | "assistant" | "system" | "tool";
 
 type ResolvedConfig = typeof DEFAULT_CONTEXT_CONFIG;
 
@@ -172,7 +172,12 @@ export const createSession = mutation({
 export const appendMessage = mutation({
   args: {
     sessionId: v.id("conversationSessions"),
-    role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
+    role: v.union(
+      v.literal("user"),
+      v.literal("assistant"),
+      v.literal("system"),
+      v.literal("tool")
+    ),
     content: v.string(),
     pinned: v.optional(v.boolean()),
   },

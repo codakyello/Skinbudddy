@@ -118,7 +118,7 @@ export default function PendingActions() {
           }
         }
       });
-  }, [data?.actions, setStatus, user?._id]);
+  }, [data?.actions, open, setStatus, user?._id]);
 
   useEffect(() => {
     if (!nextAction || hasOpenedRef.current) return;

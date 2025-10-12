@@ -1,6 +1,9 @@
 import OpenAI from "openai";
 import { DEFAULT_SYSTEM_PROMPT } from "../utils";
 import { connectSkinbuddyMcp } from "../mcp/client";
+import { fetchMutation } from "convex/nextjs";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -11,11 +14,72 @@ const openai = new OpenAI({
 // gpt-4o-mini
 // gpt-4.1-nano
 // gpt-5-nano
-type ChatMessage = { role: "user" | "assistant" | "system"; content: string };
+type ChatMessage = {
+  role: "user" | "assistant" | "system" | "tool" | "developer";
+  content: string;
+  tool_call_id?: string;
+};
+
+type ToolOutput = {
+  name: string;
+  arguments: unknown;
+  result: unknown;
+};
+
+type UnknownRecord = Record<string, unknown>;
+
+const coerceId = (value: unknown): string | undefined => {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const record = value as UnknownRecord;
+    if (typeof record.id === "string") return record.id;
+    if (typeof record._id === "string") return record._id;
+  }
+  return value != null ? String(value) : undefined;
+};
+
+const normalizeProductsFromOutputs = (outputs: ToolOutput[]): unknown[] => {
+  const candidateKeys = ["products", "results", "items", "recommendations"];
+  const byId = new Map<string, unknown>();
+
+  outputs.forEach((output) => {
+    const result = output?.result;
+    if (!result || typeof result !== "object") return;
+    const record = result as UnknownRecord;
+
+    candidateKeys.forEach((key) => {
+      const value = record[key];
+      if (!Array.isArray(value)) return;
+
+      value.forEach((entry, index) => {
+        const source =
+          entry &&
+          typeof entry === "object" &&
+          "product" in (entry as UnknownRecord)
+            ? ((entry as UnknownRecord).product as unknown)
+            : entry;
+
+        const id =
+          coerceId(
+            source && typeof source === "object"
+              ? ((source as UnknownRecord).id ?? (source as UnknownRecord)._id)
+              : source
+          ) ?? `${key}-${index}-${JSON.stringify(source)}`;
+
+        if (!byId.has(id)) {
+          byId.set(id, source ?? entry);
+        }
+      });
+    });
+  });
+
+  return Array.from(byId.values());
+};
 
 export async function callOpenAI({
   messages,
   systemPrompt,
+  sessionId,
   model = "gpt-4o-mini",
   temperature = 1,
   useTools = true,
@@ -23,12 +87,20 @@ export async function callOpenAI({
 }: {
   messages: ChatMessage[];
   systemPrompt: string;
+  sessionId: Id<"conversationSessions">;
   model?: string;
   temperature?: number;
   useTools?: boolean;
   maxToolRounds?: number;
-}): Promise<{ reply: string; updatedContext?: object }> {
+}): Promise<{
+  reply: string;
+  toolOutputs?: ToolOutput[];
+  products?: unknown[];
+  updatedContext?: object;
+}> {
   const mcpClient = await connectSkinbuddyMcp();
+
+  console.log("connected to mcp server");
 
   const toolsResult = await mcpClient.listTools();
 
@@ -43,17 +115,16 @@ export async function callOpenAI({
     };
   });
 
-  console.log(mcpClient.listTools, "Tools listed");
-
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
   ];
 
   for (const msg of messages) {
-    chatMessages.push({ role: msg.role, content: msg.content });
+    const mappedRole = msg.role === "tool" ? "assistant" : msg.role;
+    chatMessages.push({ role: mappedRole, content: msg.content });
   }
 
-  console.log(chatMessages, "This is conversation history");
+  // console.log(chatMessages, "This is conversation history");
 
   // messages.push({ role: "user", content: userMessage });
 
@@ -70,6 +141,7 @@ export async function callOpenAI({
   };
 
   let rounds = 0;
+  const toolOutputs: ToolOutput[] = [];
 
   // initial call to determine if we are going in a tool call loop
   let response = await call(false);
@@ -143,6 +215,12 @@ export async function callOpenAI({
           throw new Error(parsedPayload.message ?? "Tool returned an error");
         }
 
+        toolOutputs.push({
+          name: toolCall.function.name,
+          arguments: args,
+          result: parsedPayload ?? null,
+        });
+
         chatMessages.push({
           role: "tool",
           tool_call_id: toolCall.id,
@@ -164,6 +242,16 @@ export async function callOpenAI({
       }
     }
 
+    const productsArray =
+      toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
+
+    if (productsArray.length) {
+      chatMessages.push({
+        role: "developer",
+        content:
+          "You have the products returned in the previous tool call. Write one friendly paragraph (1–2 sentences) explaining how the selection fits the user. Do not enumerate the individual products; reference them collectively (e.g., 'The cleansers above…') and offer to help with next steps like adding to cart, comparing, or getting more detail.",
+      });
+    }
     // Ask for the next step; you can either loop (auto) or force final (none)
     response = await call(false);
   }
@@ -184,5 +272,21 @@ export async function callOpenAI({
     response?.choices?.[0]?.message?.content ??
     "I couldn’t generate a response.";
 
-  return { reply: content };
+  const products =
+    toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
+
+  // if products, generate summary
+
+  const replyText = products.length
+    ? content.trim().length
+      ? content
+      : "💧 I rounded up a few options that should fit nicely—happy to break any of them down further or pop one into your bag!"
+    : content;
+
+  // it is the reply that is being saved in conversation history
+  return {
+    reply: replyText,
+    toolOutputs,
+    products: products.length ? products : undefined,
+  };
 }

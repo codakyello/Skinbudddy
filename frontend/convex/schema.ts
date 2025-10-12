@@ -467,7 +467,8 @@ export default defineSchema({
     role: v.union(
       v.literal("user"),
       v.literal("assistant"),
-      v.literal("system")
+      v.literal("system"),
+      v.literal("tool")
     ),
     content: v.string(),
     tokens: v.number(),
