@@ -183,13 +183,13 @@ export default function ChatPage() {
   const markdownComponents: Components = useMemo(
     () => ({
       h1: ({ children }) => (
-        <h1 className="text-[20px] font-semibold text-[#311d60]">{children}</h1>
+        <h1 className="text-[18px] font-semibold text-[#311d60]">{children}</h1>
       ),
       h2: ({ children }) => (
-        <h2 className="text-[18px] font-semibold text-[#311d60]">{children}</h2>
+        <h2 className="text-[16px] font-semibold text-[#311d60]">{children}</h2>
       ),
       h3: ({ children }) => (
-        <h3 className="text-[17px] font-semibold text-[#311d60]">{children}</h3>
+        <h3 className="text-[15px] font-semibold text-[#311d60]">{children}</h3>
       ),
       p: ({ children }) => (
         <p className="text-[14px] leading-relaxed text-[#453174]">{children}</p>
@@ -263,6 +263,8 @@ export default function ChatPage() {
       { id: optimisticId, role: "user", content: trimmed },
     ]);
 
+    let assistantId: string | null = null;
+
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -274,48 +276,114 @@ export default function ChatPage() {
         }),
       });
 
-      if (!response.ok) {
+      if (!response.ok || !response.body) {
         throw new Error("Failed to reach the assistant.");
       }
 
-      const data = await response.json();
+      const newAssistantId = `assistant-${Date.now()}`;
+      assistantId = newAssistantId;
+      setMessages((prev) => [
+        ...prev,
+        { id: newAssistantId, role: "assistant", content: "" },
+      ]);
 
-      console.log(data, "This is data gotten from llm");
-      if (!data.success) {
-        throw new Error(data.message ?? "Assistant could not respond.");
+      const updateAssistant = (patch: Partial<ChatMessage>) => {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === newAssistantId
+              ? {
+                  ...msg,
+                  ...patch,
+                }
+              : msg
+          )
+        );
+      };
+
+      const decoder = new TextDecoder();
+      const reader = response.body.getReader();
+      let buffer = "";
+      let accumulated = "";
+      let finalReply = "";
+      let finalSessionId: string | null = null;
+      let finalProducts: Product[] = [];
+
+      const processPayload = (line: string) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        const payload = JSON.parse(trimmed) as {
+          type: string;
+          token?: string;
+          reply?: string;
+          products?: unknown[];
+          sessionId?: string;
+          message?: string;
+        };
+
+        if (payload.type === "delta" && typeof payload.token === "string") {
+          accumulated += payload.token;
+          updateAssistant({ content: accumulated });
+          return;
+        }
+
+        if (payload.type === "final") {
+          if (typeof payload.reply === "string") {
+            finalReply = payload.reply.trim();
+          }
+          if (Array.isArray(payload.products)) {
+            finalProducts = normalizeProductArray(payload.products);
+          }
+          if (typeof payload.sessionId === "string") {
+            finalSessionId = payload.sessionId;
+          }
+          return;
+        }
+
+        if (payload.type === "error") {
+          throw new Error(
+            typeof payload.message === "string"
+              ? payload.message
+              : "Assistant could not respond."
+          );
+        }
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          processPayload(line);
+        }
       }
 
-      if (data.sessionId) {
-        setSessionId(data.sessionId as string);
+      if (buffer.trim().length) {
+        processPayload(buffer);
       }
 
-      const reply =
-        typeof data.result?.reply === "string" ? data.result.reply.trim() : "";
+      const resolvedContent = finalReply.length
+        ? finalReply
+        : accumulated;
 
-      const normalizedProducts = Array.isArray(data.result?.products)
-        ? normalizeProductArray(data.result.products)
-        : extractProductsFromToolOutputs(data.result?.toolOutputs);
+      const hasProducts = finalProducts.length > 0;
 
-      const hasProducts = normalizedProducts.length > 0;
+      updateAssistant({
+        content:
+          resolvedContent.length
+            ? resolvedContent
+            : "I rounded up a few options—let me know if anything catches your eye!",
+        products: hasProducts ? finalProducts : undefined,
+      });
 
-      const messageText = hasProducts
-        ? reply.length
-          ? reply
-          : "💧 I rounded up a few options that should fit nicely—happy to break any of them down further or pop one into your bag!"
-        : reply;
-
-      if (hasProducts || messageText.length) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `assistant-${Date.now()}`,
-            role: "assistant",
-            content: messageText,
-            products: hasProducts ? normalizedProducts : undefined,
-          },
-        ]);
+      if (finalSessionId) {
+        setSessionId(finalSessionId);
       }
     } catch (err) {
+      if (assistantId) {
+        setMessages((prev) => prev.filter((msg) => msg.id !== assistantId));
+      }
       setError(
         err instanceof Error ? err.message : "Something went wrong. Try again."
       );

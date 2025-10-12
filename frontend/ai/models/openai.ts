@@ -84,6 +84,7 @@ export async function callOpenAI({
   temperature = 1,
   useTools = true,
   maxToolRounds = 5, // prevent runaway loops
+  onToken,
 }: {
   messages: ChatMessage[];
   systemPrompt: string;
@@ -92,6 +93,7 @@ export async function callOpenAI({
   temperature?: number;
   useTools?: boolean;
   maxToolRounds?: number;
+  onToken?: (chunk: string) => Promise<void> | void;
 }): Promise<{
   reply: string;
   toolOutputs?: ToolOutput[];
@@ -136,7 +138,7 @@ export async function callOpenAI({
       messages: chatMessages,
       tools,
       // Force a final answer when requested to avoid infinite tool loops.
-      tool_choice: useTools ? (forceFinal ? "none" : "auto") : undefined,
+      tool_choice: useTools ? (forceFinal ? "none" : "auto") : "none",
     });
   };
 
@@ -268,20 +270,40 @@ export async function callOpenAI({
     response = await call(true);
   }
 
-  const content =
+  let finalContent =
     response?.choices?.[0]?.message?.content ??
     "I couldn’t generate a response.";
+
+  if (onToken) {
+    let streamedContent = "";
+    const stream = await openai.chat.completions.create({
+      model,
+      temperature,
+      messages: chatMessages,
+      tools,
+      tool_choice: "none",
+      stream: true,
+    });
+    for await (const part of stream) {
+      const token = part.choices?.[0]?.delta?.content ?? "";
+      if (token) {
+        streamedContent += token;
+        await onToken(token);
+      }
+    }
+    if (streamedContent.length) {
+      finalContent = streamedContent;
+    }
+  }
 
   const products =
     toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
 
-  // if products, generate summary
-
   const replyText = products.length
-    ? content.trim().length
-      ? content
+    ? finalContent.trim().length
+      ? finalContent
       : "💧 I rounded up a few options that should fit nicely—happy to break any of them down further or pop one into your bag!"
-    : content;
+    : finalContent;
 
   // it is the reply that is being saved in conversation history
   return {

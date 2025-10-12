@@ -8,90 +8,116 @@ import type { Id } from "@/convex/_generated/dataModel";
 export async function POST(req: NextRequest) {
   console.log("we are in chat endpoint");
   const body = await req.json();
-  try {
-    const { message, sessionId: incomingSessionId, userId, config } = body;
 
-    if (!message || typeof message !== "string") {
-      throw new Error("Missing `message` in request body");
-    }
+  const encoder = new TextEncoder();
 
-    let sessionId: Id<"conversationSessions">;
+  const stream = new ReadableStream({
+    start(controller) {
+      const send = async (payload: unknown) => {
+        controller.enqueue(
+          encoder.encode(`${JSON.stringify(payload)}\n`)
+        );
+      };
 
-    if (incomingSessionId) {
-      sessionId = incomingSessionId as Id<"conversationSessions">;
-    } else {
-      const created = await fetchMutation(api.conversation.createSession, {
-        userId: userId ?? undefined,
-        config: config ?? undefined,
-      });
-      sessionId = created.sessionId;
-    }
+      (async () => {
+        try {
+          const { message, sessionId: incomingSessionId, userId, config } = body;
 
-    const appendUser = await fetchMutation(api.conversation.appendMessage, {
-      sessionId,
-      role: "user",
-      content: message,
-    });
+          if (!message || typeof message !== "string") {
+            throw new Error("Missing `message` in request body");
+          }
 
-    if (appendUser.needsSummary) {
-      await fetchAction(api.conversation.recomputeSummaries, { sessionId });
-    }
+          let sessionId: Id<"conversationSessions">;
 
-    const context = await fetchQuery(api.conversation.getContext, {
-      sessionId,
-    });
+          if (incomingSessionId) {
+            sessionId = incomingSessionId as Id<"conversationSessions">;
+          } else {
+            const created = await fetchMutation(api.conversation.createSession, {
+              userId: userId ?? undefined,
+              config: config ?? undefined,
+            });
+            sessionId = created.sessionId;
+          }
 
-    console.log(context, "This is previous context");
+          const appendUser = await fetchMutation(api.conversation.appendMessage, {
+            sessionId,
+            role: "user",
+            content: message,
+          });
 
-    const completion = await callOpenAI({
-      messages: context.messages,
-      systemPrompt: DEFAULT_SYSTEM_PROMPT,
-      sessionId,
-    });
+          if (appendUser.needsSummary) {
+            await fetchAction(api.conversation.recomputeSummaries, { sessionId });
+          }
 
-    const assistantMessage = completion.reply;
-    const toolOutputs = completion.toolOutputs ?? [];
-    const products = completion.products ?? [];
+          const context = await fetchQuery(api.conversation.getContext, {
+            sessionId,
+          });
 
-    if (products.length) {
-      await fetchMutation(api.conversation.appendMessage, {
-        sessionId,
-        role: "tool",
-        content: JSON.stringify({
-          name: "searchProductsByQuery",
-          products,
-        }),
-      });
-    }
+          const completion = await callOpenAI({
+            messages: context.messages,
+            systemPrompt: DEFAULT_SYSTEM_PROMPT,
+            sessionId,
+            onToken: async (token) => {
+              if (!token) return;
+              await send({ type: "delta", token });
+            },
+          });
 
-    const appendAssistant = await fetchMutation(
-      api.conversation.appendMessage,
-      {
-        sessionId,
-        role: "assistant",
-        content: assistantMessage,
-      }
-    );
+          const assistantMessage = completion.reply;
+          const toolOutputs = completion.toolOutputs ?? [];
+          const products = completion.products ?? [];
 
-    if (appendAssistant.needsSummary) {
-      await fetchAction(api.conversation.recomputeSummaries, { sessionId });
-    }
+          if (products.length) {
+            await fetchMutation(api.conversation.appendMessage, {
+              sessionId,
+              role: "tool",
+              content: JSON.stringify({
+                name: "searchProductsByQuery",
+                products,
+              }),
+            });
+          }
 
-    return NextResponse.json({
-      success: true,
-      sessionId,
-      result: { reply: assistantMessage, context, toolOutputs, products },
-    });
-  } catch (error: unknown) {
-    console.error("Error calling openAI", error);
+          const appendAssistant = await fetchMutation(
+            api.conversation.appendMessage,
+            {
+              sessionId,
+              role: "assistant",
+              content: assistantMessage,
+            }
+          );
 
-    return NextResponse.json(
-      {
-        success: false,
-        message:
-          error instanceof Error ? error.message : "Unexpected error occurred",
-      },
-      { status: 500 }
-    );
-  }
+          if (appendAssistant.needsSummary) {
+            await fetchAction(api.conversation.recomputeSummaries, { sessionId });
+          }
+
+          await send({
+            type: "final",
+            reply: assistantMessage,
+            sessionId,
+            toolOutputs,
+            products,
+          });
+        } catch (error: unknown) {
+          console.error("Error calling openAI", error);
+
+          await send({
+            type: "error",
+            message:
+              error instanceof Error ? error.message : "Unexpected error occurred",
+          });
+        } finally {
+          controller.close();
+        }
+      })();
+    },
+  });
+
+  return new NextResponse(stream, {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }
