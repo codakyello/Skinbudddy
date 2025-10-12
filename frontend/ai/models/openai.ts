@@ -289,14 +289,6 @@ export async function callOpenAI({
   const products =
     toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
 
-  let displayProducts = false;
-  const markerMatch = finalContent.match(
-    /\[\[DISPLAY_PRODUCTS:(true|false)\]\]\s*$/i
-  );
-  if (markerMatch) {
-    displayProducts = markerMatch[1].toLowerCase() === "true";
-    finalContent = finalContent.slice(0, markerMatch.index).trimEnd();
-  }
   finalContent = finalContent.trimEnd();
 
   const replyText = products.length

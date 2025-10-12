@@ -498,7 +498,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <footer className="sticky bottom-0 flex w-full justify-center pt-8 px-4">
+      <footer className="sticky bottom-0 z-[999] flex w-full justify-center pt-8 px-4">
         <div className="w-full max-w-[80rem] rounded-t-[10px] border border-[#e5d9ff] bg-white/95 p-6 shadow-[0_32px_70px_-38px_rgba(70,47,128,0.55)] backdrop-blur">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="relative flex items-end gap-4">
@@ -522,7 +522,7 @@ export default function ChatPage() {
                       }
                     }
                   }}
-                  className="w-full resize-none rounded-[22px] border border-[#dfcdfc] bg-[#faf7ff] px-5 py-4 text-[14px] leading-relaxed text-[#36255a] placeholder:text-[#b39fdd] focus:border-[#ccb4ff] focus:outline-none focus:ring-2 focus:ring-[#d8c6ff]"
+                  className="w-full  resize-none rounded-[22px] border border-[#dfcdfc] bg-[#faf7ff] px-5 py-4 text-[16px] leading-relaxed text-[#36255a] placeholder:text-[#b39fdd] focus:border-[#ccb4ff] focus:outline-none focus:ring-2 focus:ring-[#d8c6ff]"
                   maxLength={MAX_INPUT_LENGTH}
                   aria-label="Message input"
                 />
