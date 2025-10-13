@@ -1,6 +1,3 @@
-// /* eslint-disable @next/next/no-img-element */
-
-/* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,14 +8,6 @@ import { useUser } from "@/app/_contexts/CreateConvexUser";
 import ProductCard from "@/app/_components/ProductCard";
 import type { Product, Size } from "@/app/_utils/types";
 import { Box } from "@chakra-ui/react";
-
-// const TOPICS = ["Dry Skin", "Acne Care", "Anti-Aging", "SPF Routine"];
-
-// const SUGGESTIONS = [
-//   "Build me a skincare routine for my skin type and concerns",
-//   "Explain which ingredients I should or shouldn’t combine",
-//   "Recommend products that actually work for my current skin issues",
-// ];
 
 const SUGGESTIONS = [
   // Routine building
@@ -255,11 +244,43 @@ export default function ChatPage() {
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const { user } = useUser();
-
   const [displayedSuggestions] = useState(() => getRandomSuggestions(3));
-const usedSuggestionKeysRef = useRef(new Set<string>());
+  const usedSuggestionKeysRef = useRef(new Set<string>());
+  const adjustTextareaHeight = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const maxHeight = 240;
+    const newHeight = Math.min(textarea.scrollHeight, maxHeight);
+    textarea.style.height = `${Math.max(newHeight, 48)}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, []);
+  const ref = useRef<HTMLDivElement>(null);
+  const [containerHeight, setContainerHeight] = useState(
+    () => ref.current?.clientHeight
+  );
 
-  // console.log(messages, "This are the mark ups");
+  console.log(ref, "This is ref");
+
+  console.log(containerHeight, "This is container Height");
+
+  useEffect(() => {
+    scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isSending, showTyping]);
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [inputValue, adjustTextareaHeight]);
+  useEffect(() => {
+    // extract the last item from the array
+    if (messages.at(-1)?.role === "user") {
+      // increase the height
+      //get the height of the container
+      const height = ref.current?.clientHeight;
+      setContainerHeight(height);
+      console.log(containerHeight, "This is the container height");
+    }
+  }, [messages]);
 
   const markdownComponents: Components = useMemo(
     () => ({
@@ -310,25 +331,6 @@ const usedSuggestionKeysRef = useRef(new Set<string>());
     }),
     []
   );
-
-  useEffect(() => {
-    scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isSending, showTyping]);
-
-  const adjustTextareaHeight = useCallback(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    const maxHeight = 240;
-    const newHeight = Math.min(textarea.scrollHeight, maxHeight);
-    textarea.style.height = `${Math.max(newHeight, 48)}px`;
-    textarea.style.overflowY =
-      textarea.scrollHeight > maxHeight ? "auto" : "hidden";
-  }, []);
-
-  useEffect(() => {
-    adjustTextareaHeight();
-  }, [inputValue, adjustTextareaHeight]);
 
   const canSubmit = useMemo(() => {
     const trimmed = inputValue.trim();
@@ -503,12 +505,25 @@ const usedSuggestionKeysRef = useRef(new Set<string>());
     return found?.id;
   }, [messages]);
 
+  useEffect(() => {
+    if (!messages.length) return;
+    const latestUser = [...messages]
+      .reverse()
+      .find((message) => message.role === "user");
+    if (!latestUser) return;
+    const element = document.getElementById(`message-${latestUser.id}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [messages]);
+
   return (
     <main className="flex min-h-screen  md:min-h-[calc(100vh-100px)]  flex-col font-['Inter'] text-[#2f1f53]">
       <div
         className={`flex flex-1 flex-col items-center ${hasMessages < 1 && "justify-center"} px-8 pb-36 pt-[6rem] md:pt-0`}
       >
-        <div className="w-full max-w-[70rem]">
+        {/* increase height here */}
+        <div ref={ref} className="w-full max-w-[70rem]">
           {hasMessages < 1 && (
             <>
               <header className="text-center">
@@ -516,17 +531,6 @@ const usedSuggestionKeysRef = useRef(new Set<string>());
                   How can I help you?
                 </h1>
               </header>
-
-              {/* <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                {TOPICS.map((topic) => (
-                  <button
-                    key={topic}
-                    className="flex items-center gap-2 rounded-full border border-[#e2d7ff] bg-white px-5 py-2 text-[15px] font-medium text-[#5e3fb0] shadow-sm transition hover:border-[#d0bfff] hover:bg-[#f6f0ff]"
-                  >
-                    {topic}
-                  </button>
-                ))}
-              </div> */}
             </>
           )}
 
@@ -549,6 +553,7 @@ const usedSuggestionKeysRef = useRef(new Set<string>());
             <section className="mt-12 space-y-10">
               {messages.map((message) => (
                 <div
+                  id={`message-${message.id}`}
                   key={message.id}
                   className={`flex ${
                     message.role === "user" ? "justify-end" : "justify-start"
