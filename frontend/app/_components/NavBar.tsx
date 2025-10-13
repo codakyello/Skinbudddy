@@ -1,6 +1,6 @@
 "use client";
 import { Box } from "@chakra-ui/react";
-import { ModalHoverOpen, ModalOpen, ModalWindow, useModal } from "./Modal";
+import { ModalOpen, ModalWindow, useModal } from "./Modal";
 import CartModal from "./CartModal";
 import AuthModal from "./AuthModal";
 import Link from "next/link";
@@ -157,7 +157,7 @@ export default function NavBar() {
       </Box>
 
       <Box className="hidden md:block">
-        <Box className=" bg-black h-[4.4rem] flex items-center justify-center">
+        {/* <Box className=" bg-black h-[4.4rem] flex items-center justify-center">
           <ul className="text-[#fff] flex uppercase text-[1.3rem]">
             {nav.map((item) => (
               <ModalHoverOpen key={item.name} name={""}>
@@ -171,7 +171,7 @@ export default function NavBar() {
               <Link href={"/recommender"}>Recommendation</Link>
             </li>
           </ul>
-        </Box>
+        </Box> */}
 
         {/* Modal menu for nav menu */}
         <ModalWindow bgClassName="z-[999]" name="shop" openType="hover">

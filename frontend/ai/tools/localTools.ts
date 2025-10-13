@@ -56,6 +56,18 @@ const searchProductsSchema = z
       .describe(
         "Specific ingredients to include, e.g. ['hyaluronic acid', 'niacinamide', 'retinol', 'salicylic acid']"
       ),
+    hasAlcohol: z
+      .boolean()
+      .optional()
+      .describe(
+        "If true, only return products containing alcohol; if false, only return alcohol-free options."
+      ),
+    hasFragrance: z
+      .boolean()
+      .optional()
+      .describe(
+        "If true, only return products containing fragrance; if false, only return fragrance-free options."
+      ),
     limit: z.number().int().min(1).max(10).optional(),
   })
   .strict();
@@ -93,6 +105,16 @@ const searchProductsParameters = {
       items: { type: "string" },
       description:
         "Specific ingredient filters requested by the user (retinol, niacinamide, salicylic acid, etc.).",
+    },
+    hasAlcohol: {
+      type: "boolean",
+      description:
+        "If true, only return products containing alcohol; if false, only alcohol-free products.",
+    },
+    hasFragrance: {
+      type: "boolean",
+      description:
+        "If true, only return products containing fragrance; if false, only fragrance-free products.",
     },
     limit: {
       type: "integer",
@@ -321,6 +343,8 @@ const localTools: ToolSpec[] = [
             : undefined,
           ingredientQueries: expandedIngredientQueries,
           limit: input.limit,
+          hasAlcohol: input.hasAlcohol,
+          hasFragrance: input.hasFragrance,
         }
       );
 

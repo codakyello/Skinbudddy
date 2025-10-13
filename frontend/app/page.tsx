@@ -111,7 +111,9 @@ const extractSuggestedActions = (
   const suggestionLines = lines.slice(headerIndex + 1);
   const suggestions = suggestionLines
     .map(sanitizeSuggestion)
-    .filter((line) => line.length > 0 && normalizeHeader(line) !== "suggested actions")
+    .filter(
+      (line) => line.length > 0 && normalizeHeader(line) !== "suggested actions"
+    )
     .slice(0, 3);
 
   return {
@@ -243,26 +245,6 @@ const normalizeProductArray = (items: unknown[]): Product[] => {
   return Array.from(byId.values());
 };
 
-// const extractProductsFromToolOutputs = (outputs: unknown): Product[] => {
-//   if (!Array.isArray(outputs)) return [];
-//   const candidateKeys = ["products", "results", "items", "recommendations"];
-//   const collected: Product[] = [];
-
-//   outputs.forEach((output) => {
-//     if (!isRecord(output)) return;
-//     const result = isRecord(output.result) ? output.result : null;
-//     if (!result) return;
-
-//     candidateKeys.forEach((key) => {
-//       const value = result[key as keyof typeof result];
-//       if (!Array.isArray(value)) return;
-//       collected.push(...normalizeProductArray(value));
-//     });
-//   });
-
-//   return normalizeProductArray(collected);
-// };
-
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -275,6 +257,7 @@ export default function ChatPage() {
   const { user } = useUser();
 
   const [displayedSuggestions] = useState(() => getRandomSuggestions(3));
+const usedSuggestionKeysRef = useRef(new Set<string>());
 
   // console.log(messages, "This are the mark ups");
 
@@ -293,12 +276,12 @@ export default function ChatPage() {
         <p className="text-[14px] leading-relaxed text-[#453174]">{children}</p>
       ),
       ul: ({ children }) => (
-        <ul className="ml-5 list-disc space-y-1 text-[14px] text-[#453174]">
+        <ul className="ml-5 list-disc space-y-4 text-[14px] text-[#453174]">
           {children}
         </ul>
       ),
       ol: ({ children }) => (
-        <ol className="ml-5 list-decimal space-y-1 text-[14px] text-[#453174]">
+        <ol className="ml-5 list-decimal space-y-4 text-[14px] text-[#453174]">
           {children}
         </ol>
       ),
@@ -342,10 +325,6 @@ export default function ChatPage() {
     textarea.style.overflowY =
       textarea.scrollHeight > maxHeight ? "auto" : "hidden";
   }, []);
-
-  useEffect(() => {
-    adjustTextareaHeight();
-  }, [adjustTextareaHeight]);
 
   useEffect(() => {
     adjustTextareaHeight();
@@ -518,6 +497,12 @@ export default function ChatPage() {
 
   const hasMessages = messages.length;
 
+  const lastAssistantMessageId = useMemo(() => {
+    const reversed = [...messages].reverse();
+    const found = reversed.find((msg) => msg.role === "assistant");
+    return found?.id;
+  }, [messages]);
+
   return (
     <main className="flex min-h-screen  md:min-h-[calc(100vh-100px)]  flex-col font-['Inter'] text-[#2f1f53]">
       <div
@@ -607,19 +592,31 @@ export default function ChatPage() {
                             ) : null}
                             {suggestions.length ? (
                               <Box className="mt-4 flex flex-col gap-2">
-                                {suggestions.map((suggestion, index) => (
-                                  <button
-                                    key={`${message.id}-suggestion-${index}`}
-                                    type="button"
-                                    onClick={() => {
-                                      setError(null);
-                                      sendMessage(suggestion);
-                                    }}
-                                    className="text-start rounded-[8px] border-none focus-visible:border-none px-[16px] py-[10px] text-[14px]  bg-[#eef3ff] text-[#1b1f26] transition hover:bg-[#5377E1] hover:text-white"
-                                  >
-                                    {suggestion}
-                                  </button>
-                                ))}
+                                {suggestions.map((suggestion, index) => {
+                                  const key = `${message.id}-suggestion-${index}`;
+                                  const alreadyUsed =
+                                    usedSuggestionKeysRef.current.has(key);
+                                  const isLatestAssistant =
+                                    message.id === lastAssistantMessageId;
+                                  const isDisabled =
+                                    alreadyUsed || !isLatestAssistant;
+                                  return (
+                                    <button
+                                      key={key}
+                                      type="button"
+                                      onClick={() => {
+                                        if (isDisabled) return;
+                                        usedSuggestionKeysRef.current.add(key);
+                                        setError(null);
+                                        sendMessage(suggestion);
+                                      }}
+                                      disabled={isDisabled}
+                                      className="text-start rounded-[8px] border-none focus-visible:border-none px-[16px] py-[10px] text-[14px] bg-[#eef3ff] text-[#1b1f26] transition hover:bg-[#5377E1] hover:text-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#eef3ff] disabled:hover:text-[#1b1f26]"
+                                    >
+                                      {suggestion}
+                                    </button>
+                                  );
+                                })}
                               </Box>
                             ) : null}
                           </>

@@ -781,6 +781,8 @@ type SearchProductsByQueryArgs = {
   ingredientQueries?: string[];
   limit?: number;
   skip?: number;
+  hasAlcohol?: boolean;
+  hasFragrance?: boolean;
 };
 
 type SearchProductsByQueryResult =
@@ -822,6 +824,8 @@ async function searchProductsByQueryImpl(
     ingredientQueries,
     limit = 5, // hard 5 limit default to avoid bloating llm
     skip, // lets implement this later
+    hasAlcohol,
+    hasFragrance,
   }: SearchProductsByQueryArgs
 ): Promise<SearchProductsByQueryResult> {
   const normalizedNameQuery =
@@ -1096,11 +1100,24 @@ async function searchProductsByQueryImpl(
       return normalizedIngredientGroups.every((group) =>
         group.some((needle) =>
           productIngredients.some(
-            (ingredient) =>
-              ingredient === needle || ingredient.includes(needle)
+            (ingredient) => ingredient === needle || ingredient.includes(needle)
           )
         )
       );
+    });
+  }
+
+  if (typeof hasAlcohol === "boolean") {
+    products = products.filter((product) => {
+      const productHasAlcohol = Boolean(product.hasAlcohol);
+      return productHasAlcohol === hasAlcohol;
+    });
+  }
+
+  if (typeof hasFragrance === "boolean") {
+    products = products.filter((product) => {
+      const productHasFragrance = Boolean(product.hasFragrance);
+      return productHasFragrance === hasFragrance;
     });
   }
 
@@ -1357,15 +1374,6 @@ async function searchProductsByQueryImpl(
     );
     if (withTokenMatches.length) {
       workingProducts = withTokenMatches;
-    } else {
-      return {
-        success: true,
-        filters: {
-          categorySlugs,
-          brandSlugs,
-        },
-        products: [],
-      };
     }
 
     const exactMatch = workingProducts.find(
@@ -1542,6 +1550,8 @@ export const searchProductsByQuery = query({
     skinConcernQueries: v.optional(v.array(v.string())),
     ingredientQueries: v.optional(v.array(v.string())),
     limit: v.optional(v.number()),
+    hasAlcohol: v.optional(v.boolean()),
+    hasFragrance: v.optional(v.boolean()),
   },
   handler: (ctx, args): Promise<SearchProductsByQueryResult> =>
     searchProductsByQueryImpl(ctx, args),
