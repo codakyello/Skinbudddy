@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { DEFAULT_SYSTEM_PROMPT } from "../utils";
 import { Id } from "@/convex/_generated/dataModel";
 import { toolSpecs, getToolByName } from "../tools/localTools";
+import { z } from "zod";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -77,6 +78,286 @@ const normalizeProductsFromOutputs = (outputs: ToolOutput[]): unknown[] => {
   return Array.from(byId.values());
 };
 
+type ProductCandidate = Record<string, any>;
+
+const selectProductsParameters = {
+  type: "object",
+  properties: {
+    picks: {
+      type: "array",
+      description:
+        "Ranked list of products to display, highest priority first.",
+      items: {
+        type: "object",
+        properties: {
+          productId: {
+            type: "string",
+            description:
+              "ID or slug from the candidate list (exactly as provided).",
+          },
+          reason: {
+            type: "string",
+            description: "1–2 sentence rationale tailored to the user request.",
+          },
+          rank: {
+            type: "integer",
+            description: "1-based position; lowest number = highest priority.",
+          },
+          confidence: {
+            type: "number",
+            minimum: 0,
+            maximum: 1,
+            description: "How confident the model is in this pick (optional).",
+          },
+        },
+        required: ["productId", "reason"],
+        additionalProperties: false,
+      },
+    },
+    notes: {
+      type: "string",
+      description:
+        "Optional summary about the set as a whole (e.g., 'All options are fragrance-free.').",
+    },
+  },
+  required: ["picks"],
+  additionalProperties: false,
+} as const;
+
+const selectProductsResponseSchema = z.object({
+  picks: z
+    .array(
+      z.object({
+        productId: z.string(),
+        reason: z.string().min(1),
+        rank: z.number().int().positive().optional(),
+        confidence: z.number().min(0).max(1).optional(),
+      })
+    )
+    .min(1, "At least one product pick is required"),
+  notes: z.string().optional(),
+});
+
+const deriveCandidateKey = (
+  product: ProductCandidate,
+  index: number
+): string => {
+  const rawId =
+    typeof product._id === "string"
+      ? product._id
+      : typeof product.slug === "string"
+        ? product.slug
+        : undefined;
+  return rawId ? String(rawId) : `candidate-${index}`;
+};
+
+const summarizeCandidates = (
+  candidates: ProductCandidate[]
+): {
+  summaries: Array<Record<string, unknown>>;
+  keyMap: Map<string, ProductCandidate>;
+} => {
+  const keyMap = new Map<string, ProductCandidate>();
+  const summaries = candidates.map((product, index) => {
+    const key = deriveCandidateKey(product, index);
+    keyMap.set(key, product);
+
+    const sizes = Array.isArray(product.sizes)
+      ? product.sizes
+          .slice(0, 5)
+          .map((size: any) => {
+            if (!size || typeof size !== "object") return null;
+            const label =
+              typeof size.name === "string"
+                ? size.name
+                : [size.size, size.unit]
+                    .map((value: unknown) =>
+                      typeof value === "number"
+                        ? String(value)
+                        : typeof value === "string"
+                          ? value
+                          : ""
+                    )
+                    .filter(Boolean)
+                    .join(" ");
+
+            return {
+              label: label || undefined,
+              price:
+                typeof size.price === "number" ? Number(size.price) : undefined,
+              currency:
+                typeof size.currency === "string" ? size.currency : undefined,
+            };
+          })
+          .filter(Boolean)
+      : [];
+
+    const prices = sizes
+      .map((size: any) => size?.price)
+      .filter((price: unknown): price is number => typeof price === "number");
+    const minPrice = prices.length ? Math.min(...prices) : undefined;
+    const maxPrice = prices.length ? Math.max(...prices) : undefined;
+    const priceRange =
+      typeof minPrice === "number"
+        ? typeof maxPrice === "number" && maxPrice !== minPrice
+          ? `${minPrice}–${maxPrice}`
+          : String(minPrice)
+        : undefined;
+
+    const summary: Record<string, unknown> = {
+      productId: key,
+      name: typeof product.name === "string" ? product.name : undefined,
+      slug: typeof product.slug === "string" ? product.slug : undefined,
+      description:
+        typeof product.description === "string"
+          ? product.description.slice(0, 220)
+          : undefined,
+      concerns: Array.isArray(product.concerns)
+        ? product.concerns.slice(0, 6)
+        : undefined,
+      skinTypes: Array.isArray(product.skinType)
+        ? product.skinType.slice(0, 6)
+        : undefined,
+      ingredients: Array.isArray(product.ingredients)
+        ? product.ingredients.slice(0, 8)
+        : undefined,
+      priceRange,
+      sizes,
+      score:
+        typeof product.score === "number" ? Number(product.score) : undefined,
+    };
+
+    Object.keys(summary).forEach((key) => {
+      const value = summary[key];
+      if (
+        value === undefined ||
+        value === null ||
+        (Array.isArray(value) && value.length === 0)
+      ) {
+        delete summary[key];
+      }
+    });
+
+    return summary;
+  });
+
+  return { summaries, keyMap };
+};
+
+async function refineProductSelection({
+  candidates,
+  model,
+  userRequest,
+}: {
+  candidates: ProductCandidate[];
+  model: string;
+  userRequest: string;
+}): Promise<{
+  products: ProductCandidate[];
+  notes?: string;
+}> {
+  if (!candidates.length) {
+    return { products: [] };
+  }
+
+  const limitedCandidates = candidates.slice(0, 12);
+  const { summaries, keyMap } = summarizeCandidates(limitedCandidates);
+
+  const selectionMessages: OpenAI.ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content:
+        "You are a meticulous skincare merchandiser. You will select the best matches from the provided candidate list. Only choose from the candidates and never invent new products. Your response must call the selectProducts function.",
+    },
+    {
+      role: "user",
+      content: `User request:\n${userRequest || "(not provided)"}\n\nCandidates (JSON):\n${JSON.stringify(
+        summaries,
+        null,
+        2
+      )}\n\nCall the selectProducts function with your ranked picks and reasons.`,
+    },
+  ];
+
+  try {
+    const selection = await openai.chat.completions.create({
+      model,
+      temperature: 0,
+      messages: selectionMessages,
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "selectProducts",
+            description:
+              "Select the best products for the user from the candidate list.",
+            parameters: selectProductsParameters,
+          },
+        },
+      ],
+      tool_choice: {
+        type: "function",
+        function: { name: "selectProducts" },
+      },
+    });
+
+    const toolCall = selection.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall || toolCall.type !== "function" || !toolCall.function) {
+      return { products: limitedCandidates };
+    }
+
+    if (toolCall.function.name !== "selectProducts") {
+      return { products: limitedCandidates };
+    }
+
+    const rawArguments = toolCall.function.arguments ?? "{}";
+    const parsed = selectProductsResponseSchema.safeParse(
+      JSON.parse(rawArguments)
+    );
+
+    if (!parsed.success || !parsed.data.picks.length) {
+      return { products: limitedCandidates };
+    }
+
+    const rankedPicks = parsed.data.picks
+      .map((pick, index) => ({
+        ...pick,
+        rank: pick.rank ?? index + 1,
+        originalIndex: index,
+      }))
+      .sort((a, b) => {
+        if (a.rank !== b.rank) return a.rank - b.rank;
+        return a.originalIndex - b.originalIndex;
+      });
+
+    const seen = new Set<string>();
+    const selectedProducts: ProductCandidate[] = [];
+
+    for (const pick of rankedPicks) {
+      const product = keyMap.get(pick.productId);
+      if (!product || seen.has(pick.productId)) continue;
+      seen.add(pick.productId);
+      selectedProducts.push({
+        ...product,
+        selectionReason: pick.reason,
+        selectionConfidence: pick.confidence,
+      });
+    }
+
+    if (!selectedProducts.length) {
+      return { products: limitedCandidates };
+    }
+
+    return {
+      products: selectedProducts,
+      notes: parsed.data.notes,
+    };
+  } catch (error) {
+    console.error("Product selection refinement failed:", error);
+    return { products: candidates.slice(0, 12) };
+  }
+}
+
 export async function callOpenAI({
   messages,
   systemPrompt,
@@ -117,6 +398,12 @@ export async function callOpenAI({
     content:
       "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis) that the user could tap next. Each suggestion must read like a direct request the user could send (e.g., 'Yes, please provide more details about the cleanser options.' or 'Can you recommend a good exfoliator for oily skin?'). Always provide three suggestions, even if they need to be broader to keep the user moving forward.",
   });
+
+  const latestUserMessageContent = [...messages]
+    .reverse()
+    .find((msg) => msg.role === "user")?.content;
+
+  let lastProductSelection: ProductCandidate[] = [];
 
   // console.log(chatMessages, "This is conversation history");
 
@@ -251,6 +538,8 @@ export async function callOpenAI({
           // when not identical we display options
           const result = await toolDef.handler(validatedArgs);
 
+          console.log(result, "This is the result of the tool call");
+
           // we are building tool outputs for multiple tool calling iteration
           toolOutputs.push({
             name: toolCall.function.name,
@@ -284,6 +573,59 @@ export async function callOpenAI({
         toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
 
       if (productsArray.length) {
+        let refinedProductsResult: {
+          products: ProductCandidate[];
+          notes?: string;
+        } | null = null;
+
+        try {
+          refinedProductsResult = await refineProductSelection({
+            candidates: productsArray as ProductCandidate[],
+            model,
+            userRequest: latestUserMessageContent ?? "",
+          });
+        } catch (error) {
+          console.error("Error refining product selection:", error);
+        }
+
+        const selectedProducts = refinedProductsResult?.products?.length
+          ? refinedProductsResult.products
+          : (productsArray as ProductCandidate[]);
+
+        lastProductSelection = selectedProducts;
+
+        const reasonContext = selectedProducts
+          .slice(0, 4)
+          .map((product, index) => {
+            if (typeof product.selectionReason !== "string") return null;
+            const label =
+              typeof product.name === "string"
+                ? product.name
+                : typeof product.slug === "string"
+                  ? product.slug
+                  : `Option ${index + 1}`;
+            return `${label}: ${product.selectionReason}`;
+          })
+          .filter((entry): entry is string => Boolean(entry));
+
+        if (reasonContext.length) {
+          chatMessages.push({
+            role: "developer",
+            content:
+              "Context (do not list products individually): " +
+              reasonContext.join(" | "),
+          });
+        }
+
+        if (refinedProductsResult?.notes) {
+          chatMessages.push({
+            role: "developer",
+            content:
+              "Additional selection note (do not quote verbatim, use for context only): " +
+              refinedProductsResult.notes,
+          });
+        }
+
         chatMessages.push({
           role: "developer",
           content:
@@ -299,7 +641,11 @@ export async function callOpenAI({
   }
 
   const products =
-    toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
+    lastProductSelection.length > 0
+      ? lastProductSelection
+      : toolOutputs.length > 0
+        ? normalizeProductsFromOutputs(toolOutputs)
+        : [];
 
   finalContent = finalContent.trimEnd();
 
