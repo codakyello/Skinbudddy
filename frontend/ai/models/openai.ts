@@ -399,6 +399,12 @@ export async function callOpenAI({
       "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis) that the user could tap next. Each suggestion must read like a direct request the user could send (e.g., 'Yes, please provide more details about the cleanser options.' or 'Can you recommend a good exfoliator for oily skin?'). Always provide three suggestions, even if they need to be broader to keep the user moving forward.",
   });
 
+  chatMessages.push({
+    role: "developer",
+    content:
+      "Keep using contextual emojis in the main reply (not in the suggestions) when they add clarity or personality, honoring the system prompt.",
+  });
+
   const latestUserMessageContent = [...messages]
     .reverse()
     .find((msg) => msg.role === "user")?.content;

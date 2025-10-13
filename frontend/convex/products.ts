@@ -934,25 +934,42 @@ async function searchProductsByQueryImpl(
     ...resolveImplicitIngredients(brandQuery),
   ]);
 
-  const ingredientQueryRaw = Array.from(
-    new Set(
-      Array.isArray(ingredientQueries)
-        ? ingredientQueries
-            .map((value) => String(value).trim())
-            .filter((value) => value.length > 0)
-        : []
+  const ingredientQueryRaw = Array.isArray(ingredientQueries)
+    ? ingredientQueries
+        .map((value) => String(value).trim())
+        .filter((value) => value.length > 0)
+    : [];
+
+  const ingredientQueryGroupsRaw = ingredientQueryRaw.map((value) =>
+    value
+      .split("||")
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
+  );
+
+  const implicitIngredientGroups = Array.from(implicitIngredients).map(
+    (value) => [value]
+  );
+
+  const combinedIngredientGroupsRaw = [
+    ...ingredientQueryGroupsRaw,
+    ...implicitIngredientGroups,
+  ];
+
+  const normalizedIngredientGroups = combinedIngredientGroupsRaw
+    .map((group) =>
+      Array.from(
+        new Set(
+          group
+            .map((value) => normalizeIngredient(value))
+            .filter((value) => value && value.length > 0)
+        )
+      )
     )
-  );
-  let normalizedIngredientQueries = ingredientQueryRaw.map((value) =>
-    normalizeIngredient(value)
-  );
-  implicitIngredients.forEach((value) =>
-    normalizedIngredientQueries.push(value)
-  );
-  normalizedIngredientQueries = Array.from(
-    new Set(
-      normalizedIngredientQueries.filter((value) => value && value.length > 0)
-    )
+    .filter((group) => group.length > 0);
+
+  const normalizedIngredientQueries = Array.from(
+    new Set(normalizedIngredientGroups.flat())
   );
 
   if (
@@ -1066,7 +1083,7 @@ async function searchProductsByQueryImpl(
     });
   }
 
-  if (normalizedIngredientQueries.length) {
+  if (normalizedIngredientGroups.length) {
     products = products.filter((product) => {
       const productIngredients = Array.isArray(product.ingredients)
         ? product.ingredients.map((ingredient: string) =>
@@ -1076,9 +1093,12 @@ async function searchProductsByQueryImpl(
 
       if (!productIngredients.length) return false;
 
-      return normalizedIngredientQueries.every((needle) =>
-        productIngredients.some(
-          (ingredient) => ingredient === needle || ingredient.includes(needle)
+      return normalizedIngredientGroups.every((group) =>
+        group.some((needle) =>
+          productIngredients.some(
+            (ingredient) =>
+              ingredient === needle || ingredient.includes(needle)
+          )
         )
       );
     });

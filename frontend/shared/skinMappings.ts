@@ -200,6 +200,46 @@ const lookupByAlias = <T extends string>(
 export const resolveSkinType = (input: string): SkinTypeCanonical | null =>
   lookupByAlias(SKIN_TYPE_CANONICALS, SKIN_TYPE_ALIAS_MAP, input);
 
+const INGREDIENT_GROUPS: Record<string, string[]> = {
+  aha: [
+    "glycolic acid",
+    "lactic acid",
+    "mandelic acid",
+    "citric acid",
+    "malic acid",
+    "tartaric acid",
+    "alpha hydroxy acid",
+    "alpha-hydroxy acid",
+  ],
+  bha: ["salicylic acid", "beta hydroxy acid", "beta-hydroxy acid"],
+  pha: ["gluconolactone", "lactobionic acid", "polyhydroxy acid"],
+  retinoids: [
+    "retinol",
+    "retinal",
+    "retinaldehyde",
+    "retinyl palmitate",
+    "adapalene",
+    "tretinoin",
+    "bakuchiol",
+  ],
+  "vitamin c": [
+    "ascorbic acid",
+    "l-ascorbic acid",
+    "magnesium ascorbyl phosphate",
+    "sodium ascorbyl phosphate",
+    "ascorbyl glucoside",
+    "ascorbyl palmitate",
+  ],
+  niacinamide: ["niacinamide", "vitamin b3"],
+  peptides: ["palmitoyl pentapeptide", "peptide", "copper peptide"],
+  ceramides: ["ceramide", "ceramide np", "ceramide ap", "ceramide eop"],
+};
+
+export const resolveIngredientGroup = (input: string): string[] => {
+  const key = normalize(input);
+  return INGREDIENT_GROUPS[key] ?? [];
+};
+
 export const resolveSkinConcern = (
   input: string
 ): SkinConcernCanonical | null =>

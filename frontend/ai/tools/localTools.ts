@@ -5,6 +5,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import {
   resolveSkinConcern,
   resolveSkinType,
+  resolveIngredientGroup,
   type SkinConcernCanonical,
   type SkinTypeCanonical,
 } from "../../shared/skinMappings";
@@ -29,7 +30,7 @@ const searchProductsSchema = z
       .string()
       .optional()
       .describe(
-        "User-stated product category (e.g. 'cleanser', 'sunscreen'); prefer specific taxonomy when available."
+        "User-stated product category (e.g. 'cleanser', 'sunscreen', 'exfoliator'); prefer specific taxonomy when available."
       ),
     brandQuery: z
       .string()
@@ -291,6 +292,17 @@ const localTools: ToolSpec[] = [
         ? input.ingredientQueries.map((value) => value.trim()).filter(Boolean)
         : undefined;
 
+      const expandedIngredientQueries = cleanedIngredientQueries
+        ? cleanedIngredientQueries.map((query) => {
+            const groupMatches = resolveIngredientGroup(query);
+            const bundle = [query, ...groupMatches]
+              .map((value) => value.trim())
+              .filter((value) => value.length > 0);
+            const unique = Array.from(new Set(bundle));
+            return unique.join("||");
+          })
+        : undefined;
+
       const response = await fetchQuery(
         apiModule.products.searchProductsByQuery,
         {
@@ -307,7 +319,7 @@ const localTools: ToolSpec[] = [
           skinConcernQueries: unresolvedSkinConcernQueries.length
             ? unresolvedSkinConcernQueries
             : undefined,
-          ingredientQueries: cleanedIngredientQueries,
+          ingredientQueries: expandedIngredientQueries,
           limit: input.limit,
         }
       );
