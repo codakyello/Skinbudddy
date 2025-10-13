@@ -12,11 +12,60 @@ import { Box } from "@chakra-ui/react";
 
 // const TOPICS = ["Dry Skin", "Acne Care", "Anti-Aging", "SPF Routine"];
 
+// const SUGGESTIONS = [
+//   "Build me a skincare routine for my skin type and concerns",
+//   "Explain which ingredients I should or shouldn’t combine",
+//   "Recommend products that actually work for my current skin issues",
+// ];
+
 const SUGGESTIONS = [
-  "Build me a skincare routine for my skin type and concerns",
-  "Explain which ingredients I should or shouldn’t combine",
-  "Recommend products that actually work for my current skin issues",
+  // Routine building
+  "Build me a skincare routine for oily, acne-prone skin",
+  "Create a simple morning routine with sunscreen",
+  "Suggest a minimal routine for dry, sensitive skin",
+  "Help me simplify my skincare — which steps can I skip?",
+  "Add affordable alternatives to my current products",
+
+  // Ingredient understanding
+  "What does niacinamide actually do for my skin?",
+  "Which ingredients should I avoid when using retinol?",
+  "Can I combine vitamin C with hyaluronic acid?",
+  "Explain the difference between AHAs and BHAs",
+  "Is azelaic acid better than salicylic acid for acne?",
+
+  // Product guidance
+  "Compare La Roche-Posay and CeraVe cleansers for dry skin",
+  "Which sunscreen works best for dark skin tones?",
+  "Recommend a gentle exfoliant for sensitive skin",
+  "Find fragrance-free moisturizers that hydrate well",
+  "Which is better for wrinkles: retinol or peptides?",
+
+  // Layering & timing
+  "When should I apply toner in my routine?",
+  "How long should I wait between serum and moisturizer?",
+  "Can I use retinol and exfoliants on the same night?",
+  "What’s the right morning and night skincare order?",
+  "How do I safely start using actives like retinol?",
+
+  // Skin issues & diagnosis
+  "Help me understand why my skin feels tight after washing",
+  "My skin is breaking out suddenly — what could be causing it?",
+  "Why does my skincare pill under foundation?",
+  "Suggest ways to reduce redness and irritation",
+  "How can I fade acne scars and dark spots faster?",
+
+  // Lifestyle & environment
+  "How should I adjust my skincare for humid weather?",
+  "What should I change for winter dryness?",
+  "Recommend SPF options for everyday indoor use",
+  "Help me protect my skin barrier after over-exfoliating",
+  "Can stress or diet make acne worse?",
 ];
+
+const getRandomSuggestions = (count: number) => {
+  const shuffled = [...SUGGESTIONS].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, count);
+};
 
 type ChatRole = "assistant" | "user";
 
@@ -176,6 +225,8 @@ export default function ChatPage() {
   const [showTyping, setShowTyping] = useState(false);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const { user } = useUser();
+
+  const [displayedSuggestions] = useState(() => getRandomSuggestions(3));
 
   // console.log(messages, "This are the mark ups");
 
@@ -428,8 +479,8 @@ export default function ChatPage() {
           )}
 
           {messages.length === 0 ? (
-            <section className="mt-8 space-y-3 rounded-3xl border border-transparent bg-white/80 p-7 backdrop-blur-md ">
-              {SUGGESTIONS.map((suggestion) => (
+            <section className="space-y-3 rounded-3xl border border-transparent bg-white/80 p-7 backdrop-blur-md ">
+              {displayedSuggestions.map((suggestion) => (
                 <button
                   key={suggestion}
                   onClick={() => handleSuggestion(suggestion)}
