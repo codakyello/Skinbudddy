@@ -755,6 +755,7 @@ type ProductCardSize = {
   price: number;
   discount?: number;
   stock?: number;
+  currency?: string;
 };
 
 type ProductCardSummary = {
@@ -830,6 +831,48 @@ async function searchProductsByQueryImpl(
       )
     : null;
 
+  const ingredientLookup = new Map<string, string>();
+
+  const allProducts = await ctx.db.query("products").collect();
+  for (const item of allProducts) {
+    if (!Array.isArray(item.ingredients)) continue;
+    for (const rawIngredient of item.ingredients) {
+      if (typeof rawIngredient !== "string") continue;
+      const comparable = normalizeText(rawIngredient);
+      if (!comparable) continue;
+      const canonical = normalizeIngredient(rawIngredient);
+      if (canonical) {
+        ingredientLookup.set(comparable, canonical);
+      }
+    }
+  }
+
+  const resolveImplicitIngredients = (input?: string) => {
+    const value = typeof input === "string" ? normalizeText(input) : "";
+    if (!value || !ingredientLookup.size) return [] as string[];
+
+    const matchesPhrase = (haystack: string, phrase: string): boolean => {
+      if (!phrase) return false;
+      let start = haystack.indexOf(phrase);
+      while (start !== -1) {
+        const beforeOk = start === 0 || haystack[start - 1] === " ";
+        const end = start + phrase.length;
+        const afterOk = end === haystack.length || haystack[end] === " ";
+        if (beforeOk && afterOk) return true;
+        start = haystack.indexOf(phrase, start + 1);
+      }
+      return false;
+    };
+
+    const detected = new Set<string>();
+    for (const [comparable, canonical] of ingredientLookup.entries()) {
+      if (matchesPhrase(value, comparable)) {
+        detected.add(canonical);
+      }
+    }
+    return Array.from(detected);
+  };
+
   const categoryResolution: { slugs: string[]; options?: unknown[] } =
     categoryQuery?.trim()
       ? await ctx.runQuery(internal.categories.resolveCategorySlugs, {
@@ -883,6 +926,12 @@ async function searchProductsByQueryImpl(
   }
   const requestedSkinConcerns = Array.from(requestedSkinConcernSet);
 
+  const implicitIngredients = new Set<string>([
+    ...resolveImplicitIngredients(nameQuery),
+    ...resolveImplicitIngredients(categoryQuery),
+    ...resolveImplicitIngredients(brandQuery),
+  ]);
+
   const ingredientQueryRaw = Array.from(
     new Set(
       Array.isArray(ingredientQueries)
@@ -892,8 +941,14 @@ async function searchProductsByQueryImpl(
         : []
     )
   );
-  const normalizedIngredientQueries = ingredientQueryRaw.map((value) =>
+  let normalizedIngredientQueries = ingredientQueryRaw.map((value) =>
     normalizeIngredient(value)
+  );
+  implicitIngredients.forEach((value) => normalizedIngredientQueries.push(value));
+  normalizedIngredientQueries = Array.from(
+    new Set(
+      normalizedIngredientQueries.filter((value) => value && value.length > 0)
+    )
   );
 
   if (
@@ -914,7 +969,7 @@ async function searchProductsByQueryImpl(
 
   console.log(categorySlugs, brandSlugs, "slugs");
 
-  let products = await ctx.db.query("products").collect();
+  let products = allProducts;
 
   if (brandSlugs.length) {
     const brandDocs = await Promise.all(
@@ -1179,6 +1234,8 @@ async function searchProductsByQueryImpl(
                   typeof size.discount === "number" ? size.discount : undefined;
                 const stock =
                   typeof size.stock === "number" ? size.stock : undefined;
+                const currency =
+                  typeof size.currency === "string" ? size.currency : undefined;
                 if (!id) return null;
                 return {
                   id,
@@ -1187,6 +1244,7 @@ async function searchProductsByQueryImpl(
                   price: Number.isFinite(price) ? price : 0,
                   discount,
                   stock,
+                  currency,
                 } as ProductCardSize;
               })
               .filter((size): size is ProductCardSize => Boolean(size))
@@ -1230,6 +1288,8 @@ async function searchProductsByQueryImpl(
                   typeof size.discount === "number" ? size.discount : undefined;
                 const stock =
                   typeof size.stock === "number" ? size.stock : undefined;
+                const currency =
+                  typeof size.currency === "string" ? size.currency : undefined;
                 return {
                   id,
                   size: Number.isFinite(sizeValue) ? sizeValue : 0,
@@ -1237,6 +1297,7 @@ async function searchProductsByQueryImpl(
                   price: Number.isFinite(price) ? price : 0,
                   discount,
                   stock,
+                  currency,
                 } as ProductCardSize;
               })
               .filter((size): size is ProductCardSize => Boolean(size))
@@ -1282,9 +1343,83 @@ async function searchProductsByQueryImpl(
         products: [],
       };
     }
+
+    const exactMatch = workingProducts.find(
+      (product) =>
+        normalizeText(String(product.name ?? "")) === normalizedNameQuery
+    );
+    if (exactMatch) {
+      return {
+        success: true,
+        filters: {
+          categorySlugs,
+          brandSlugs,
+          ...(requestedSkinTypes.length ? { skinTypes: requestedSkinTypes } : {}),
+          ...(requestedSkinConcerns.length
+            ? { skinConcerns: requestedSkinConcerns }
+            : {}),
+          ...(normalizedIngredientQueries.length
+            ? { ingredientQueries: normalizedIngredientQueries }
+            : {}),
+        },
+        products: [{ ...exactMatch }],
+      };
+    }
+
+    const sortedByMatch = [...workingProducts].sort((a, b) => {
+      const aCount =
+        typeof (a as any).nameMatchCount === "number"
+          ? ((a as any).nameMatchCount as number)
+          : 0;
+      const bCount =
+        typeof (b as any).nameMatchCount === "number"
+          ? ((b as any).nameMatchCount as number)
+          : 0;
+      if (bCount !== aCount) return bCount - aCount;
+      return (b.score ?? 0) - (a.score ?? 0);
+    });
+
+    const primary = sortedByMatch[0];
+    if (primary) {
+      const primaryCount =
+        typeof (primary as any).nameMatchCount === "number"
+          ? ((primary as any).nameMatchCount as number)
+          : 0;
+      const secondary = sortedByMatch[1];
+      const secondaryCount =
+        typeof (secondary as any)?.nameMatchCount === "number"
+          ? ((secondary as any).nameMatchCount as number)
+          : 0;
+      const scoreGap = (primary.score ?? 0) - (secondary?.score ?? 0);
+      if (
+        primaryCount >= 2 &&
+        primaryCount > secondaryCount &&
+        scoreGap >= 0.2
+      ) {
+        return {
+          success: true,
+          filters: {
+            categorySlugs,
+            brandSlugs,
+            ...(requestedSkinTypes.length
+              ? { skinTypes: requestedSkinTypes }
+              : {}),
+            ...(requestedSkinConcerns.length
+              ? { skinConcerns: requestedSkinConcerns }
+              : {}),
+            ...(normalizedIngredientQueries.length
+              ? { ingredientQueries: normalizedIngredientQueries }
+              : {}),
+          },
+          products: [{ ...primary }],
+        };
+      }
+    }
   }
 
   let finalProducts: ProductCardSummary[];
+
+  // if the name is completely identical lets return only it
   if (hasNameQuery) {
     const maxResults =
       typeof limit === "number" && limit > 0 ? Math.min(limit, 50) : 8;

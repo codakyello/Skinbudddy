@@ -112,6 +112,8 @@ const normalizeSize = (input: unknown): Size | null => {
   const unit = typeof input.unit === "string" ? input.unit : "";
   const stock = normalizeNumber(input.stock);
   const discount = normalizeNumber(input.discount);
+  const currency =
+    typeof input.currency === "string" ? input.currency : undefined;
   const name =
     typeof input.name === "string"
       ? input.name
@@ -126,6 +128,7 @@ const normalizeSize = (input: unknown): Size | null => {
     unit,
     stock,
     discount,
+    currency,
     name,
   };
 };

@@ -19,12 +19,42 @@ type ToolSpec = {
 
 const searchProductsSchema = z
   .object({
-    nameQuery: z.string().optional(),
-    categoryQuery: z.string().optional(),
-    brandQuery: z.string().optional(),
-    skinTypes: z.array(z.string()).optional(),
-    skinConcerns: z.array(z.string()).optional(),
-    ingredientQueries: z.array(z.string()).optional(),
+    nameQuery: z
+      .string()
+      .optional()
+      .describe(
+        "Free-text name the user mentioned (use only when they referenced a specific product name)."
+      ),
+    categoryQuery: z
+      .string()
+      .optional()
+      .describe(
+        "User-stated product category (e.g. 'cleanser', 'sunscreen'); prefer specific taxonomy when available."
+      ),
+    brandQuery: z
+      .string()
+      .optional()
+      .describe(
+        "Brand label the user mentioned (e.g. 'cerave', 'la roche-posay')."
+      ),
+    skinTypes: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Canonical skin types to filter by (e.g. ['oily','sensitive'])."
+      ),
+    skinConcerns: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Canonical skin concerns to target (e.g. ['acne','hyperpigmentation'])."
+      ),
+    ingredientQueries: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Specific ingredients to include, e.g. ['hyaluronic acid', 'niacinamide', 'retinol', 'salicylic acid']"
+      ),
     limit: z.number().int().min(1).max(100).optional(),
   })
   .strict();
@@ -32,20 +62,36 @@ const searchProductsSchema = z
 const searchProductsParameters = {
   type: "object",
   properties: {
-    nameQuery: { type: "string" },
-    categoryQuery: { type: "string" },
-    brandQuery: { type: "string" },
+    nameQuery: {
+      type: "string",
+      description:
+        "Use only when the user gives a specific product name or phrase to match directly.",
+    },
+    categoryQuery: {
+      type: "string",
+      description:
+        "Category mentioned by the user (cleanser, toner, sunscreen, etc.).",
+    },
+    brandQuery: {
+      type: "string",
+      description: "Brand mentioned by the user (e.g. cerave, paula's choice).",
+    },
     skinTypes: {
       type: "array",
       items: { type: "string" },
+      description: "Canonical skin types to filter by (oily, dry, sensitive).",
     },
     skinConcerns: {
       type: "array",
       items: { type: "string" },
+      description:
+        "Canonical skin concerns to focus on (acne, hyperpigmentation, redness, etc.).",
     },
     ingredientQueries: {
       type: "array",
       items: { type: "string" },
+      description:
+        "Specific ingredient filters requested by the user (retinol, niacinamide, salicylic acid, etc.).",
     },
     limit: {
       type: "integer",
@@ -91,6 +137,7 @@ type SanitizedSize = {
   price: number;
   discount?: number;
   stock?: number;
+  currency?: string;
 };
 
 type SanitizedProduct = {
@@ -113,7 +160,9 @@ const toNumber = (value: unknown): number | undefined => {
   return undefined;
 };
 
-const extractRelevantProductInfo = (product: unknown): SanitizedProduct | null => {
+const extractRelevantProductInfo = (
+  product: unknown
+): SanitizedProduct | null => {
   if (!product || typeof product !== "object") return null;
   const raw = product as Record<string, unknown>;
 
@@ -133,14 +182,20 @@ const extractRelevantProductInfo = (product: unknown): SanitizedProduct | null =
           if (!size || typeof size !== "object") return null;
           const sizeRecord = size as Record<string, unknown>;
           const sizeIdValue = sizeRecord.id ?? sizeRecord._id;
-          const sizeId = typeof sizeIdValue === "string" ? sizeIdValue : undefined;
+          const sizeId =
+            typeof sizeIdValue === "string" ? sizeIdValue : undefined;
           if (!sizeId) return null;
 
           const sizeValue = toNumber(sizeRecord.size) ?? 0;
-          const unit = typeof sizeRecord.unit === "string" ? sizeRecord.unit : "";
+          const unit =
+            typeof sizeRecord.unit === "string" ? sizeRecord.unit : "";
           const price = toNumber(sizeRecord.price) ?? 0;
           const discount = toNumber(sizeRecord.discount);
           const stock = toNumber(sizeRecord.stock);
+          const currency =
+            typeof sizeRecord.currency === "string"
+              ? sizeRecord.currency
+              : undefined;
 
           const sanitized: SanitizedSize = {
             id: sizeId,
@@ -151,6 +206,7 @@ const extractRelevantProductInfo = (product: unknown): SanitizedProduct | null =
 
           if (discount != null) sanitized.discount = discount;
           if (stock != null) sanitized.stock = stock;
+          if (currency != null) sanitized.currency = currency;
 
           return sanitized;
         })
@@ -270,13 +326,14 @@ const localTools: ToolSpec[] = [
                 const info = extractRelevantProductInfo(product);
                 if (!info) return null;
                 const score =
-                  typeof (product as Record<string, unknown>).score ===
-                  "number"
+                  typeof (product as Record<string, unknown>).score === "number"
                     ? ((product as Record<string, unknown>).score as number)
                     : undefined;
                 return score != null ? { ...info, score } : info;
               })
-              .filter((product): product is SanitizedProduct => Boolean(product))
+              .filter((product): product is SanitizedProduct =>
+                Boolean(product)
+              )
           : [],
       };
     },
@@ -320,7 +377,8 @@ const localTools: ToolSpec[] = [
   },
   {
     name: "getProduct",
-    description: "Retrieves a single product by its slug (URL-friendly identifier).",
+    description:
+      "Retrieves a single product by its slug (URL-friendly identifier).",
     parameters: {
       type: "object",
       properties: {
@@ -541,7 +599,9 @@ const localTools: ToolSpec[] = [
         products: Array.isArray(response?.products)
           ? response.products
               .map((product: unknown) => extractRelevantProductInfo(product))
-              .filter((product): product is SanitizedProduct => Boolean(product))
+              .filter((product): product is SanitizedProduct =>
+                Boolean(product)
+              )
           : [],
       };
     },

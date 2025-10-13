@@ -9,6 +9,7 @@ export type Size = {
   stock?: number;
   name?: string;
   discount?: number;
+  currency?: string;
 };
 
 export type Brand = {

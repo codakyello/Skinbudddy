@@ -239,6 +239,10 @@ export async function callOpenAI({
           }
 
           const validatedArgs = toolDef.schema.parse(rawArgs);
+
+          // so here, when the llm needs to know about a product it calls this
+          // for nameQuery, when the name is identical the same we only send that one out
+          // when not identical we display options
           const result = await toolDef.handler(validatedArgs);
 
           toolOutputs.push({
