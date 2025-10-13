@@ -3,7 +3,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowUpRight } from "lucide-react";
@@ -76,6 +76,48 @@ type ChatMessage = {
   role: ChatRole;
   content: string;
   products?: Product[];
+};
+
+const normalizeHeader = (line: string) =>
+  line
+    .toLowerCase()
+    .replace(/[\*`_~>#:\-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const extractSuggestedActions = (
+  content: string
+): { body: string; suggestions: string[] } => {
+  if (!content) return { body: "", suggestions: [] };
+  const lines = content.split(/\r?\n/);
+  const headerIndex = lines.findIndex((line) => {
+    const normalized = normalizeHeader(line);
+    return normalized === "suggested actions";
+  });
+
+  if (headerIndex === -1) {
+    return { body: content, suggestions: [] };
+  }
+
+  const body = lines.slice(0, headerIndex).join("\n").trimEnd();
+  const sanitizeSuggestion = (line: string) => {
+    let sanitized = line.trim();
+    sanitized = sanitized.replace(/^[-*•●◦▪]+\s*/, "");
+    sanitized = sanitized.replace(/^(\d+)[\).:\-]?\s*/, "");
+    sanitized = sanitized.replace(/^[-*•●◦▪]+\s*/, "");
+    return sanitized.trim();
+  };
+
+  const suggestionLines = lines.slice(headerIndex + 1);
+  const suggestions = suggestionLines
+    .map(sanitizeSuggestion)
+    .filter((line) => line.length > 0 && normalizeHeader(line) !== "suggested actions")
+    .slice(0, 3);
+
+  return {
+    body: body.trim().length ? body : "",
+    suggestions,
+  };
 };
 
 const MAX_INPUT_LENGTH = 600;
@@ -229,6 +271,7 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [showTyping, setShowTyping] = useState(false);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const { user } = useUser();
 
   const [displayedSuggestions] = useState(() => getRandomSuggestions(3));
@@ -288,6 +331,25 @@ export default function ChatPage() {
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending, showTyping]);
+
+  const adjustTextareaHeight = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const maxHeight = 240;
+    const newHeight = Math.min(textarea.scrollHeight, maxHeight);
+    textarea.style.height = `${Math.max(newHeight, 48)}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, []);
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [adjustTextareaHeight]);
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [inputValue, adjustTextareaHeight]);
 
   const canSubmit = useMemo(() => {
     const trimmed = inputValue.trim();
@@ -461,7 +523,7 @@ export default function ChatPage() {
       <div
         className={`flex flex-1 flex-col items-center ${hasMessages < 1 && "justify-center"} px-8 pb-36 pt-[6rem] md:pt-0`}
       >
-        <div className="w-full max-w-[78rem]">
+        <div className="w-full max-w-[70rem]">
           {hasMessages < 1 && (
             <>
               <header className="text-center">
@@ -527,15 +589,42 @@ export default function ChatPage() {
                         </div>
                       ) : null}
 
-                      {message.content ? (
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          components={markdownComponents}
-                          className="markdown space-y-4 text-[14px] leading-relaxed tracking-[-0.008em]"
-                        >
-                          {message.content}
-                        </ReactMarkdown>
-                      ) : null}
+                      {(() => {
+                        const { body, suggestions } = extractSuggestedActions(
+                          message.content
+                        );
+                        const markdownSource = body;
+                        return (
+                          <>
+                            {markdownSource.length ? (
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={markdownComponents}
+                                className="markdown space-y-4 text-[14px] leading-relaxed tracking-[-0.008em]"
+                              >
+                                {markdownSource}
+                              </ReactMarkdown>
+                            ) : null}
+                            {suggestions.length ? (
+                              <Box className="mt-4 flex flex-col gap-2">
+                                {suggestions.map((suggestion, index) => (
+                                  <button
+                                    key={`${message.id}-suggestion-${index}`}
+                                    type="button"
+                                    onClick={() => {
+                                      setError(null);
+                                      sendMessage(suggestion);
+                                    }}
+                                    className="text-start rounded-[8px] border-none focus-visible:border-none px-[16px] py-[10px] text-[14px]  bg-[#eef3ff] text-[#1b1f26] transition hover:bg-[#5377E1] hover:text-white"
+                                  >
+                                    {suggestion}
+                                  </button>
+                                ))}
+                              </Box>
+                            ) : null}
+                          </>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <div className="max-w-[72%] rounded-[18px] bg-[#1b1f26] py-[8px] px-[16px] text-[14px] leading-[1.5] text-white ">
@@ -567,7 +656,7 @@ export default function ChatPage() {
       <footer className="sticky bottom-0 z-[999] flex w-full justify-center pt-8 px-4">
         <div className="w-full max-w-[80rem] rounded-t-[10px]  bg-white/95 p-6 shadow-[0_32px_70px_-38px_rgba(70,47,128,0.55)] backdrop-blur">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="relative items-end gap-4">
+            <div className="relative gap-4">
               <div className="flex-1 ">
                 <div className="relative">
                   <textarea
@@ -579,6 +668,7 @@ export default function ChatPage() {
                       if (value.length <= MAX_INPUT_LENGTH) {
                         setInputValue(value);
                         if (error) setError(null);
+                        adjustTextareaHeight();
                       }
                     }}
                     onKeyDown={(event) => {
@@ -589,15 +679,17 @@ export default function ChatPage() {
                         }
                       }
                     }}
+                    ref={textareaRef}
                     className="resize-none rounded-[25px] py-[10px] pr-[40px] pl-[12px] bg-[#f2f2f2] leading-relaxed text-[#36255a] focus-visible:border-none"
                     maxLength={MAX_INPUT_LENGTH}
                     aria-label="Message input"
+                    style={{ minHeight: "48px", maxHeight: "240px" }}
                   />
 
                   <button
                     type="submit"
                     disabled={!canSubmit}
-                    className="absolute right-[5px] top-[17%] flex h-12 w-12 items-center justify-center rounded-[18px] disabled:bg-[#dcdcdd] disabled:text-[#888]  bg-[#1b1f26] text-white shadow-lg shadow-[#f882b0]/35 transition hover:brightness-110 disabled:cursor-not-allowed disabled:from-[#f2b5c9] disabled:to-[#f2b5c9]"
+                    className="absolute right-[7px] bottom-[8.5px] flex h-12 w-12 items-center justify-center rounded-[18px] disabled:bg-[#dcdcdd] disabled:text-[#888]  bg-[#1b1f26] text-white shadow-lg shadow-[#f882b0]/35 transition hover:brightness-110 disabled:cursor-not-allowed disabled:from-[#f2b5c9] disabled:to-[#f2b5c9]"
                   >
                     <ArrowUpRight className="h-6 w-6 " />
                     <span className="sr-only">Send message</span>

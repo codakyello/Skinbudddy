@@ -112,6 +112,12 @@ export async function callOpenAI({
     chatMessages.push({ role: mappedRole, content: msg.content });
   }
 
+  chatMessages.push({
+    role: "developer",
+    content:
+      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis) that the user could tap next. Each suggestion must read like a direct request the user could send (e.g., 'Yes, please provide more details about the cleanser options.' or 'Can you recommend a good exfoliator for oily skin?'). Always provide three suggestions, even if they need to be broader to keep the user moving forward.",
+  });
+
   // console.log(chatMessages, "This is conversation history");
 
   // messages.push({ role: "user", content: userMessage });
@@ -245,6 +251,7 @@ export async function callOpenAI({
           // when not identical we display options
           const result = await toolDef.handler(validatedArgs);
 
+          // we are building tool outputs for multiple tool calling iteration
           toolOutputs.push({
             name: toolCall.function.name,
             arguments: validatedArgs,

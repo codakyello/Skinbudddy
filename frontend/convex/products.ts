@@ -780,6 +780,7 @@ type SearchProductsByQueryArgs = {
   skinConcernQueries?: string[];
   ingredientQueries?: string[];
   limit?: number;
+  skip?: number;
 };
 
 type SearchProductsByQueryResult =
@@ -819,7 +820,8 @@ async function searchProductsByQueryImpl(
     skinConcerns,
     skinConcernQueries,
     ingredientQueries,
-    limit,
+    limit = 5, // hard 5 limit default to avoid bloating llm
+    skip, // lets implement this later
   }: SearchProductsByQueryArgs
 ): Promise<SearchProductsByQueryResult> {
   const normalizedNameQuery =
@@ -944,7 +946,9 @@ async function searchProductsByQueryImpl(
   let normalizedIngredientQueries = ingredientQueryRaw.map((value) =>
     normalizeIngredient(value)
   );
-  implicitIngredients.forEach((value) => normalizedIngredientQueries.push(value));
+  implicitIngredients.forEach((value) =>
+    normalizedIngredientQueries.push(value)
+  );
   normalizedIngredientQueries = Array.from(
     new Set(
       normalizedIngredientQueries.filter((value) => value && value.length > 0)
@@ -1354,7 +1358,9 @@ async function searchProductsByQueryImpl(
         filters: {
           categorySlugs,
           brandSlugs,
-          ...(requestedSkinTypes.length ? { skinTypes: requestedSkinTypes } : {}),
+          ...(requestedSkinTypes.length
+            ? { skinTypes: requestedSkinTypes }
+            : {}),
           ...(requestedSkinConcerns.length
             ? { skinConcerns: requestedSkinConcerns }
             : {}),

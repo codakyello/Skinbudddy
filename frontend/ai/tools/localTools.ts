@@ -55,7 +55,7 @@ const searchProductsSchema = z
       .describe(
         "Specific ingredients to include, e.g. ['hyaluronic acid', 'niacinamide', 'retinol', 'salicylic acid']"
       ),
-    limit: z.number().int().min(1).max(100).optional(),
+    limit: z.number().int().min(1).max(10).optional(),
   })
   .strict();
 
@@ -96,7 +96,7 @@ const searchProductsParameters = {
     limit: {
       type: "integer",
       minimum: 1,
-      maximum: 100,
+      maximum: 10,
     },
   },
   additionalProperties: false,
