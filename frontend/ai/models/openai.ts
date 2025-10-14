@@ -402,7 +402,7 @@ export async function callOpenAI({
   chatMessages.push({
     role: "developer",
     content:
-      "Keep using contextual emojis in the main reply (not in the suggestions) when they add clarity or personality, honoring the system prompt.",
+      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Each suggestion must be phrased as a natural, conversational message the user would actually send to SkinBuddy—written in first or second person, starting with natural words like 'What', 'Tell me', 'How', 'Can you', 'I', etc. (e.g., 'What serums would work best for my skin type?' or 'How should I layer these products?'). **All three suggestions must be skincare-related only**—never suggest follow-ups about non-skincare topics like haircare, makeup, oral care, deodorant, fitness, diet, sleep, mental health, or anything outside skincare. Keep suggestions contextual to the conversation and within SkinBuddy's scope.",
   });
 
   const latestUserMessageContent = [...messages]
