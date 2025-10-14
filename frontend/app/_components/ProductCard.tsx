@@ -139,7 +139,7 @@ export default function ProductCard({
             </ModalOpen>
           </Box>
 
-          <Box className="flex flex-wrap gap-[8px] justify-center items-center text-[1.4rem] mb-[2rem] font-semibold">
+          <Box className="flex flex-wrap gap-[8px] text-[1.4rem] mb-[2rem] font-semibold">
             <p
               className={` ${isDiscounted ? "line-through text-[#888]" : ""} `}
             >

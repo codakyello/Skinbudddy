@@ -616,7 +616,7 @@ export default function ChatPage() {
                 {message.role === "assistant" ? (
                   <Box className="w-full ">
                     {message.products?.length ? (
-                      <Box className="mt-6 flex items-stretch gap-[2rem] overflow-auto mb-[20px]">
+                      <Box className="mt-6 flex items-stretch gap-[1rem] overflow-auto mb-[20px]">
                         {message.products.map((product, index) => {
                           const productKey = `${message.id}-${String(
                             product._id ?? product.slug ?? index
@@ -624,7 +624,7 @@ export default function ChatPage() {
                           return (
                             <Box
                               key={productKey}
-                              className="min-w-[50rem] flex"
+                              className="min-w-[90%] md:min-w-[75%] flex"
                             >
                               <ProductCard inChat={true} product={product} />
                             </Box>
