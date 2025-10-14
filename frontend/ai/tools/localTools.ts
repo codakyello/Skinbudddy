@@ -172,6 +172,8 @@ type SanitizedProduct = {
   sizes: SanitizedSize[];
   brand?: { name?: string; slug?: string };
   score?: number;
+  categories?: Array<{ name?: string; slug?: string }>;
+  ingredients?: string[];
 };
 
 const toNumber = (value: unknown): number | undefined => {
@@ -251,6 +253,40 @@ const extractRelevantProductInfo = (
         }
       : undefined;
 
+  const categories = Array.isArray(raw.categories)
+    ? raw.categories
+        .map((category) => {
+          if (!category) return null;
+          if (typeof category === "string") {
+            return { name: category } as { name?: string; slug?: string };
+          }
+          if (typeof category === "object") {
+            const categoryRecord = category as Record<string, unknown>;
+            const result: { name?: string; slug?: string } = {};
+            if (typeof categoryRecord.name === "string") {
+              result.name = categoryRecord.name;
+            }
+            if (typeof categoryRecord.slug === "string") {
+              result.slug = categoryRecord.slug;
+            }
+            return Object.keys(result).length ? result : null;
+          }
+          return null;
+        })
+        .filter(
+          (category): category is { name?: string; slug?: string } =>
+            category !== null
+        )
+    : [];
+
+  const ingredients = Array.isArray(raw.ingredients)
+    ? raw.ingredients
+        .filter(
+          (ingredient): ingredient is string => typeof ingredient === "string"
+        )
+        .slice(0, 2)
+    : [];
+
   return {
     _id: _id ?? (slug as string),
     slug,
@@ -260,6 +296,8 @@ const extractRelevantProductInfo = (
     images,
     sizes,
     brand,
+    categories: categories.length ? categories : undefined,
+    ingredients: ingredients.length ? ingredients : undefined,
   };
 };
 

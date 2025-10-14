@@ -6,8 +6,9 @@ import remarkGfm from "remark-gfm";
 import { ArrowUpRight } from "lucide-react";
 import { useUser } from "@/app/_contexts/CreateConvexUser";
 import ProductCard from "@/app/_components/ProductCard";
-import type { Product, Size } from "@/app/_utils/types";
+import type { Product, Size, Category } from "@/app/_utils/types";
 import { Box } from "@chakra-ui/react";
+import { IoIosArrowDown } from "react-icons/io";
 
 const SUGGESTIONS = [
   // Routine building
@@ -41,7 +42,7 @@ const SUGGESTIONS = [
   // Skin issues & diagnosis
   "Help me understand why my skin feels tight after washing",
   "My skin is breaking out suddenly — what could be causing it?",
-  "Why does my skincare pill under foundation?",
+  "Why does my skincare peel under foundation?",
   "Suggest ways to reduce redness and irritation",
   "How can I fade acne scars and dark spots faster?",
 
@@ -203,6 +204,30 @@ const mapToolProductToProduct = (input: unknown): Product | null => {
         .filter((concern) => concern.length > 0)
     : undefined;
 
+  const categories = Array.isArray(source.categories)
+    ? source.categories
+        .map((category) => {
+          if (!category) return null;
+          if (typeof category === "string") {
+            return { name: category } as Category;
+          }
+          if (isRecord(category)) {
+            if (typeof category.name === "string") {
+              const payload: Category = {
+                name: category.name,
+              };
+              if (typeof category.slug === "string") {
+                payload.slug = category.slug;
+              }
+              return payload;
+            }
+            return null;
+          }
+          return null;
+        })
+        .filter((category): category is Category => Boolean(category))
+    : undefined;
+
   const skinType = Array.isArray(source.skinType)
     ? source.skinType
         .map((type) => (typeof type === "string" ? type : String(type ?? "")))
@@ -217,6 +242,7 @@ const mapToolProductToProduct = (input: unknown): Product | null => {
     images,
     sizes,
     ingredients,
+    categories,
     concerns,
     skinType,
   };
@@ -239,9 +265,9 @@ export default function ChatPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [hasSent, setHasSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showTyping, setShowTyping] = useState(false);
-  const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [isTyping, setShowTyping] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const { user } = useUser();
   const [displayedSuggestions] = useState(() => getRandomSuggestions(3));
@@ -256,29 +282,46 @@ export default function ChatPage() {
     textarea.style.overflowY =
       textarea.scrollHeight > maxHeight ? "auto" : "hidden";
   }, []);
-  const ref = useRef<HTMLDivElement>(null);
-  const [containerHeight, setContainerHeight] = useState(
-    () => ref.current?.clientHeight
-  );
+  const conversationRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollDownButton, setShowScrollDownButton] = useState(false);
 
-  console.log(ref, "This is ref");
-
-  console.log(containerHeight, "This is container Height");
-
-  useEffect(() => {
-    scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isSending, showTyping]);
   useEffect(() => {
     adjustTextareaHeight();
   }, [inputValue, adjustTextareaHeight]);
   useEffect(() => {
-    // extract the last item from the array
-    if (messages.at(-1)?.role === "user") {
-      // increase the height
-      //get the height of the container
-      const height = ref.current?.clientHeight;
-      setContainerHeight(height);
-      console.log(containerHeight, "This is the container height");
+    const container = conversationRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const distanceFromBottom =
+        container.scrollHeight - (container.scrollTop + container.clientHeight);
+      setShowScrollDownButton(distanceFromBottom > 80);
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    handleScroll();
+
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    const container = conversationRef.current;
+    if (!container) return;
+
+    const distanceFromBottom =
+      container.scrollHeight - (container.scrollTop + container.clientHeight);
+    const isNearBottom = distanceFromBottom < 80;
+
+    if (isNearBottom) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: messages.length <= 1 ? "auto" : "smooth",
+      });
+      setShowScrollDownButton(false);
+    } else {
+      setShowScrollDownButton(true);
     }
   }, [messages]);
 
@@ -297,12 +340,12 @@ export default function ChatPage() {
         <p className="text-[14px] leading-relaxed text-[#453174]">{children}</p>
       ),
       ul: ({ children }) => (
-        <ul className="ml-5 list-disc space-y-4 text-[14px] text-[#453174]">
+        <ul className="ml-6 list-disc space-y-4 text-[14px] text-[#453174]">
           {children}
         </ul>
       ),
       ol: ({ children }) => (
-        <ol className="ml-5 list-decimal space-y-4 text-[14px] text-[#453174]">
+        <ol className="ml-6 list-decimal space-y-4 text-[14px] text-[#453174]">
           {children}
         </ol>
       ),
@@ -332,6 +375,8 @@ export default function ChatPage() {
     []
   );
 
+  const hasMessages = messages.length > 0;
+
   const canSubmit = useMemo(() => {
     const trimmed = inputValue.trim();
     return (
@@ -352,7 +397,6 @@ export default function ChatPage() {
 
     setError(null);
     setIsSending(true);
-    setShowTyping(true);
     setInputValue("");
 
     const optimisticId = `user-${Date.now()}`;
@@ -363,7 +407,10 @@ export default function ChatPage() {
 
     let assistantId: string | null = null;
 
+    // if no network we can stop them from calling
     try {
+      setShowTyping(true);
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -378,6 +425,8 @@ export default function ChatPage() {
         throw new Error("Failed to reach the assistant.");
       }
 
+      // successfully sent
+      setHasSent(true);
       const newAssistantId = `assistant-${Date.now()}`;
       assistantId = newAssistantId;
       setMessages((prev) => [
@@ -397,6 +446,8 @@ export default function ChatPage() {
           )
         );
       };
+
+      // message received and is responding
 
       const decoder = new TextDecoder();
       const reader = response.body.getReader();
@@ -484,6 +535,7 @@ export default function ChatPage() {
       );
     } finally {
       setIsSending(false);
+      setHasSent(false);
       setShowTyping(false);
     }
   };
@@ -497,170 +549,179 @@ export default function ChatPage() {
     await sendMessage(suggestion);
   };
 
-  const hasMessages = messages.length;
-
   const lastAssistantMessageId = useMemo(() => {
     const reversed = [...messages].reverse();
     const found = reversed.find((msg) => msg.role === "assistant");
     return found?.id;
   }, [messages]);
 
-  useEffect(() => {
-    if (!messages.length) return;
-    const latestUser = [...messages]
-      .reverse()
-      .find((message) => message.role === "user");
-    if (!latestUser) return;
-    const element = document.getElementById(`message-${latestUser.id}`);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [messages]);
+  // useEffect(() => {
+  //   if (!messages.length) return;
+  //   const latestUserMsg = [...messages]
+  //     .reverse()
+  //     .find((message) => message.role === "user");
+  //   if (!latestUserMsg) return;
+  //   const element = document.getElementById(`message-${latestUserMsg.id}`);
+  //   if (element) {
+  //     element.scrollIntoView({ behavior: "smooth", block: "start" });
+  //   }
+  // }, [messages]);
 
+  // console.log(messages.products);
   return (
     <main className="flex min-h-screen  md:min-h-[calc(100vh-100px)]  flex-col font-['Inter'] text-[#2f1f53]">
-      <div
-        className={`flex flex-1 flex-col items-center ${hasMessages < 1 && "justify-center"} px-8 pb-36 pt-[6rem] md:pt-0`}
+      <Box
+        className={`flex flex-1 flex-col items-center ${!hasMessages && "justify-center"} px-8 pb-36 pt-[6rem] md:pt-0`}
       >
-        {/* increase height here */}
-        <div ref={ref} className="w-full max-w-[70rem]">
-          {hasMessages < 1 && (
-            <>
+        {/* conversation container */}
+        <Box
+          ref={conversationRef}
+          className="w-full max-w-[70rem] flex-1 overflow-y-auto"
+          // style={{ maxHeight: "calc(100vh - 220px)" }}
+        >
+          {!hasMessages && (
+            <Box className="mt-[100px]">
               <header className="text-center">
                 <h1 className="text-[38px] font-semibold tracking-[-0.02em] text-[#331d62] md:text-[46px]">
                   How can I help you?
                 </h1>
               </header>
-            </>
+
+              <section className="space-y-3 rounded-3xl border border-transparent bg-white/80 p-7 backdrop-blur-md ">
+                {displayedSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => handleSuggestion(suggestion)}
+                    className="flex w-full items-center justify-between rounded-[22px] px-5 py-4 text-left transition hover:bg-[#f2f2f2]"
+                  >
+                    <span className="text-[16px] font-medium tracking-[-0.01em]">
+                      {suggestion}
+                    </span>
+                    <ArrowUpRight className="h-7 w-7 text-[#aaa]" />
+                  </button>
+                ))}
+              </section>
+            </Box>
           )}
 
-          {messages.length === 0 ? (
-            <section className="space-y-3 rounded-3xl border border-transparent bg-white/80 p-7 backdrop-blur-md ">
-              {displayedSuggestions.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  onClick={() => handleSuggestion(suggestion)}
-                  className="flex w-full items-center justify-between rounded-[22px] px-5 py-4 text-left transition hover:bg-[#f2f2f2]"
-                >
-                  <span className="text-[16px] font-medium tracking-[-0.01em]">
-                    {suggestion}
-                  </span>
-                  <ArrowUpRight className="h-7 w-7 text-[#aaa]" />
-                </button>
-              ))}
-            </section>
-          ) : (
-            <section className="mt-12 space-y-10">
-              {messages.map((message) => (
-                <div
-                  id={`message-${message.id}`}
-                  key={message.id}
-                  className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  {message.role === "assistant" ? (
-                    <div className="w-full ">
-                      {message.products?.length ? (
-                        <div className="mt-6 flex gap-[2rem] overflow-auto">
-                          {message.products.map((product, index) => {
-                            const productKey = `${message.id}-${String(
-                              product._id ?? product.slug ?? index
-                            )}`;
-                            return (
-                              <Box
-                                key={productKey}
-                                className="min-w-[25rem] mb-[20px]"
-                              >
-                                <ProductCard product={product} />
-                              </Box>
-                            );
-                          })}
-                        </div>
-                      ) : null}
+          <section className="mt-12 space-y-10">
+            {messages.map((message, index) => (
+              <Box
+                id={`message-${message.id}`}
+                key={message.id}
+                className={`flex ${
+                  message.role === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
+                {message.role === "assistant" ? (
+                  <Box className="w-full ">
+                    {message.products?.length ? (
+                      <Box className="mt-6 flex items-stretch gap-[2rem] overflow-auto mb-[20px]">
+                        {message.products.map((product, index) => {
+                          const productKey = `${message.id}-${String(
+                            product._id ?? product.slug ?? index
+                          )}`;
+                          return (
+                            <Box
+                              key={productKey}
+                              className="min-w-[50rem] flex"
+                            >
+                              <ProductCard inChat={true} product={product} />
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                    ) : null}
 
-                      {(() => {
-                        const { body, suggestions } = extractSuggestedActions(
-                          message.content
-                        );
-                        const markdownSource = body;
-                        return (
-                          <>
-                            {markdownSource.length ? (
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={markdownComponents}
-                                className="markdown space-y-4 text-[14px] leading-relaxed tracking-[-0.008em]"
-                              >
-                                {markdownSource}
-                              </ReactMarkdown>
-                            ) : null}
-                            {suggestions.length ? (
-                              <Box className="mt-4 flex flex-col gap-2">
-                                {suggestions.map((suggestion, index) => {
-                                  const key = `${message.id}-suggestion-${index}`;
-                                  const alreadyUsed =
-                                    usedSuggestionKeysRef.current.has(key);
-                                  const isLatestAssistant =
-                                    message.id === lastAssistantMessageId;
-                                  const isDisabled =
-                                    alreadyUsed || !isLatestAssistant;
-                                  return (
-                                    <button
-                                      key={key}
-                                      type="button"
-                                      onClick={() => {
-                                        if (isDisabled) return;
-                                        usedSuggestionKeysRef.current.add(key);
-                                        setError(null);
-                                        sendMessage(suggestion);
-                                      }}
-                                      disabled={isDisabled}
-                                      className="text-start rounded-[8px] border-none focus-visible:border-none px-[16px] py-[10px] text-[14px] bg-[#eef3ff] text-[#1b1f26] transition hover:bg-[#5377E1] hover:text-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#eef3ff] disabled:hover:text-[#1b1f26]"
-                                    >
-                                      {suggestion}
-                                    </button>
-                                  );
-                                })}
-                              </Box>
-                            ) : null}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  ) : (
-                    <div className="max-w-[72%] rounded-[18px] bg-[#1b1f26] py-[8px] px-[16px] text-[14px] leading-[1.5] text-white ">
-                      {message.content}
-                    </div>
-                  )}
-                </div>
-              ))}
-              {showTyping && (
-                <div className="flex justify-start">
-                  <div className="flex items-center gap-4 rounded-[26px] ">
-                    {/* <span className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#f3ebff]">
+                    {(() => {
+                      const { body, suggestions } = extractSuggestedActions(
+                        message.content
+                      );
+                      const markdownSource = body;
+                      return (
+                        <>
+                          {markdownSource.length ? (
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={markdownComponents}
+                              className="markdown space-y-4 text-[14px] leading-relaxed tracking-[-0.008em]"
+                            >
+                              {markdownSource}
+                            </ReactMarkdown>
+                          ) : null}
+                          {suggestions.length ? (
+                            <Box className="mt-4 flex flex-col gap-2">
+                              {suggestions.map((suggestion, index) => {
+                                const key = `${message.id}-suggestion-${index}`;
+                                const alreadyUsed =
+                                  usedSuggestionKeysRef.current.has(key);
+                                const isLatestAssistant =
+                                  message.id === lastAssistantMessageId;
+                                const isDisabled =
+                                  alreadyUsed || !isLatestAssistant;
+                                return (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => {
+                                      if (isDisabled) return;
+                                      usedSuggestionKeysRef.current.add(key);
+                                      setError(null);
+                                      sendMessage(suggestion);
+                                    }}
+                                    disabled={isDisabled || isTyping}
+                                    className="text-start rounded-[8px] border-none focus-visible:border-none px-[16px] py-[10px] text-[14px] bg-[#eef3ff] text-[#1b1f26] transition hover:bg-[#5377E1] hover:text-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#eef3ff] disabled:hover:text-[#1b1f26]"
+                                  >
+                                    {suggestion}
+                                  </button>
+                                );
+                              })}
+                            </Box>
+                          ) : null}
+                        </>
+                      );
+                    })()}
+                  </Box>
+                ) : (
+                  (() => {
+                    const isSending =
+                      index + 1 === messages.length &&
+                      messages.at(index)?.role === "user" &&
+                      !hasSent;
+                    return (
+                      <Box
+                        className={`max-w-[72%] rounded-[18px] ${isSending ? "bg-[#494c51]" : "bg-[#1b1f26]"} py-[8px] px-[16px] text-[14px] leading-[1.5] text-white `}
+                      >
+                        {message.content}
+                      </Box>
+                    );
+                  })()
+                )}
+              </Box>
+            ))}
+            {isTyping && (
+              <Box className="flex justify-start">
+                <Box className="flex items-center gap-4 rounded-[26px] ">
+                  {/* <span className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#f3ebff]">
                       <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#d2c0ff] border-t-[#8e70da] animate-spin" />
                     </span> */}
-                    <div className="flex gap-2">
-                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26]" />
-                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.18s]" />
-                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.36s]" />
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={scrollAnchorRef} />
-            </section>
-          )}
-        </div>
-      </div>
-
+                  <Box className="flex gap-2">
+                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26]" />
+                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.18s]" />
+                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.36s]" />
+                  </Box>
+                </Box>
+              </Box>
+            )}
+          </section>
+        </Box>
+      </Box>
       <footer className="sticky bottom-0 z-[999] flex w-full justify-center pt-8 px-4">
-        <div className="w-full max-w-[80rem] rounded-t-[10px]  bg-white/95 p-6 shadow-[0_32px_70px_-38px_rgba(70,47,128,0.55)] backdrop-blur">
+        <Box className="w-full max-w-[80rem] rounded-t-[10px]  bg-white/95 px-6 shadow-[0_32px_70px_-38px_rgba(70,47,128,0.55)] backdrop-blur">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="relative gap-4">
-              <div className="flex-1 ">
-                <div className="relative">
+            <Box className="relative gap-4">
+              <Box className="flex-1 ">
+                <Box className="relative">
                   <textarea
                     rows={1}
                     placeholder="Ask anything"
@@ -696,19 +757,36 @@ export default function ChatPage() {
                     <ArrowUpRight className="h-6 w-6 " />
                     <span className="sr-only">Send message</span>
                   </button>
-                </div>
+                </Box>
 
-                <div className="mt-2 flex items-center justify-between text-[12px] text-[#888]">
+                <Box className="mt-2 flex items-center justify-between text-[12px] text-[#888]">
                   <span>
                     {inputValue.trim().length} / {MAX_INPUT_LENGTH}
                   </span>
                   {error && <span className="text-[#ff3e73]">{error}</span>}
-                </div>
-              </div>
-            </div>
+                </Box>
+              </Box>
+            </Box>
           </form>
-        </div>
+        </Box>
       </footer>
+
+      {showScrollDownButton ? (
+        <Box
+          onClick={() => {
+            const container = conversationRef.current;
+            if (!container) return;
+            container.scrollTo({
+              top: container.scrollHeight,
+              behavior: "smooth",
+            });
+            setShowScrollDownButton(false);
+          }}
+          className="fixed bottom-[90px] left-1/2 z-[1000] -translate-x-1/2 bg-[#1b1f26] h-[42px] w-[42px] flex items-center justify-center rounded-full shadow-lg shadow-[#f882b0]/35 cursor-pointer transition hover:brightness-110"
+        >
+          <IoIosArrowDown className="text-[#fff] w-[22px] h-[22px]" />
+        </Box>
+      ) : null}
     </main>
   );
 }
@@ -755,7 +833,7 @@ export default function ChatPage() {
 //             and busy lifestyles. Answer a few questions and SkinBuddy builds the
 //             exact plan your skin needs.
 //           </p>
-//           <div className="flex flex-col gap-[12px] sm:flex-row sm:items-center">
+//           <Box className="flex flex-col gap-[12px] sm:flex-row sm:items-center">
 //             <Link
 //               href="/recommender"
 //               className="inline-flex items-center justify-center rounded-full bg-[#1f2537] px-[28px] py-[12px] text-[1.5rem] font-semibold text-white transition hover:bg-[#111522]"
@@ -765,7 +843,7 @@ export default function ChatPage() {
 //             <span className="text-[1.4rem] text-[#6b7288]">
 //               Takes less than 5 minutes • Free recommendations
 //             </span>
-//           </div>
+//           </Box>
 //         </Box>
 //         <Box className="relative mt-[32px] flex-1 md:mt-0">
 //           <Box className="absolute -left-[18px] top-[24px] hidden h-[120px] w-[120px] rounded-full bg-[#dfe4ff] md:block" />

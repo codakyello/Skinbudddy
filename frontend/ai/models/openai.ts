@@ -396,7 +396,7 @@ export async function callOpenAI({
   chatMessages.push({
     role: "developer",
     content:
-      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis) that the user could tap next. Each suggestion must read like a direct request the user could send (e.g., 'Yes, please provide more details about the cleanser options.' or 'Can you recommend a good exfoliator for oily skin?'). Always provide three suggestions, even if they need to be broader to keep the user moving forward.",
+      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Each suggestion must be phrased as a natural, conversational message the user would actually send to SkinBuddy—written in first or second person, starting with natural words like 'What', 'Tell me', 'How', 'Can you', 'I', etc. (e.g., 'What serums would work best for my skin type?' or 'How should I layer these products?'). Always provide three suggestions.",
   });
 
   chatMessages.push({

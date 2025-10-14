@@ -16,6 +16,8 @@ import { ModalOpen, useModal } from "./Modal";
 import { ChangeEvent, useState } from "react";
 import Select from "./Select";
 import AppError from "../_utils/appError";
+import Image from "next/image";
+import { Category } from "../_utils/types";
 
 export default function ProductCard({
   className,
@@ -23,6 +25,7 @@ export default function ProductCard({
   selectClassName,
   bgwhite,
   sectionName,
+  inChat = false,
   handleProductToPreview,
 }: {
   product: Product;
@@ -30,6 +33,7 @@ export default function ProductCard({
   selectClassName?: string;
   sectionName?: string;
   bgwhite?: boolean;
+  inChat?: boolean;
   handleProductToPreview?: (product: Product) => void;
 }) {
   const addToCart = useMutation(api.cart.createCart);
@@ -39,6 +43,8 @@ export default function ProductCard({
   const [selectedSize, setSelectedSize] = useState(product.sizes?.at(0));
   const { open } = useModal();
   const isDiscounted = selectedSize?.discount;
+
+  console.log(product, "This are the product");
 
   const handleAddToCart = async () => {
     try {
@@ -90,6 +96,81 @@ export default function ProductCard({
     const value = event.currentTarget.value;
     setSelectedSize(product.sizes?.find((s) => s.id === value));
   };
+
+  if (inChat)
+    return (
+      <Box className="border-[1px] w-full p-[8px] grid grid-cols-[13rem_1fr] gap-[12px] border-[#1b1f2614] rounded-[24px] min-h-[176px] ">
+        <Box className="bg-[#E8E9E9] rounded-[16px] overflow-hidden relative">
+          <Image
+            src={product.images?.[0] || "/images/product-1.webp"}
+            alt={product.name || ""}
+            width={400}
+            height={400}
+            className="object-contain w-full h-full overflow-hidden"
+          />
+
+          <button className="text-[12px] absolute h-[28px] flex items-center justify-center w-[28px] rounded-[8px] bg-[#fff] top-[8px] end-[8px]">
+            <svg
+              className="w-[20px] h-[20px] text-[#1b1f2666]"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M19.5 13.57 12 21l-7.5-7.43A5 5 0 1 1 12 7.01a5 5 0 1 1 7.5 6.57"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              ></path>
+            </svg>
+          </button>
+        </Box>
+        <Box className="pb-[12px] pt-[12px] gap-[12px] flex flex-col items-start">
+          <Box className="flex flex-col gap-[4px] font-medium">
+            <h6 className="text-[12px] capitalize text-[#1b1f26b3]">
+              {(product.categories?.at(0) as Category)?.name}
+            </h6>
+            <ModalOpen name="product-detail">
+              {/* <div>ds</div> */}
+              <button className="capitalize text-start leading-[20px]">
+                {product.name}
+              </button>
+            </ModalOpen>
+          </Box>
+
+          <Box className="flex flex-wrap gap-[8px] justify-center items-center text-[1.4rem] mb-[2rem] font-semibold">
+            <p
+              className={` ${isDiscounted ? "line-through text-[#888]" : ""} `}
+            >
+              {selectedSize && formatPrice(selectedSize.price)}
+            </p>
+            {selectedSize?.discount ? (
+              <>
+                <p>{formatPrice(selectedSize.price - selectedSize.discount)}</p>
+                <span className="text-red-500 font-semibold text-[1.3rem]">
+                  {Math.round(
+                    (selectedSize.discount / selectedSize.price) * 100
+                  )}
+                  % off
+                </span>
+              </>
+            ) : (
+              ""
+            )}
+          </Box>
+
+          <button
+            onClick={handleAddToCart}
+            className="mt-auto rounded-[16px]  bg-[#1454d4] hover:bg-opacity-80 enabled:hover:bg-opacity-100 disabled:bg-opacity-40 text-[#fff] font-medium text-[14px] leading-[20px] min-h-[20px] flex text-center justify-center py-[6px] px-[16px] "
+          >
+            Add to Cart
+          </button>
+
+          {/* <button></button> */}
+        </Box>
+      </Box>
+    );
 
   return (
     <Box

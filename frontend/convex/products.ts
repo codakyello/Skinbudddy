@@ -768,6 +768,8 @@ type ProductCardSummary = {
   score?: number;
   brand?: { name?: string; slug?: string };
   nameMatchCount?: number;
+  categories?: Array<{ name?: string; slug?: string }>;
+  ingredients?: string[];
 };
 
 type SearchProductsByQueryArgs = {
@@ -1144,6 +1146,8 @@ async function searchProductsByQueryImpl(
 
   const enriched: ProductCardSummary[] = await Promise.all(
     products.map(async (item) => {
+      let brandDoc: Doc<"brands"> | null = null;
+      let categoryDocs: Doc<"categories">[] = [];
       const sizesSorted = Array.isArray(item.sizes)
         ? [...item.sizes]
             .filter((size) => typeof size?.id === "string")
@@ -1151,7 +1155,6 @@ async function searchProductsByQueryImpl(
         : [];
 
       try {
-        let brandDoc: Doc<"brands"> | null = null;
         if (item.brandId) {
           if (brandCache.has(item.brandId)) {
             brandDoc = brandCache.get(item.brandId) ?? null;
@@ -1162,7 +1165,7 @@ async function searchProductsByQueryImpl(
           }
         }
 
-        const categoryDocs = Array.isArray(item.categories)
+        categoryDocs = Array.isArray(item.categories)
           ? (
               await Promise.all(
                 item.categories.map((catId: Id<"categories">) => {
@@ -1313,6 +1316,15 @@ async function searchProductsByQueryImpl(
               }
             : undefined,
           nameMatchCount,
+          categories: categoryDocs.map((doc) => ({
+            name: typeof doc.name === "string" ? doc.name : undefined,
+            slug: typeof doc.slug === "string" ? doc.slug : undefined,
+          })),
+          ingredients: Array.isArray(item.ingredients)
+            ? item.ingredients
+                .filter((ingredient): ingredient is string => typeof ingredient === "string")
+                .slice(0, 2)
+            : undefined,
         };
         return summary;
       } catch {
@@ -1344,6 +1356,16 @@ async function searchProductsByQueryImpl(
               .filter((size): size is ProductCardSize => Boolean(size))
           : [];
 
+        const fallbackCategories = Array.isArray(item.categories)
+          ? item.categories
+              .map((catId: Id<"categories">) => {
+                const cached = categoryCache.get(catId);
+                if (cached) return cached;
+                return null;
+              })
+              .filter((doc): doc is Doc<"categories"> => Boolean(doc))
+          : [];
+
         const fallback: ProductCardSummary = {
           id: item._id,
           slug: String(item.slug ?? ""),
@@ -1358,6 +1380,15 @@ async function searchProductsByQueryImpl(
           sizes: fallbackSizes,
           score: hasNameQuery ? 0 : 1,
           nameMatchCount: hasNameQuery ? 0 : undefined,
+          categories: fallbackCategories.map((doc) => ({
+            name: typeof doc.name === "string" ? doc.name : undefined,
+            slug: typeof doc.slug === "string" ? doc.slug : undefined,
+          })),
+          ingredients: Array.isArray(item.ingredients)
+            ? item.ingredients
+                .filter((ingredient): ingredient is string => typeof ingredient === "string")
+                .slice(0, 2)
+            : undefined,
         };
         return fallback;
       }

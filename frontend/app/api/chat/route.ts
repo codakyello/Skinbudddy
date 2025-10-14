@@ -130,6 +130,7 @@ export async function POST(req: NextRequest) {
             })
           );
 
+          // do we have to wait?
           await send({
             type: "final",
             reply: assistantMessage,
