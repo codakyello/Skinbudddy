@@ -152,7 +152,7 @@ export default function Section({
             >
               <ProductCard
                 sectionName={name}
-                handleProductToPreview={handleProductToPreview}
+                onProductToPreview={handleProductToPreview}
                 product={product}
               />
             </Box>

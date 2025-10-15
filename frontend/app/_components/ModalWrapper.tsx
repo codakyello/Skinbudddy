@@ -17,7 +17,7 @@ export default function ModalWrapper({
   listenCapturing?: boolean;
   position?: "center" | "top" | "bottom" | "left" | "right";
   className?: string;
-  animate: boolean;
+  animate?: boolean;
   children: React.ReactNode;
 }) {
   const ref = useOutsideClick<HTMLDivElement>(

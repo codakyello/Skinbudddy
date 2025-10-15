@@ -16,11 +16,10 @@ import ProductCard from "@/app/_components/ProductCard";
 import type { Product, Size, Category } from "@/app/_utils/types";
 import { Box } from "@chakra-ui/react";
 import { IoIosArrowDown } from "react-icons/io";
-import useProducts from "./_hooks/useProducts";
 import Modal, { ModalWindow } from "./_components/Modal";
 import Image from "next/image";
 import { formatPrice } from "./_utils/utils";
-import { CiHeart } from "react-icons/ci";
+// import useProducts from "./_hooks/useProducts";
 
 const SUGGESTIONS = [
   // Routine building
@@ -298,7 +297,7 @@ export default function ChatPage() {
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const [showScrollDownButton, setShowScrollDownButton] = useState(false);
   const [product, setProductToPreview] = useState<Product | null>();
-  const { products } = useProducts({ filters: {} });
+  // const { products } = useProducts({ filters: {} });
 
   const updateScrollButtonVisibility = useCallback(() => {
     const container = conversationRef.current;

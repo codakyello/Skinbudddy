@@ -142,7 +142,7 @@ export function ModalWindow({
   openType?: "click" | "hover";
   listenCapturing?: boolean;
   overlayColor?: string;
-  animate: boolean;
+  animate?: boolean;
 }) {
   const { close, isOpen, setHovering } = useModal();
 
