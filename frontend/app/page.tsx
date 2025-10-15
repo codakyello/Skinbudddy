@@ -350,24 +350,32 @@ export default function ChatPage() {
   const markdownComponents: Components = useMemo(
     () => ({
       h1: ({ children }) => (
-        <h1 className="text-[18px] font-semibold text-[#311d60]">{children}</h1>
+        <h1 className="text-[1.8rem] font-semibold text-[#311d60]">
+          {children}
+        </h1>
       ),
       h2: ({ children }) => (
-        <h2 className="text-[16px] font-semibold text-[#311d60]">{children}</h2>
+        <h2 className="text-[1.6rem] font-semibold text-[#311d60]">
+          {children}
+        </h2>
       ),
       h3: ({ children }) => (
-        <h3 className="text-[15px] font-semibold text-[#311d60]">{children}</h3>
+        <h3 className="text-[1.5rem] font-semibold text-[#311d60]">
+          {children}
+        </h3>
       ),
       p: ({ children }) => (
-        <p className="text-[14px] leading-relaxed text-[#453174]">{children}</p>
+        <p className="text-[1.4rem] leading-relaxed text-[#453174]">
+          {children}
+        </p>
       ),
       ul: ({ children }) => (
-        <ul className="ml-8 list-disc space-y-4 text-[14px] text-[#453174]">
+        <ul className="ml-8 list-disc space-y-4 text-[1.4rem] text-[#453174]">
           {children}
         </ul>
       ),
       ol: ({ children }) => (
-        <ol className="ml-8 list-decimal space-y-4 text-[14px] text-[#453174]">
+        <ol className="ml-8 list-decimal space-y-4 text-[1.4rem] text-[#453174]">
           {children}
         </ol>
       ),
@@ -389,7 +397,7 @@ export default function ChatPage() {
         </a>
       ),
       code: ({ children }) => (
-        <code className="rounded bg-[#efe6ff] px-1.5 py-0.5 text-[14px] text-[#3a2763]">
+        <code className="rounded bg-[#efe6ff] px-1.5 py-0.5 text-[1.4rem] text-[#3a2763]">
           {children}
         </code>
       ),
@@ -590,7 +598,7 @@ export default function ChatPage() {
           {/* conversation container */}
           <Box
             ref={conversationRef}
-            className="w-full relative max-w-[70rem] flex-1 overflow-y-auto min-h-0 scroll-smooth"
+            className="w-full relative max-w-[67rem] flex-1 overflow-y-auto min-h-0 scroll-smooth no-scrollbar"
             // style={{ maxHeight: "calc(100vh - 220px)" }}
           >
             {!hasMessages && (
@@ -604,7 +612,7 @@ export default function ChatPage() {
                 )} */}
 
                 <header className="text-center">
-                  <h1 className="text-[38px] font-semibold tracking-[-0.02em] text-[#331d62] md:text-[46px]">
+                  <h1 className="text-[3.8rem] mb-[20px] font-semibold tracking-[-0.02em] text-[#331d62] md:text-[4.6rem]">
                     How can I help you?
                   </h1>
                 </header>
@@ -616,7 +624,7 @@ export default function ChatPage() {
                       onClick={() => handleSuggestion(suggestion)}
                       className="flex w-full items-center justify-between rounded-[22px] px-5 py-4 text-left transition hover:bg-[#f2f2f2]"
                     >
-                      <span className="text-[16px] font-medium tracking-[-0.01em]">
+                      <span className="font-medium tracking-[-0.01em]">
                         {suggestion}
                       </span>
                       <ArrowUpRight className="h-7 w-7 text-[#aaa]" />
@@ -670,7 +678,7 @@ export default function ChatPage() {
                               <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
                                 components={markdownComponents}
-                                className="markdown space-y-4 text-[14px] leading-relaxed tracking-[-0.008em]"
+                                className="markdown space-y-4 text-[1.4rem] leading-relaxed tracking-[-0.008em]"
                               >
                                 {markdownSource}
                               </ReactMarkdown>
@@ -696,7 +704,7 @@ export default function ChatPage() {
                                         sendMessage(suggestion);
                                       }}
                                       disabled={isDisabled || isTyping}
-                                      className="text-start rounded-[8px] border-none focus-visible:border-none px-[16px] py-[10px] text-[14px] bg-[#eef3ff] text-[#1b1f26] transition hover:bg-[#5377E1] hover:text-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#eef3ff] disabled:hover:text-[#1b1f26]"
+                                      className="text-start rounded-[8px] border-none focus-visible:border-none px-[16px] py-[10px] text-[1.4rem] bg-[#eef3ff] text-[#1b1f26] transition hover:bg-[#5377E1] hover:text-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#eef3ff] disabled:hover:text-[#1b1f26]"
                                     >
                                       {suggestion}
                                     </button>
@@ -716,7 +724,7 @@ export default function ChatPage() {
                         !hasSent;
                       return (
                         <Box
-                          className={`max-w-[72%] rounded-[18px] ${isSending ? "bg-[#494c51]" : "bg-[#1b1f26]"} py-[8px] px-[16px] text-[14px] leading-[1.5] text-white `}
+                          className={`max-w-[72%] rounded-[18px] ${isSending ? "bg-[#494c51]" : "bg-[#1b1f26]"} py-[8px] px-[16px] text-[1.4rem] leading-[1.5] text-white `}
                         >
                           {message.content}
                         </Box>
@@ -782,7 +790,7 @@ export default function ChatPage() {
                     </button>
                   </Box>
 
-                  <Box className="mt-2 flex items-center justify-between text-[12px] text-[#888]">
+                  <Box className="mt-2 flex items-center justify-between text-[1.2rem] text-[#888]">
                     <span>
                       {inputValue.trim().length} / {MAX_INPUT_LENGTH}
                     </span>
@@ -833,15 +841,15 @@ export default function ChatPage() {
                 )}
               </Box>
               <Box className=" rounded-t-[20px]">
-                <h2 className="text-[#1b1f26] text-[20px] font-medium my-[16px] ">
+                <h2 className="text-[#1b1f26] text-[2rem] font-medium my-[16px] ">
                   {product?.name}
                 </h2>
-                <p className="text-[20px] font-medium leading-[24px] mb-[24px]">
+                <p className="text-[2rem] font-medium leading-[24px] mb-[24px]">
                   {formatPrice(product?.sizes?.[0]?.price)}
                 </p>
                 <article className="gap-[16px] flex flex-col">
-                  <p className="text-[14px]">{product?.description}</p>
-                  <ul className="gap-[16px] flex flex-col text-[14px] list-disc ml-5">
+                  <p className="text-[1.4rem]">{product?.description}</p>
+                  <ul className="gap-[16px] flex flex-col text-[1.4rem] list-disc ml-5">
                     <li>2% BHA unclogs large pores & smooths texture</li>
                     <li>15% vitamin C improves radiance & tone</li>
                     <li>1% retinol visibly reduces wrinkles & roughness</li>
@@ -866,7 +874,7 @@ export default function ChatPage() {
                     ></path>
                   </svg>
                 </button>
-                <button className="w-[95%] bg-[#1454d4] rounded-[20px] p-[10px] text-[14px] flex items-center justify-center text-[#fff]">
+                <button className="w-[95%] bg-[#1454d4] rounded-[20px] p-[10px] text-[1.4rem] flex items-center justify-center text-[#fff]">
                   Add to Cart
                 </button>
               </footer>
