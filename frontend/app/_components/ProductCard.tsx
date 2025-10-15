@@ -44,8 +44,6 @@ export default function ProductCard({
   const { open } = useModal();
   const isDiscounted = selectedSize?.discount;
 
-  console.log(product, "This are the product");
-
   const handleAddToCart = async () => {
     try {
       setIsAdding(true);

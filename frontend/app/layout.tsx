@@ -50,7 +50,7 @@ export default async function RootLayout({
         <Providers>
           {/* <Announcement /> */}
           <NavBar />
-          <Box className="md:pt-[138px]">{children}</Box>
+          <Box className="pt-[75px]">{children}</Box>
           <PendingActions />
         </Providers>
         <Toaster

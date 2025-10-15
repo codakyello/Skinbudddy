@@ -15,10 +15,10 @@ import { useUser } from "@/app/_contexts/CreateConvexUser";
 import ProductCard from "@/app/_components/ProductCard";
 import type { Product, Size, Category } from "@/app/_utils/types";
 import { Box } from "@chakra-ui/react";
-import { IoIosArrowDown } from "react-icons/io";
 import Modal, { ModalWindow } from "./_components/Modal";
 import Image from "next/image";
 import { formatPrice } from "./_utils/utils";
+import { IoChevronDownOutline } from "react-icons/io5";
 // import useProducts from "./_hooks/useProducts";
 
 const SUGGESTIONS = [
@@ -318,28 +318,17 @@ export default function ChatPage() {
 
   useLayoutEffect(() => {
     const container = conversationRef.current;
-    console.log("scrolling");
     if (!container) return;
 
     const handleScroll = () => {
-      console.log("scrolling");
       updateScrollButtonVisibility();
     };
 
-    handleScroll();
     container.addEventListener("scroll", handleScroll);
-
-    let resizeObserver: ResizeObserver | null = null;
-    if (typeof ResizeObserver === "function") {
-      resizeObserver = new ResizeObserver(() => {
-        updateScrollButtonVisibility();
-      });
-      resizeObserver.observe(container);
-    }
+    handleScroll();
 
     return () => {
       container.removeEventListener("scroll", handleScroll);
-      resizeObserver?.disconnect();
     };
   }, [updateScrollButtonVisibility]);
 
@@ -351,10 +340,7 @@ export default function ChatPage() {
     const isNearBottom = distanceFromBottom <= SCROLL_THRESHOLD;
 
     if (isNearBottom) {
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: messages.length <= 1 ? "auto" : "smooth",
-      });
+      container.scrollTop = container.scrollHeight;
       requestAnimationFrame(() => {
         updateScrollButtonVisibility();
       });
@@ -597,18 +583,18 @@ export default function ChatPage() {
 
   return (
     <Modal>
-      <main className="flex min-h-screen  md:min-h-[calc(100vh-100px)]  flex-col font-['Inter'] text-[#2f1f53]">
+      <main className="flex h-[calc(100vh-75px)] overflow-hidden  flex-col font-['Inter'] text-[#2f1f53]">
         <Box
-          className={`flex flex-1 min-h-0 w-full flex-col items-center ${!hasMessages && "justify-center"} px-8 pb-36 pt-[6rem] md:pt-0`}
+          className={`flex relative flex-1 min-h-0 w-full flex-col items-center ${!hasMessages && "justify-center"} px-8 `}
         >
           {/* conversation container */}
           <Box
             ref={conversationRef}
-            className="w-full max-w-[70rem] flex-1 overflow-y-auto min-h-0"
+            className="w-full relative max-w-[70rem] flex-1 overflow-y-auto min-h-0 scroll-smooth"
             // style={{ maxHeight: "calc(100vh - 220px)" }}
           >
             {!hasMessages && (
-              <Box className="mt-[100px]">
+              <Box className="absolute top-[50%] w-full translate-y-[-50%]">
                 {/* {products && products.length > 0 && (
                   <ProductCard
                     onProductToPreview={handleProductToPreview}
@@ -640,7 +626,7 @@ export default function ChatPage() {
               </Box>
             )}
 
-            <section className="mt-12 space-y-10">
+            <section className="mt-12 space-y-10 pb-36">
               {messages.map((message, index) => (
                 <Box
                   id={`message-${message.id}`}
@@ -742,9 +728,6 @@ export default function ChatPage() {
               {isTyping && (
                 <Box className="flex justify-start">
                   <Box className="flex items-center gap-4 rounded-[26px] ">
-                    {/* <span className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#f3ebff]">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#d2c0ff] border-t-[#8e70da] animate-spin" />
-                    </span> */}
                     <Box className="flex gap-2">
                       <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26]" />
                       <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.18s]" />
@@ -756,7 +739,7 @@ export default function ChatPage() {
             </section>
           </Box>
         </Box>
-        <footer className="sticky bottom-0 z-[999] flex w-full justify-center pt-8 px-4 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0,rgba(255,255,255,1)_1rem,rgba(255,255,255,1))]">
+        <footer className="sticky bottom-0 z-[999] flex w-full justify-center px-4 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0,rgba(255,255,255,1)_1rem,rgba(255,255,255,1))]">
           <Box className="w-full max-w-[80rem] rounded-t-[10px]  bg-white/95 px-6 shadow-[0_32px_70px_-38px_rgba(70,47,128,0.55)] backdrop-blur">
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <Box className="relative gap-4">
@@ -822,9 +805,9 @@ export default function ChatPage() {
               });
               setShowScrollDownButton(false);
             }}
-            className="fixed bottom-[90px] left-1/2 z-[1000] -translate-x-1/2 bg-[#1b1f26] h-[42px] w-[42px] flex items-center justify-center rounded-full shadow-lg shadow-[#f882b0]/35 cursor-pointer transition hover:brightness-110"
+            className="fixed text-white bottom-[90px] left-1/2 z-[1000] -translate-x-1/2 bg-[#1b1f26] h-[32px] w-[32px] flex items-center justify-center rounded-full shadow-lg shadow-[#f882b0]/35 cursor-pointer transition hover:brightness-110"
           >
-            <IoIosArrowDown className="text-[#fff] w-[22px] h-[22px]" />
+            <IoChevronDownOutline className="text-[#fff] w-[20px] h-[20px]" />
           </Box>
         ) : null}
 
