@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowUpRight } from "lucide-react";
@@ -9,6 +16,11 @@ import ProductCard from "@/app/_components/ProductCard";
 import type { Product, Size, Category } from "@/app/_utils/types";
 import { Box } from "@chakra-ui/react";
 import { IoIosArrowDown } from "react-icons/io";
+import useProducts from "./_hooks/useProducts";
+import Modal, { ModalWindow } from "./_components/Modal";
+import Image from "next/image";
+import { formatPrice } from "./_utils/utils";
+import { CiHeart } from "react-icons/ci";
 
 const SUGGESTIONS = [
   // Routine building
@@ -113,6 +125,7 @@ const extractSuggestedActions = (
 };
 
 const MAX_INPUT_LENGTH = 600;
+const SCROLL_THRESHOLD = 80;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -284,46 +297,70 @@ export default function ChatPage() {
   }, []);
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const [showScrollDownButton, setShowScrollDownButton] = useState(false);
+  const [product, setProductToPreview] = useState<Product | null>();
+  const { products } = useProducts({ filters: {} });
+
+  const updateScrollButtonVisibility = useCallback(() => {
+    const container = conversationRef.current;
+    if (!container) return 0;
+
+    const distanceFromBottom = Math.max(
+      container.scrollHeight - container.scrollTop - container.clientHeight,
+      0
+    );
+
+    setShowScrollDownButton(distanceFromBottom > SCROLL_THRESHOLD);
+    return distanceFromBottom;
+  }, []);
 
   useEffect(() => {
     adjustTextareaHeight();
   }, [inputValue, adjustTextareaHeight]);
-  useEffect(() => {
+
+  useLayoutEffect(() => {
     const container = conversationRef.current;
+    console.log("scrolling");
     if (!container) return;
 
     const handleScroll = () => {
-      const distanceFromBottom =
-        container.scrollHeight - (container.scrollTop + container.clientHeight);
-      setShowScrollDownButton(distanceFromBottom > 80);
+      console.log("scrolling");
+      updateScrollButtonVisibility();
     };
 
-    container.addEventListener("scroll", handleScroll);
     handleScroll();
+    container.addEventListener("scroll", handleScroll);
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver === "function") {
+      resizeObserver = new ResizeObserver(() => {
+        updateScrollButtonVisibility();
+      });
+      resizeObserver.observe(container);
+    }
 
     return () => {
       container.removeEventListener("scroll", handleScroll);
+      resizeObserver?.disconnect();
     };
-  }, []);
+  }, [updateScrollButtonVisibility]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = conversationRef.current;
     if (!container) return;
 
-    const distanceFromBottom =
-      container.scrollHeight - (container.scrollTop + container.clientHeight);
-    const isNearBottom = distanceFromBottom < 80;
+    const distanceFromBottom = updateScrollButtonVisibility();
+    const isNearBottom = distanceFromBottom <= SCROLL_THRESHOLD;
 
     if (isNearBottom) {
       container.scrollTo({
         top: container.scrollHeight,
         behavior: messages.length <= 1 ? "auto" : "smooth",
       });
-      setShowScrollDownButton(false);
-    } else {
-      setShowScrollDownButton(true);
+      requestAnimationFrame(() => {
+        updateScrollButtonVisibility();
+      });
     }
-  }, [messages]);
+  }, [messages, updateScrollButtonVisibility]);
 
   const markdownComponents: Components = useMemo(
     () => ({
@@ -549,245 +586,313 @@ export default function ChatPage() {
     await sendMessage(suggestion);
   };
 
+  const handleProductToPreview = (product: Product) => {
+    setProductToPreview(product);
+  };
+
   const lastAssistantMessageId = useMemo(() => {
     const reversed = [...messages].reverse();
     const found = reversed.find((msg) => msg.role === "assistant");
     return found?.id;
   }, [messages]);
 
-  // useEffect(() => {
-  //   if (!messages.length) return;
-  //   const latestUserMsg = [...messages]
-  //     .reverse()
-  //     .find((message) => message.role === "user");
-  //   if (!latestUserMsg) return;
-  //   const element = document.getElementById(`message-${latestUserMsg.id}`);
-  //   if (element) {
-  //     element.scrollIntoView({ behavior: "smooth", block: "start" });
-  //   }
-  // }, [messages]);
-
-  // console.log(messages.products);
   return (
-    <main className="flex min-h-screen  md:min-h-[calc(100vh-100px)]  flex-col font-['Inter'] text-[#2f1f53]">
-      <Box
-        className={`flex flex-1 flex-col items-center ${!hasMessages && "justify-center"} px-8 pb-36 pt-[6rem] md:pt-0`}
-      >
-        {/* conversation container */}
+    <Modal>
+      <main className="flex min-h-screen  md:min-h-[calc(100vh-100px)]  flex-col font-['Inter'] text-[#2f1f53]">
         <Box
-          ref={conversationRef}
-          className="w-full max-w-[70rem] flex-1 overflow-y-auto"
-          // style={{ maxHeight: "calc(100vh - 220px)" }}
+          className={`flex flex-1 min-h-0 w-full flex-col items-center ${!hasMessages && "justify-center"} px-8 pb-36 pt-[6rem] md:pt-0`}
         >
-          {!hasMessages && (
-            <Box className="mt-[100px]">
-              <header className="text-center">
-                <h1 className="text-[38px] font-semibold tracking-[-0.02em] text-[#331d62] md:text-[46px]">
-                  How can I help you?
-                </h1>
-              </header>
+          {/* conversation container */}
+          <Box
+            ref={conversationRef}
+            className="w-full max-w-[70rem] flex-1 overflow-y-auto min-h-0"
+            // style={{ maxHeight: "calc(100vh - 220px)" }}
+          >
+            {!hasMessages && (
+              <Box className="mt-[100px]">
+                {/* {products && products.length > 0 && (
+                  <ProductCard
+                    onProductToPreview={handleProductToPreview}
+                    inChat={true}
+                    product={products[1]}
+                  />
+                )} */}
 
-              <section className="space-y-3 rounded-3xl border border-transparent bg-white/80 p-7 backdrop-blur-md ">
-                {displayedSuggestions.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    onClick={() => handleSuggestion(suggestion)}
-                    className="flex w-full items-center justify-between rounded-[22px] px-5 py-4 text-left transition hover:bg-[#f2f2f2]"
-                  >
-                    <span className="text-[16px] font-medium tracking-[-0.01em]">
-                      {suggestion}
-                    </span>
-                    <ArrowUpRight className="h-7 w-7 text-[#aaa]" />
-                  </button>
-                ))}
-              </section>
-            </Box>
-          )}
+                <header className="text-center">
+                  <h1 className="text-[38px] font-semibold tracking-[-0.02em] text-[#331d62] md:text-[46px]">
+                    How can I help you?
+                  </h1>
+                </header>
 
-          <section className="mt-12 space-y-10">
-            {messages.map((message, index) => (
-              <Box
-                id={`message-${message.id}`}
-                key={message.id}
-                className={`flex ${
-                  message.role === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
-                {message.role === "assistant" ? (
-                  <Box className="w-full ">
-                    {message.products?.length ? (
-                      <Box className="mt-6 flex items-stretch gap-[1rem] overflow-auto mb-[20px]">
-                        {message.products.map((product, index) => {
-                          const productKey = `${message.id}-${String(
-                            product._id ?? product.slug ?? index
-                          )}`;
-                          return (
-                            <Box
-                              key={productKey}
-                              className="min-w-[90%] md:min-w-[75%] flex"
-                            >
-                              <ProductCard inChat={true} product={product} />
-                            </Box>
-                          );
-                        })}
-                      </Box>
-                    ) : null}
-
-                    {(() => {
-                      const { body, suggestions } = extractSuggestedActions(
-                        message.content
-                      );
-                      const markdownSource = body;
-                      return (
-                        <>
-                          {markdownSource.length ? (
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={markdownComponents}
-                              className="markdown space-y-4 text-[14px] leading-relaxed tracking-[-0.008em]"
-                            >
-                              {markdownSource}
-                            </ReactMarkdown>
-                          ) : null}
-                          {suggestions.length ? (
-                            <Box className="mt-4 flex flex-col gap-2">
-                              {suggestions.map((suggestion, index) => {
-                                const key = `${message.id}-suggestion-${index}`;
-                                const alreadyUsed =
-                                  usedSuggestionKeysRef.current.has(key);
-                                const isLatestAssistant =
-                                  message.id === lastAssistantMessageId;
-                                const isDisabled =
-                                  alreadyUsed || !isLatestAssistant;
-                                return (
-                                  <button
-                                    key={key}
-                                    type="button"
-                                    onClick={() => {
-                                      if (isDisabled) return;
-                                      usedSuggestionKeysRef.current.add(key);
-                                      setError(null);
-                                      sendMessage(suggestion);
-                                    }}
-                                    disabled={isDisabled || isTyping}
-                                    className="text-start rounded-[8px] border-none focus-visible:border-none px-[16px] py-[10px] text-[14px] bg-[#eef3ff] text-[#1b1f26] transition hover:bg-[#5377E1] hover:text-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#eef3ff] disabled:hover:text-[#1b1f26]"
-                                  >
-                                    {suggestion}
-                                  </button>
-                                );
-                              })}
-                            </Box>
-                          ) : null}
-                        </>
-                      );
-                    })()}
-                  </Box>
-                ) : (
-                  (() => {
-                    const isSending =
-                      index + 1 === messages.length &&
-                      messages.at(index)?.role === "user" &&
-                      !hasSent;
-                    return (
-                      <Box
-                        className={`max-w-[72%] rounded-[18px] ${isSending ? "bg-[#494c51]" : "bg-[#1b1f26]"} py-[8px] px-[16px] text-[14px] leading-[1.5] text-white `}
-                      >
-                        {message.content}
-                      </Box>
-                    );
-                  })()
-                )}
-              </Box>
-            ))}
-            {isTyping && (
-              <Box className="flex justify-start">
-                <Box className="flex items-center gap-4 rounded-[26px] ">
-                  {/* <span className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#f3ebff]">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#d2c0ff] border-t-[#8e70da] animate-spin" />
-                    </span> */}
-                  <Box className="flex gap-2">
-                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26]" />
-                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.18s]" />
-                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.36s]" />
-                  </Box>
-                </Box>
+                <section className="space-y-3 rounded-3xl border border-transparent bg-white/80 p-7 backdrop-blur-md ">
+                  {displayedSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => handleSuggestion(suggestion)}
+                      className="flex w-full items-center justify-between rounded-[22px] px-5 py-4 text-left transition hover:bg-[#f2f2f2]"
+                    >
+                      <span className="text-[16px] font-medium tracking-[-0.01em]">
+                        {suggestion}
+                      </span>
+                      <ArrowUpRight className="h-7 w-7 text-[#aaa]" />
+                    </button>
+                  ))}
+                </section>
               </Box>
             )}
-          </section>
-        </Box>
-      </Box>
-      <footer className="sticky bottom-0 z-[999] flex w-full justify-center pt-8 px-4">
-        <Box className="w-full max-w-[80rem] rounded-t-[10px]  bg-white/95 px-6 shadow-[0_32px_70px_-38px_rgba(70,47,128,0.55)] backdrop-blur">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <Box className="relative gap-4">
-              <Box className="flex-1 ">
-                <Box className="relative">
-                  <textarea
-                    rows={1}
-                    placeholder="Ask anything"
-                    value={inputValue}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      if (value.length <= MAX_INPUT_LENGTH) {
-                        setInputValue(value);
-                        if (error) setError(null);
-                        adjustTextareaHeight();
-                      }
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        if (canSubmit) {
-                          event.preventDefault();
-                          void sendMessage(inputValue);
-                        }
-                      }
-                    }}
-                    ref={textareaRef}
-                    className="resize-none rounded-[25px] py-[10px] pr-[40px] pl-[12px] bg-[#f2f2f2] leading-relaxed text-[#36255a] focus-visible:border-none"
-                    maxLength={MAX_INPUT_LENGTH}
-                    aria-label="Message input"
-                    style={{ minHeight: "48px", maxHeight: "240px" }}
-                  />
 
-                  <button
-                    type="submit"
-                    disabled={!canSubmit}
-                    className="absolute right-[7px] bottom-[8.5px] flex h-12 w-12 items-center justify-center rounded-[18px] disabled:bg-[#dcdcdd] disabled:text-[#888]  bg-[#1b1f26] text-white shadow-lg shadow-[#f882b0]/35 transition hover:brightness-110 disabled:cursor-not-allowed disabled:from-[#f2b5c9] disabled:to-[#f2b5c9]"
-                  >
-                    <ArrowUpRight className="h-6 w-6 " />
-                    <span className="sr-only">Send message</span>
-                  </button>
+            <section className="mt-12 space-y-10">
+              {messages.map((message, index) => (
+                <Box
+                  id={`message-${message.id}`}
+                  key={message.id}
+                  className={`flex ${
+                    message.role === "user" ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  {message.role === "assistant" ? (
+                    <Box className="w-full ">
+                      {message.products?.length ? (
+                        <Box className="mt-6 flex items-stretch gap-[1rem] overflow-auto mb-[20px]">
+                          {message.products.map((product, index) => {
+                            const productKey = `${message.id}-${String(
+                              product._id ?? product.slug ?? index
+                            )}`;
+                            return (
+                              <Box
+                                key={productKey}
+                                className="min-w-[90%] md:min-w-[75%] flex"
+                              >
+                                <ProductCard
+                                  onProductToPreview={handleProductToPreview}
+                                  inChat={true}
+                                  product={product}
+                                />
+                              </Box>
+                            );
+                          })}
+                        </Box>
+                      ) : null}
+
+                      {(() => {
+                        const { body, suggestions } = extractSuggestedActions(
+                          message.content
+                        );
+                        const markdownSource = body;
+                        return (
+                          <>
+                            {markdownSource.length ? (
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={markdownComponents}
+                                className="markdown space-y-4 text-[14px] leading-relaxed tracking-[-0.008em]"
+                              >
+                                {markdownSource}
+                              </ReactMarkdown>
+                            ) : null}
+                            {suggestions.length ? (
+                              <Box className="mt-4 flex flex-col gap-2">
+                                {suggestions.map((suggestion, index) => {
+                                  const key = `${message.id}-suggestion-${index}`;
+                                  const alreadyUsed =
+                                    usedSuggestionKeysRef.current.has(key);
+                                  const isLatestAssistant =
+                                    message.id === lastAssistantMessageId;
+                                  const isDisabled =
+                                    alreadyUsed || !isLatestAssistant;
+                                  return (
+                                    <button
+                                      key={key}
+                                      type="button"
+                                      onClick={() => {
+                                        if (isDisabled) return;
+                                        usedSuggestionKeysRef.current.add(key);
+                                        setError(null);
+                                        sendMessage(suggestion);
+                                      }}
+                                      disabled={isDisabled || isTyping}
+                                      className="text-start rounded-[8px] border-none focus-visible:border-none px-[16px] py-[10px] text-[14px] bg-[#eef3ff] text-[#1b1f26] transition hover:bg-[#5377E1] hover:text-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#eef3ff] disabled:hover:text-[#1b1f26]"
+                                    >
+                                      {suggestion}
+                                    </button>
+                                  );
+                                })}
+                              </Box>
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                    </Box>
+                  ) : (
+                    (() => {
+                      const isSending =
+                        index + 1 === messages.length &&
+                        messages.at(index)?.role === "user" &&
+                        !hasSent;
+                      return (
+                        <Box
+                          className={`max-w-[72%] rounded-[18px] ${isSending ? "bg-[#494c51]" : "bg-[#1b1f26]"} py-[8px] px-[16px] text-[14px] leading-[1.5] text-white `}
+                        >
+                          {message.content}
+                        </Box>
+                      );
+                    })()
+                  )}
                 </Box>
+              ))}
+              {isTyping && (
+                <Box className="flex justify-start">
+                  <Box className="flex items-center gap-4 rounded-[26px] ">
+                    {/* <span className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#f3ebff]">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#d2c0ff] border-t-[#8e70da] animate-spin" />
+                    </span> */}
+                    <Box className="flex gap-2">
+                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26]" />
+                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.18s]" />
+                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.36s]" />
+                    </Box>
+                  </Box>
+                </Box>
+              )}
+            </section>
+          </Box>
+        </Box>
+        <footer className="sticky bottom-0 z-[999] flex w-full justify-center pt-8 px-4 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0,rgba(255,255,255,1)_1rem,rgba(255,255,255,1))]">
+          <Box className="w-full max-w-[80rem] rounded-t-[10px]  bg-white/95 px-6 shadow-[0_32px_70px_-38px_rgba(70,47,128,0.55)] backdrop-blur">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <Box className="relative gap-4">
+                <Box className="flex-1 ">
+                  <Box className="relative">
+                    <textarea
+                      rows={1}
+                      placeholder="Ask anything"
+                      value={inputValue}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (value.length <= MAX_INPUT_LENGTH) {
+                          setInputValue(value);
+                          if (error) setError(null);
+                          adjustTextareaHeight();
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          if (canSubmit) {
+                            event.preventDefault();
+                            void sendMessage(inputValue);
+                          }
+                        }
+                      }}
+                      ref={textareaRef}
+                      className="resize-none rounded-[25px] py-[10px] pr-[40px] pl-[12px] bg-[#f2f2f2] leading-relaxed text-[#36255a] focus-visible:border-none"
+                      maxLength={MAX_INPUT_LENGTH}
+                      aria-label="Message input"
+                      style={{ minHeight: "48px", maxHeight: "240px" }}
+                    />
 
-                <Box className="mt-2 flex items-center justify-between text-[12px] text-[#888]">
-                  <span>
-                    {inputValue.trim().length} / {MAX_INPUT_LENGTH}
-                  </span>
-                  {error && <span className="text-[#ff3e73]">{error}</span>}
+                    <button
+                      type="submit"
+                      disabled={!canSubmit}
+                      className="absolute right-[7px] bottom-[8.5px] flex h-12 w-12 items-center justify-center rounded-[18px] disabled:bg-[#dcdcdd] disabled:text-[#888]  bg-[#1b1f26] text-white shadow-lg shadow-[#f882b0]/35 transition hover:brightness-110 disabled:cursor-not-allowed disabled:from-[#f2b5c9] disabled:to-[#f2b5c9]"
+                    >
+                      <ArrowUpRight className="h-6 w-6 " />
+                      <span className="sr-only">Send message</span>
+                    </button>
+                  </Box>
+
+                  <Box className="mt-2 flex items-center justify-between text-[12px] text-[#888]">
+                    <span>
+                      {inputValue.trim().length} / {MAX_INPUT_LENGTH}
+                    </span>
+                    {error && <span className="text-[#ff3e73]">{error}</span>}
+                  </Box>
                 </Box>
               </Box>
-            </Box>
-          </form>
-        </Box>
-      </footer>
+            </form>
+          </Box>
+        </footer>
 
-      {showScrollDownButton ? (
-        <Box
-          onClick={() => {
-            const container = conversationRef.current;
-            if (!container) return;
-            container.scrollTo({
-              top: container.scrollHeight,
-              behavior: "smooth",
-            });
-            setShowScrollDownButton(false);
-          }}
-          className="fixed bottom-[90px] left-1/2 z-[1000] -translate-x-1/2 bg-[#1b1f26] h-[42px] w-[42px] flex items-center justify-center rounded-full shadow-lg shadow-[#f882b0]/35 cursor-pointer transition hover:brightness-110"
+        {showScrollDownButton ? (
+          <Box
+            onClick={() => {
+              const container = conversationRef.current;
+              if (!container) return;
+              container.scrollTo({
+                top: container.scrollHeight,
+                behavior: "smooth",
+              });
+              setShowScrollDownButton(false);
+            }}
+            className="fixed bottom-[90px] left-1/2 z-[1000] -translate-x-1/2 bg-[#1b1f26] h-[42px] w-[42px] flex items-center justify-center rounded-full shadow-lg shadow-[#f882b0]/35 cursor-pointer transition hover:brightness-110"
+          >
+            <IoIosArrowDown className="text-[#fff] w-[22px] h-[22px]" />
+          </Box>
+        ) : null}
+
+        <ModalWindow
+          position="center"
+          name="product-detail"
+          bgClassName="z-[9999] px-[2rem] h-[calc(100vh-75px)] overflow-auto mt-auto top-auto bottom-0 !items-start"
+          className="h-[calc(100vh-75px)] max-w-[77rem] w-full overflow-auto relative"
+          animate={false}
         >
-          <IoIosArrowDown className="text-[#fff] w-[22px] h-[22px]" />
-        </Box>
-      ) : null}
-    </main>
+          <Box className=" w-full mx-auto h-full pt-[20px]">
+            <Box className="flex flex-col h-full">
+              <p className=" text-[1.4rem] pb-[20px]">&larr; Back</p>
+              <Box className="bg-[#F4F4F4] w-[95%] mx-auto aspect-[2.1/1] rounded-[20px] overflow-hidden">
+                {product?.images && product.images.length > 0 && (
+                  <Image
+                    src={product.images[0]}
+                    alt={product.name || "Product image"}
+                    width={500}
+                    height={500}
+                    className="h-full w-full object-contain overflow-hidden"
+                  />
+                )}
+              </Box>
+              <Box className=" rounded-t-[20px]">
+                <h2 className="text-[#1b1f26] text-[20px] font-medium my-[16px] ">
+                  {product?.name}
+                </h2>
+                <p className="text-[20px] font-medium leading-[24px] mb-[24px]">
+                  {formatPrice(product?.sizes?.[0]?.price)}
+                </p>
+                <article className="gap-[16px] flex flex-col">
+                  <p className="text-[14px]">{product?.description}</p>
+                  <ul className="gap-[16px] flex flex-col text-[14px] list-disc ml-5">
+                    <li>2% BHA unclogs large pores & smooths texture</li>
+                    <li>15% vitamin C improves radiance & tone</li>
+                    <li>1% retinol visibly reduces wrinkles & roughness</li>
+                  </ul>
+                </article>
+              </Box>
+
+              <footer className="p-[16px] bg-[linear-gradient(180deg,rgba(255,255,255,0)_0,rgba(255,255,255,1)_1rem,rgba(255,255,255,1))] flex gap-[4px] bottom-0 left-0 absolute w-full ">
+                <button className="flex items-center justify-center bg-[#1b1f260f] p-[10px] rounded-[20px] w-[15%]">
+                  <svg
+                    className="w-[20px] h-[20px]"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M19.5 13.57 12 21l-7.5-7.43A5 5 0 1 1 12 7.01a5 5 0 1 1 7.5 6.57"
+                      stroke="currentColor"
+                      stroke-width="1.75"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    ></path>
+                  </svg>
+                </button>
+                <button className="w-[95%] bg-[#1454d4] rounded-[20px] p-[10px] text-[14px] flex items-center justify-center text-[#fff]">
+                  Add to Cart
+                </button>
+              </footer>
+            </Box>
+          </Box>
+        </ModalWindow>
+      </main>
+    </Modal>
   );
 }
 

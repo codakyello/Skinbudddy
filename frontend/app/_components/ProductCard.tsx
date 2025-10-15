@@ -26,7 +26,7 @@ export default function ProductCard({
   bgwhite,
   sectionName,
   inChat = false,
-  handleProductToPreview,
+  onProductToPreview,
 }: {
   product: Product;
   className?: string;
@@ -34,7 +34,7 @@ export default function ProductCard({
   sectionName?: string;
   bgwhite?: boolean;
   inChat?: boolean;
-  handleProductToPreview?: (product: Product) => void;
+  onProductToPreview?: (product: Product) => void;
 }) {
   const addToCart = useMutation(api.cart.createCart);
   const addToWishList = useMutation(api.wishlist.createWishList);
@@ -131,8 +131,10 @@ export default function ProductCard({
             <h6 className="text-[12px] capitalize text-[#1b1f26b3]">
               {(product.categories?.at(0) as Category)?.name}
             </h6>
-            <ModalOpen name="product-detail">
-              {/* <div>ds</div> */}
+            <ModalOpen
+              handler={() => onProductToPreview?.(product)}
+              name="product-detail"
+            >
               <button className="capitalize text-start leading-[20px]">
                 {product.name}
               </button>
@@ -198,7 +200,7 @@ export default function ProductCard({
         {/* ModalOpen with smooth hover animation */}
         <ModalOpen
           name={sectionName || ""}
-          handler={() => handleProductToPreview?.(product)}
+          handler={() => onProductToPreview?.(product)}
         >
           <button className="absolute bottom-0 left-0 w-full opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all duration-300 bg-black text-white text-[1.2rem] px-[1.6rem] py-[1.2rem] flex items-center justify-center gap-[0.8rem] border-t border-gray-900">
             <FiEye className="w-[1.4rem] h-[1.4rem]" />

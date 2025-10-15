@@ -1090,23 +1090,43 @@ async function searchProductsByQueryImpl(
   }
 
   if (normalizedIngredientGroups.length) {
-    products = products.filter((product) => {
-      const productIngredients = Array.isArray(product.ingredients)
-        ? product.ingredients.map((ingredient: string) =>
-            normalizeIngredient(ingredient)
-          )
-        : [];
+    const scoredProducts = products
+      .map((product, index) => {
+        const productIngredients = Array.isArray(product.ingredients)
+          ? product.ingredients.map((ingredient: string) =>
+              normalizeIngredient(ingredient)
+            )
+          : [];
 
-      if (!productIngredients.length) return false;
+        if (!productIngredients.length) {
+          return { product, matchedGroups: 0, index };
+        }
 
-      return normalizedIngredientGroups.every((group) =>
-        group.some((needle) =>
-          productIngredients.some(
-            (ingredient) => ingredient === needle || ingredient.includes(needle)
-          )
-        )
-      );
-    });
+        let matchedGroups = 0;
+        for (const group of normalizedIngredientGroups) {
+          const matchesGroup = group.some((needle) =>
+            productIngredients.some(
+              (ingredient) =>
+                ingredient === needle || ingredient.includes(needle)
+            )
+          );
+          if (matchesGroup) {
+            matchedGroups += 1;
+          }
+        }
+
+        return { product, matchedGroups, index };
+      })
+      .filter(({ matchedGroups }) => matchedGroups > 0);
+
+    products = scoredProducts
+      .sort((a, b) => {
+        if (b.matchedGroups !== a.matchedGroups) {
+          return b.matchedGroups - a.matchedGroups;
+        }
+        return a.index - b.index;
+      })
+      .map(({ product }) => product);
   }
 
   if (typeof hasAlcohol === "boolean") {

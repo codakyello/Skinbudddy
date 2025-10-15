@@ -9,6 +9,7 @@ export default function ModalWrapper({
   listenCapturing = true,
   children,
   className,
+  animate = true,
 }: {
   onClose?: () => void;
   onMouseEnter?: () => void;
@@ -16,6 +17,7 @@ export default function ModalWrapper({
   listenCapturing?: boolean;
   position?: "center" | "top" | "bottom" | "left" | "right";
   className?: string;
+  animate: boolean;
   children: React.ReactNode;
 }) {
   const ref = useOutsideClick<HTMLDivElement>(
@@ -29,11 +31,11 @@ export default function ModalWrapper({
       onMouseLeave={onMouseLeave}
       ref={ref}
       className={`${className} bg-white
-          ${position === "center" ? "center-modal" : ""}
-          ${position === "top" ? "top-modal" : ""}
-          ${position === "bottom" ? "bottom-modal" : ""}
-          ${position === "left" ? "left-modal" : ""}
-          ${position === "right" ? "right-modal" : ""} `}
+          ${position === "center" && animate ? "center-modal" : ""}
+          ${position === "top" && animate ? "top-modal" : ""}
+          ${position === "bottom" && animate ? "bottom-modal" : ""}
+          ${position === "left" && animate ? "left-modal" : ""}
+          ${position === "right" && animate ? "right-modal" : ""} `}
     >
       {children}
     </Box>

@@ -132,6 +132,7 @@ export function ModalWindow({
   listenCapturing = false,
   openType = "click",
   overlayColor,
+  animate = true,
 }: {
   children: ReactElement;
   className?: string;
@@ -141,6 +142,7 @@ export function ModalWindow({
   openType?: "click" | "hover";
   listenCapturing?: boolean;
   overlayColor?: string;
+  animate: boolean;
 }) {
   const { close, isOpen, setHovering } = useModal();
 
@@ -190,6 +192,7 @@ export function ModalWindow({
         onClose={close}
         position={position}
         listenCapturing={listenCapturing}
+        animate={animate}
         onMouseLeave={() => {
           if (openType !== "hover") return;
           setHovering(false);
