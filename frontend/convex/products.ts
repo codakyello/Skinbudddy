@@ -949,8 +949,12 @@ async function searchProductsByQueryImpl(
   const ingredientQueryGroupsRaw = ingredientQueryRaw.map((value) =>
     value
       .split("||")
-      .map((part) => part.trim())
-      .filter((part) => part.length > 0)
+      .flatMap((part) =>
+        part
+          .split(/[,;]/)
+          .map((chunk) => chunk.trim())
+          .filter((chunk) => chunk.length > 0)
+      )
   );
 
   const implicitIngredientGroups = Array.from(implicitIngredients).map(
