@@ -1,39 +1,30 @@
-# Conversation Context Pipeline Overview
+## Routine/Product Separation
 
-## 1. Session Lifecycle
-- **Client sends** `POST /api/chat` with `{ message, sessionId? }`.
-- **API** checks for a `sessionId`. If missing, it calls `api.conversation.createSession` to create a Convex record and returns the new id.
-- Each browser refresh (or explicit reset) means the client omits the id, creating a fresh session so the backend and UI stay aligned.
+- [x] **Normalization Guard**
+  - Exclude routine `recommendations` from the shared product-normalization path.
+- [x] **Payload Cleanup**
+  - Suppress generic `products` when a routine is present so frontend sees only one rendering path.
+- [x] **Validation**
+  - Run lint/type-check to confirm the adjustment. (Lint passes; Modal hook warning persists.)
 
-## 2. Persisting Messages
-- The API appends the user’s message via `api.conversation.appendMessage`.
-- The mutation stores message metadata (role, tokens, tier) and returns a flag indicating whether summaries should be recomputed.
-- When `needsSummary` is true, the API triggers `api.conversation.recomputeSummaries` (an action) to update mid-range and historical summaries.
+## Assistant Reply Headlines
 
-## 3. Building Context for the LLM
-- The API requests `api.conversation.getContext`, which returns:
-  - Rolling historical summary (if any)
-  - Mid-range summary (recent past)
-  - Pinned messages
-  - Semantically relevant older snippets (based on Jaccard similarity)
-  - Recent full messages (last N)
-- The query also enforces the configured token budget by trimming least-recent messages if needed.
+- [x] **Summary Metadata**
+  - Add optional `summary` object (headline, subheading, icon) to model responses, populated only when structured data is available.
+- [x] **Streaming Payload**
+  - Include `summary` in `/api/chat` SSE payloads.
+- [x] **Frontend Rendering**
+  - Render the summary block when present; otherwise fall back to current layout.
+- [x] **Validation**
+  - Run lint/type-check after the update.
 
-## 4. Calling the Model
-- `callOpenAI` now accepts a preassembled message array (system prompt + context).
-- It still manages MCP tool calls, looping until the model produces a textual answer.
+## Routine Alternatives
 
-## 5. Storing Assistant Replies
-- After getting the reply, the API appends it via `api.conversation.appendMessage`.
-- If the assistant message triggers `needsSummary`, the API runs `recomputeSummaries` again.
-- The response payload includes `{ sessionId, reply, context }` so the client can display the answer and store the session id.
-
-## 6. Supporting Utilities
-- `context/config.ts` centralises tunable parameters (token budget, recent window, summary intervals, semantic thresholds).
-- `convex/_utils/token.ts` offers a lightweight token estimator to avoid extra dependencies (swap in tiktoken later if desired).
-- Internal Convex helpers `conversation.getSummarySource` and `conversation.applySummaries` split the summarisation pipeline between the action and mutation layers.
-
-## 7. Frontend Responsibilities
-- Persist the returned `sessionId` in client state so subsequent messages run in the same session.
-- Drop the id (or call `resetSession`) to start over.
-- Update UI rendering to consume `reply` and optionally inspect the returned context (e.g., for debugging or future features).
+- [x] **Server Options**
+  - Return primary + alternate product options per step from `convex/products.recommend`.
+- [x] **Tool Sanitization**
+  - Preserve alternatives through `recommendRoutine` handler and API sanitization.
+- [x] **UI Hookup**
+  - Surface alternates alongside the main product card in routine replies.
+- [x] **Validation**
+  - Type-check end-to-end after schema/type updates.

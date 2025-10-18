@@ -1,6 +1,5 @@
 import OpenAI from "openai";
 import { DEFAULT_SYSTEM_PROMPT } from "../utils";
-import { Id } from "@/convex/_generated/dataModel";
 import { toolSpecs, getToolByName } from "../tools/localTools";
 import { z } from "zod";
 
@@ -40,8 +39,15 @@ const coerceId = (value: unknown): string | undefined => {
   return value != null ? String(value) : undefined;
 };
 
+const toTitleCase = (input: string): string =>
+  input
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+
 const normalizeProductsFromOutputs = (outputs: ToolOutput[]): unknown[] => {
-  const candidateKeys = ["products", "results", "items", "recommendations"];
+  const candidateKeys = ["products", "results", "items"];
   const byId = new Map<string, unknown>();
 
   outputs.forEach((output) => {
@@ -50,7 +56,9 @@ const normalizeProductsFromOutputs = (outputs: ToolOutput[]): unknown[] => {
     const record = result as UnknownRecord;
 
     candidateKeys.forEach((key) => {
+      // recommendation array, product array etc
       const value = record[key];
+
       if (!Array.isArray(value)) return;
 
       value.forEach((entry, index) => {
@@ -78,7 +86,41 @@ const normalizeProductsFromOutputs = (outputs: ToolOutput[]): unknown[] => {
   return Array.from(byId.values());
 };
 
-type ProductCandidate = Record<string, any>;
+type ProductCandidate = Record<string, unknown>;
+
+type SizeSummary = {
+  label?: string;
+  price?: number;
+  currency?: string;
+};
+
+type RoutineProductOption = {
+  productId?: string;
+  description?: string;
+  product: ProductCandidate;
+};
+
+type RoutineStepCandidate = {
+  step: number;
+  category?: string;
+  title?: string;
+  description?: string;
+  productId?: string;
+  product: ProductCandidate;
+  alternatives?: RoutineProductOption[];
+};
+
+type RoutineSelection = {
+  steps: RoutineStepCandidate[];
+  notes?: string;
+  recommendations?: unknown[];
+};
+
+type ReplySummary = {
+  icon?: string;
+  headline: string;
+  subheading?: string;
+};
 
 const selectProductsParameters = {
   type: "object",
@@ -162,38 +204,46 @@ const summarizeCandidates = (
     const key = deriveCandidateKey(product, index);
     keyMap.set(key, product);
 
-    const sizes = Array.isArray(product.sizes)
+    const sizes: SizeSummary[] = Array.isArray(product.sizes)
       ? product.sizes
           .slice(0, 5)
-          .map((size: any) => {
-            if (!size || typeof size !== "object") return null;
+          .map((sizeValue) => {
+            if (!sizeValue || typeof sizeValue !== "object") return null;
+            const sizeRecord = sizeValue as Record<string, unknown>;
             const label =
-              typeof size.name === "string"
-                ? size.name
-                : [size.size, size.unit]
-                    .map((value: unknown) =>
+              typeof sizeRecord.name === "string"
+                ? sizeRecord.name
+                : [sizeRecord.size, sizeRecord.unit]
+                    .map((value) =>
                       typeof value === "number"
                         ? String(value)
                         : typeof value === "string"
                           ? value
                           : ""
                     )
-                    .filter(Boolean)
+                    .filter((part) => part.length > 0)
                     .join(" ");
+
+            const priceValue =
+              typeof sizeRecord.price === "number"
+                ? sizeRecord.price
+                : undefined;
+            const currencyValue =
+              typeof sizeRecord.currency === "string"
+                ? sizeRecord.currency
+                : undefined;
 
             return {
               label: label || undefined,
-              price:
-                typeof size.price === "number" ? Number(size.price) : undefined,
-              currency:
-                typeof size.currency === "string" ? size.currency : undefined,
-            };
+              price: priceValue,
+              currency: currencyValue,
+            } as SizeSummary;
           })
-          .filter(Boolean)
+          .filter((size): size is SizeSummary => size !== null)
       : [];
 
     const prices = sizes
-      .map((size: any) => size?.price)
+      .map((size) => size.price)
       .filter((price: unknown): price is number => typeof price === "number");
     const minPrice = prices.length ? Math.min(...prices) : undefined;
     const maxPrice = prices.length ? Math.max(...prices) : undefined;
@@ -361,7 +411,6 @@ async function refineProductSelection({
 export async function callOpenAI({
   messages,
   systemPrompt,
-  sessionId,
   model = "gpt-4o-mini",
   temperature = 1,
   useTools = true,
@@ -370,7 +419,6 @@ export async function callOpenAI({
 }: {
   messages: ChatMessage[];
   systemPrompt: string;
-  sessionId: Id<"conversationSessions">;
   model?: string;
   temperature?: number;
   useTools?: boolean;
@@ -380,6 +428,9 @@ export async function callOpenAI({
   reply: string;
   toolOutputs?: ToolOutput[];
   products?: unknown[];
+  resultType?: "routine";
+  routine?: RoutineSelection;
+  summary?: ReplySummary;
   updatedContext?: object;
 }> {
   const tools = toolSpecs;
@@ -392,12 +443,6 @@ export async function callOpenAI({
     const mappedRole = msg.role === "tool" ? "assistant" : msg.role;
     chatMessages.push({ role: mappedRole, content: msg.content });
   }
-
-  chatMessages.push({
-    role: "developer",
-    content:
-      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Each suggestion must be phrased as a natural, conversational message the user would actually send to SkinBuddy—written in first or second person, starting with natural words like 'What', 'Tell me', 'How', 'Can you', 'I', etc. (e.g., 'What serums would work best for my skin type?' or 'How should I layer these products?'). Always provide three suggestions.",
-  });
 
   chatMessages.push({
     role: "developer",
@@ -500,9 +545,13 @@ export async function callOpenAI({
   const toolOutputs: ToolOutput[] = [];
 
   let finalContent = "";
+  let lastRoutine: RoutineSelection | null = null;
+  let lastResultType: "routine" | null = null;
+  let lastSummary: ReplySummary | null = null;
 
   console.log("calling openAi");
 
+  // main
   while (true) {
     const { content, toolCalls } = await streamCompletion(
       rounds >= maxToolRounds
@@ -539,12 +588,9 @@ export async function callOpenAI({
 
           const validatedArgs = toolDef.schema.parse(rawArgs);
 
-          // so here, when the llm needs to know about a product it calls this
-          // for nameQuery, when the name is identical the same we only send that one out
-          // when not identical we display options
           const result = await toolDef.handler(validatedArgs);
 
-          console.log(result, "This is the result of the tool call");
+          // console.log(result, "This is the result of the tool call");
 
           // we are building tool outputs for multiple tool calling iteration
           toolOutputs.push({
@@ -552,6 +598,8 @@ export async function callOpenAI({
             arguments: validatedArgs,
             result: result ?? null,
           });
+
+          // result: {recommendations: []}
 
           // pushing the tool reslult here
           chatMessages.push({
@@ -575,15 +623,237 @@ export async function callOpenAI({
         }
       }
 
+      // All of the toolOutputs when no more tool calls
+      // console.log(toolOutputs, "This is the toolOutput");
+
+      // our frontend can handle one routine at a time
+      lastSummary = null;
+
+      // latest routine output (just one)
+      const latestRoutineOutput = [...toolOutputs]
+        .slice()
+        .reverse()
+        .find(
+          (output) =>
+            output.name === "recommendRoutine" &&
+            output?.result &&
+            typeof output.result === "object" &&
+            Array.isArray((output.result as Record<string, unknown>).steps)
+        );
+
+      if (latestRoutineOutput) {
+        const routineResult = latestRoutineOutput.result as Record<
+          string,
+          unknown
+        >;
+        const rawSteps = Array.isArray(routineResult.steps)
+          ? routineResult.steps
+          : [];
+
+        const normalizedSteps = rawSteps
+          .map((entry, index) => {
+            if (!entry || typeof entry !== "object") return null;
+            const record = entry as Record<string, unknown>;
+
+            const product =
+              record.product &&
+              typeof record.product === "object" &&
+              record.product !== null
+                ? (record.product as ProductCandidate)
+                : undefined;
+
+            if (!product) return null;
+
+            const stepNumber =
+              typeof record.step === "number" ? record.step : index + 1;
+            const category =
+              typeof record.category === "string" ? record.category : undefined;
+            const title =
+              typeof record.title === "string" ? record.title : undefined;
+            const description =
+              typeof record.description === "string"
+                ? record.description
+                : undefined;
+            const productId =
+              typeof record.productId === "string"
+                ? record.productId
+                : undefined;
+
+            const alternatives =
+              Array.isArray(record.alternatives) && record.alternatives.length
+                ? (record.alternatives as Array<Record<string, unknown>>)
+                    .map((entry) => {
+                      if (!entry || typeof entry !== "object") return null;
+                      const optionRecord = entry as Record<string, unknown>;
+                      const optionProduct =
+                        optionRecord.product &&
+                        typeof optionRecord.product === "object" &&
+                        optionRecord.product !== null
+                          ? (optionRecord.product as ProductCandidate)
+                          : undefined;
+                      if (!optionProduct) return null;
+                      const optionId =
+                        typeof optionRecord.productId === "string"
+                          ? optionRecord.productId
+                          : undefined;
+                      const optionDescription =
+                        typeof optionRecord.description === "string"
+                          ? optionRecord.description
+                          : undefined;
+                      return {
+                        productId: optionId,
+                        description: optionDescription,
+                        product: optionProduct,
+                      } as RoutineProductOption;
+                    })
+                    .filter(
+                      (entry): entry is RoutineProductOption => entry !== null
+                    )
+                : undefined;
+
+            return {
+              step: stepNumber,
+              category,
+              title,
+              description,
+              productId,
+              product,
+              alternatives,
+            } as RoutineStepCandidate;
+          })
+          .filter((entry): entry is RoutineStepCandidate => entry !== null)
+          .sort((a, b) => (a?.step ?? 0) - (b?.step ?? 0));
+
+        if (normalizedSteps.length) {
+          lastRoutine = {
+            steps: normalizedSteps,
+            notes:
+              typeof routineResult.notes === "string"
+                ? routineResult.notes
+                : undefined,
+            recommendations: Array.isArray(routineResult.recommendations)
+              ? routineResult.recommendations
+              : undefined,
+          };
+          lastResultType = "routine";
+          lastProductSelection = [];
+          const routineArgs =
+            (latestRoutineOutput.arguments as {
+              skinType?: string;
+              skinConcerns?: string[];
+            }) ?? {};
+          const skinTypeRaw =
+            typeof routineArgs.skinType === "string"
+              ? routineArgs.skinType
+              : undefined;
+          const concernsRaw = Array.isArray(routineArgs.skinConcerns)
+            ? (routineArgs.skinConcerns ?? [])
+            : [];
+          const skinTypePretty = skinTypeRaw
+            ? toTitleCase(skinTypeRaw)
+            : undefined;
+          const concernsPretty = concernsRaw
+            .map((concern) => toTitleCase(concern))
+            .filter(Boolean);
+          const concernPhrase = concernsPretty.length
+            ? concernsPretty.join(", ")
+            : undefined;
+          const routineHeadlineParts = [
+            skinTypePretty ? `${skinTypePretty} Skin` : null,
+            concernPhrase ? `+ ${concernPhrase}` : null,
+          ].filter(Boolean);
+          const routineHeadline =
+            routineHeadlineParts.length > 0
+              ? `Routine for ${routineHeadlineParts.join(" ")}`
+              : skinTypePretty
+                ? `Routine for ${skinTypePretty} Skin`
+                : "Personalized Routine";
+          const stepCount = normalizedSteps.length;
+          const stepLabel = stepCount === 1 ? "1 step" : `${stepCount} steps`;
+          const summaryDetails: string[] = [stepLabel];
+          if (skinTypePretty) {
+            summaryDetails.push(`skin type: ${skinTypePretty.toLowerCase()}`);
+          }
+          if (concernsPretty.length) {
+            summaryDetails.push(
+              `concerns: ${concernsPretty
+                .map((item) => item.toLowerCase())
+                .join(", ")}`
+            );
+          }
+          lastSummary = {
+            icon: "🧪",
+            headline: routineHeadline,
+            subheading: `Tailored ${summaryDetails.join(" · ")}`,
+          };
+
+          const routineSummary = normalizedSteps
+            .map((step) => {
+              if (step === null || step === undefined) return null; // Added explicit null check for step
+              const label =
+                (typeof step.title === "string" && step.title.length
+                  ? step.title
+                  : step.category) ??
+                (step?.step !== undefined && step?.step !== null
+                  ? `Step ${step.step}`
+                  : "");
+              const productName =
+                typeof step.product?.name === "string"
+                  ? step.product.name
+                  : typeof step.product?.slug === "string"
+                    ? step.product.slug
+                    : undefined;
+              return `${
+                step?.step !== undefined && step?.step !== null
+                  ? `Step ${step.step}`
+                  : ""
+              }: ${label}${productName ? ` · ${productName}` : ""}`;
+            })
+            .filter((entry): entry is string => entry !== null) // Filter out nulls after mapping
+            .slice(0, 5)
+            .join(" | ");
+
+          if (routineSummary.length) {
+            chatMessages.push({
+              role: "developer",
+              content:
+                "Routine outline (do not enumerate verbatim): " +
+                routineSummary,
+            });
+          }
+
+          if (lastRoutine?.notes) {
+            chatMessages.push({
+              role: "developer",
+              content:
+                "Routine notes (context only, paraphrase if helpful): " +
+                lastRoutine.notes,
+            });
+          }
+
+          chatMessages.push({
+            role: "developer",
+            content:
+              "Explain how this full routine supports the user's skin goals. Reference the routine collectively (Step 1 cleanser, Step 2 serum, etc.) in a concise paragraph, and invite follow-up like swapping a step or learning usage tips.",
+          });
+
+          continue;
+        }
+      }
+
       const productsArray =
         toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
 
+      // console.log(productsArray, "This is the product array");
+
+      // routine object {category: "", description: "", product: ""}
       if (productsArray.length) {
         let refinedProductsResult: {
           products: ProductCandidate[];
           notes?: string;
         } | null = null;
 
+        // pass in the product to llm to refine
         try {
           refinedProductsResult = await refineProductSelection({
             candidates: productsArray as ProductCandidate[],
@@ -599,6 +869,125 @@ export async function callOpenAI({
           : (productsArray as ProductCandidate[]);
 
         lastProductSelection = selectedProducts;
+        if (selectedProducts.length) {
+          const latestSearchOutput = [...toolOutputs]
+            .slice()
+            .reverse()
+            .find((output) => output.name === "searchProductsByQuery");
+          const searchArgs =
+            (latestSearchOutput?.arguments as {
+              categoryQuery?: string;
+              nameQuery?: string;
+              brandQuery?: string;
+              skinTypes?: string[];
+              skinConcerns?: string[];
+              ingredientQueries?: string[];
+              hasAlcohol?: boolean;
+              hasFragrance?: boolean;
+            }) ?? {};
+          const category =
+            typeof searchArgs.categoryQuery === "string"
+              ? searchArgs.categoryQuery
+              : undefined;
+          const nameQuery =
+            typeof searchArgs.nameQuery === "string"
+              ? searchArgs.nameQuery
+              : undefined;
+          const brandQuery =
+            typeof searchArgs.brandQuery === "string"
+              ? searchArgs.brandQuery
+              : undefined;
+          const skinTypes = Array.isArray(searchArgs.skinTypes)
+            ? searchArgs.skinTypes
+            : [];
+          const skinConcerns = Array.isArray(searchArgs.skinConcerns)
+            ? searchArgs.skinConcerns
+            : [];
+          const ingredientQueries = Array.isArray(searchArgs.ingredientQueries)
+            ? searchArgs.ingredientQueries
+            : [];
+
+          const hasMeaningfulFilters =
+            Boolean(category) ||
+            Boolean(nameQuery) ||
+            Boolean(brandQuery) ||
+            skinTypes.length > 0 ||
+            skinConcerns.length > 0 ||
+            ingredientQueries.length > 0;
+
+          if (hasMeaningfulFilters) {
+            const skinPhrase = skinTypes
+              .map((type) => `${toTitleCase(type)} skin`)
+              .join(" & ");
+            const concernPhrase = skinConcerns
+              .map((concern) => toTitleCase(concern))
+              .join(" & ");
+            const categoryPhrase = category ? toTitleCase(category) : undefined;
+            const nameOrBrand = nameQuery ?? brandQuery;
+
+            const headlineFragments: string[] = [];
+            if (categoryPhrase && skinPhrase) {
+              headlineFragments.push(
+                `${skinPhrase.toLowerCase()} ${categoryPhrase.toLowerCase()}`
+              );
+            } else if (categoryPhrase) {
+              headlineFragments.push(categoryPhrase.toLowerCase());
+            }
+            if (skinPhrase && !headlineFragments.length) {
+              headlineFragments.push(skinPhrase.toLowerCase());
+            }
+            if (concernPhrase) {
+              headlineFragments.push(concernPhrase.toLowerCase());
+            }
+            if (!headlineFragments.length && nameOrBrand) {
+              headlineFragments.push(nameOrBrand);
+            }
+
+            const headlineDescription = headlineFragments.length
+              ? headlineFragments.join(" with ")
+              : "your skincare request";
+            const headline = `Product suggestions for ${headlineDescription}`;
+
+            const subheadingParts: string[] = [];
+            if (categoryPhrase) {
+              subheadingParts.push(`category: ${categoryPhrase}`);
+            }
+            if (skinTypes.length) {
+              subheadingParts.push(
+                `skin type: ${skinTypes
+                  .map((type) => toTitleCase(type))
+                  .join(", ")}`
+              );
+            }
+            if (skinConcerns.length) {
+              subheadingParts.push(
+                `concerns: ${skinConcerns
+                  .map((concern) => toTitleCase(concern))
+                  .join(", ")}`
+              );
+            }
+            if (ingredientQueries.length) {
+              subheadingParts.push(
+                `actives: ${ingredientQueries
+                  .map((ingredient) => ingredient.toLowerCase())
+                  .join(", ")}`
+              );
+            }
+            if (brandQuery && !nameQuery) {
+              subheadingParts.push(`brand: ${toTitleCase(brandQuery)}`);
+            }
+
+            lastSummary = {
+              icon: "💧",
+              headline,
+              subheading: subheadingParts.length
+                ? `Here are the products I found ${subheadingParts.join(
+                    " · "
+                  )}.`
+                : undefined,
+            };
+          }
+        }
 
         const reasonContext = selectedProducts
           .slice(0, 4)
@@ -642,6 +1031,7 @@ export async function callOpenAI({
       continue;
     }
 
+    // tool call has finished
     finalContent = content;
     break;
   }
@@ -653,9 +1043,12 @@ export async function callOpenAI({
         ? normalizeProductsFromOutputs(toolOutputs)
         : [];
 
+  const shouldOmitProducts = lastResultType === "routine";
+  const productsPayload = shouldOmitProducts ? [] : products;
+
   finalContent = finalContent.trimEnd();
 
-  const replyText = products.length
+  const replyText = productsPayload.length
     ? finalContent.trim().length
       ? finalContent
       : "💧 I rounded up a few options that should fit nicely—happy to break any of them down further or pop one into your bag!"
@@ -665,6 +1058,9 @@ export async function callOpenAI({
   return {
     reply: replyText,
     toolOutputs,
-    products: products.length ? products : undefined,
+    products: productsPayload.length ? productsPayload : undefined,
+    resultType: lastResultType ?? undefined,
+    routine: lastRoutine ?? undefined,
+    summary: lastSummary ?? undefined,
   };
 }

@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { action, mutation, query, internalQuery } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { Id, Doc } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
 import OpenAI from "openai";
 // import { captureSentryError } from "./_utils/sentry";
 import products from "../products.json";
@@ -61,6 +61,13 @@ const jaccardSimilarity = (a: Set<string>, b: Set<string>) => {
   return intersection / union;
 };
 
+interface AIRecommendation {
+  productId: Id<"products">;
+  aiOrder: number;
+  category: string;
+  description: string;
+}
+
 export const recommend = action({
   args: {
     skinConcern: v.array(SkinConcern),
@@ -70,8 +77,9 @@ export const recommend = action({
     fragranceFree: v.optional(v.boolean()),
     userId: v.string(),
     createRoutine: v.optional(v.boolean()),
-    // alcoholFree: v.optional(v.boolean()),
-    // fragranceFree: v.optional(v.boolean()),
+    excludeProductIds: v.optional(
+      v.array(v.union(v.id("products"), v.string()))
+    ),
   },
 
   handler: async (ctx, skinProfile) => {
@@ -88,6 +96,17 @@ export const recommend = action({
         {}
       );
 
+      const allById = new Map<string, any>(
+        all.map((item: any) => [String(item?._id), item])
+      );
+
+      const excludeValues = Array.isArray(skinProfile.excludeProductIds)
+        ? skinProfile.excludeProductIds
+        : [];
+      const excludedLookup = new Set(
+        excludeValues.map((value) => String(value).toLowerCase())
+      );
+
       // 2) Pre-filter by hard constraints before AI
       // Unify avoid list from args
       const avoidList: string[] = Array.isArray(skinProfile.ingredientsToAvoid)
@@ -98,6 +117,17 @@ export const recommend = action({
 
       const availableProducts = all
         .filter((p: any) => {
+          const productId = String(p._id);
+          const productSlug =
+            typeof p.slug === "string" ? p.slug.toLowerCase() : null;
+
+          if (
+            excludedLookup.has(productId.toLowerCase()) ||
+            (productSlug && excludedLookup.has(productSlug))
+          ) {
+            return false;
+          }
+
           const ingredients = (p.ingredients ?? []).map((ing: string) =>
             normalizeIngredient(ing)
           );
@@ -158,16 +188,83 @@ export const recommend = action({
         })
         .map((product: any) => ({
           _id: product._id,
+          slug: product.slug,
           categories: product.categories,
           name: product.name,
           concerns: product.concerns,
           skinType: product.skinType,
           ingredients: product.ingredients,
+          description:
+            typeof product.shortDescription === "string"
+              ? product.shortDescription
+              : product.description,
         }));
 
-      console.log(all.length, availableProducts.length);
+      const excludedProductsForPrompt = all
+        .filter((product: any) => {
+          const id = String(product._id).toLowerCase();
+          const slug =
+            typeof product.slug === "string"
+              ? product.slug.toLowerCase()
+              : null;
+          const name =
+            typeof product.name === "string"
+              ? product.name.toLowerCase()
+              : null;
+          return (
+            excludedLookup.has(id) ||
+            (slug && excludedLookup.has(slug)) ||
+            (name && excludedLookup.has(name))
+          );
+        })
+        .map((product: any) => ({
+          _id: String(product._id),
+          name: product.name,
+        }));
 
-      console.log(availableProducts, "This are the available");
+      const mandatoryCategories = [
+        { key: "cleanser", label: "cleanser" },
+        { key: "moisturizer", label: "moisturizer" },
+        { key: "sunscreen", label: "sunscreen" },
+      ];
+
+      const hasCategoryAvailable = (key: string) =>
+        availableProducts.some((product: any) =>
+          (product.categories ?? []).some((category: any) => {
+            const raw =
+              typeof category === "string" ? category : category?.name;
+            const normalized = String(raw ?? "").toLowerCase();
+            if (key === "moisturizer") {
+              return (
+                normalized === "moisturizer" || normalized === "moisturiser"
+              );
+            }
+            return normalized === key;
+          })
+        );
+
+      const missingMandatory = mandatoryCategories.filter(
+        ({ key }) => !hasCategoryAvailable(key)
+      );
+
+      if (missingMandatory.length > 0) {
+        return {
+          success: false,
+          message: `We couldn't find any available ${missingMandatory
+            .map((item) => item.label)
+            .join(
+              ", "
+            )} options to build a complete routine. Please adjust your filters or try again without excluding those items.`,
+        };
+      }
+
+      const excludedPromptSegment =
+        excludedProductsForPrompt.length > 0
+          ? `
+      PRODUCTS TO AVOID (already shown or rejected):
+      ${JSON.stringify(excludedProductsForPrompt)}
+      Never include any product whose id or name appears in the list above.`
+          : "";
 
       const prompt = `
       STRICT RULES — NO EXCEPTIONS:
@@ -176,6 +273,22 @@ export const recommend = action({
       - Maximum 3 serums
       - Exactly 1 moisturizer (mandatory)
       - Exactly 1 sunscreen (mandatory)
+      ${excludedPromptSegment}
+
+      OUTPUT REQUIREMENTS:
+      - Respond with a short routine summary in "notes".
+      - For each product in "recommendations", include:
+        * "_id": exact database id provided.
+        * "name": product name.
+        * "category": lowercase category label.
+        * "description": 12–18 word benefit statement in plain language (no marketing fluff).
+      - **CRITICAL**: Return products in STRICT application order. The array index IS the application order:
+        1. Cleanser (always first)
+        2. Toner (if included, always after cleanser)
+        3. Serums (in order of layering priority, typically thinnest to thickest)
+        4. Moisturizer (always second-to-last)
+        5. Sunscreen (always last)
+      - DO NOT reorder products in the JSON array for any reason.
       
       SELECTION PRIORITY ORDER:
       1. Find suitable cleanser (mandatory)
@@ -235,20 +348,26 @@ export const recommend = action({
       
       Return ONLY this JSON:
       {
-        "recommendations": [
-          {"_id": "exact_id", "name": "exact_name", "category": "from_product_data"}
-        ],
-        "notes": "Brief explanation of choices + ONLY necessary caution notes for potent actives."
-      }
+  "recommendations": [
+    {
+      "_id": "exact_id",
+      "name": "exact_name",
+      "category": "from_product_data",
+      "description": "User benefit summary focusing on what the product does FOR skin (prevents, protects, treats, improves). Avoid listing features like SPF numbers or ingredients. ≤18 words."
+    }
+  ],
+  "notes": "Brief explanation of why these products work together + ONLY necessary caution notes for potent actives (e.g., retinoids, strong acids)."
+}
       `;
 
-      // Validate using the AI's category assignments (not DB docs, which may have multiple categories)
+      // Validate using the AI's category assignments
       const isValidSelection = (recs: any[]): boolean => {
         const allowed = new Set([
           "cleanser",
           "toner",
           "serum",
           "moisturiser",
+          "moisturizer",
           "sunscreen",
         ]);
         const counts: Record<string, number> = {};
@@ -256,12 +375,15 @@ export const recommend = action({
           const cat = String(r?.category || "")
             .toLowerCase()
             .trim();
-          if (!allowed.has(cat)) return false; // invalid category label
-          counts[cat] = (counts[cat] || 0) + 1;
+          if (!allowed.has(cat)) return false;
+
+          // Normalize moisturiser to moisturizer for counting
+          const normalizedCat = cat === "moisturiser" ? "moisturizer" : cat;
+          counts[normalizedCat] = (counts[normalizedCat] || 0) + 1;
         }
         // Mandatory singles
         if ((counts["cleanser"] || 0) !== 1) return false;
-        if ((counts["moisturiser"] || 0) !== 1) return false;
+        if ((counts["moisturizer"] || 0) !== 1) return false;
         if ((counts["sunscreen"] || 0) !== 1) return false;
         // Maximums
         if ((counts["toner"] || 0) > 1) return false;
@@ -272,11 +394,10 @@ export const recommend = action({
       const MAX_ATTEMPTS = 3;
       let attempts = 0;
       let lastParsedRecs: any[] = [];
-      let recommendations: any[] = [];
       let notes = "";
 
       do {
-        const data = await runChatCompletion(prompt, "gpt-4o", 0.1);
+        const data = await runChatCompletion(prompt, "gpt-4o-mini", 0.1);
         let parsed: any;
         try {
           parsed = JSON.parse(data);
@@ -294,143 +415,391 @@ export const recommend = action({
         attempts++;
       } while (!isValidSelection(lastParsedRecs) && attempts < MAX_ATTEMPTS);
 
-      // Resolve strictly against the allowed pool so disallowed items can't slip back in
+      // Resolve strictly against the allowed pool
       const idByString = new Map<string, any>(
-        availableProducts.map((p: any) => [String(p._id), p._id])
+        availableProducts.map((p: any) => [String(p._id).toLowerCase(), p._id])
       );
       const idByName = new Map<string, any>(
-        availableProducts.map((p: any) => [String(p.name), p._id])
+        availableProducts
+          .filter((p: any) => typeof p.name === "string")
+          .map((p: any) => [String(p.name).toLowerCase(), p._id])
+      );
+      const idBySlug = new Map<string, any>(
+        availableProducts
+          .filter((p: any) => typeof p.slug === "string")
+          .map((p: any) => [String(p.slug).toLowerCase(), p._id])
       );
 
-      const ids = Array.from(
-        new Set(
-          lastParsedRecs
-            .map(
-              (r: { _id: string; name: string }) =>
-                idByString.get(String(r._id)) ?? idByName.get(String(r.name))
-            )
-            .filter(Boolean) as any[]
-        )
-      );
+      const resolvedRecs = lastParsedRecs
+        .map((r: any, index: number) => {
+          if (!r) return null;
+          const rawId =
+            typeof r._id === "string" ? r._id.toLowerCase() : undefined;
+          const rawName =
+            typeof r.name === "string" ? r.name.toLowerCase() : undefined;
+          const rawSlug =
+            typeof r.slug === "string" ? r.slug.toLowerCase() : undefined;
 
-      // Fetch full product docs for the recommended ids using an internal query
-      recommendations = await ctx.runQuery(
-        internal.products._getProductsByIdsRaw,
-        { ids }
-      );
+          const productId =
+            (rawId && idByString.get(rawId)) ||
+            (rawSlug && idBySlug.get(rawSlug)) ||
+            (rawName && idByName.get(rawName));
 
-      // Best‑effort: persist these recommendations for the current user
-      try {
-        const res = await ctx.runMutation(
-          internal.recommendations._saveRecommendations,
-          {
-            recommendations: ids,
-            userId: skinProfile.userId, // remove this, just for test
+          if (!productId) return null;
+
+          const categoryRaw = String(r?.category ?? "")
+            .toLowerCase()
+            .trim();
+
+          const category =
+            categoryRaw === "moisturiser" ? "moisturizer" : categoryRaw;
+
+          if (
+            ![
+              "cleanser",
+              "toner",
+              "serum",
+              "moisturizer",
+              "sunscreen",
+            ].includes(category)
+          ) {
+            return null;
           }
-        );
 
-        if (res.success === false) throw Error(res.message as string);
-        console.log("successfully saved in userRecommendations");
-      } catch (e) {
-        // Ignore persistence errors (e.g., not authenticated)
-        console.log(e);
-      }
+          if (
+            excludedLookup.has(String(productId).toLowerCase()) ||
+            (rawName && excludedLookup.has(rawName))
+          ) {
+            return null;
+          }
 
-      // Optionally, create and persist a routine from these recommendations
-      let routineId: any = null;
-      if (skinProfile.createRoutine) {
-        try {
-          // Build deterministic steps from model output
-          const orderBase: Record<string, number> = {
-            cleanser: 1,
-            toner: 2,
-            serum: 3,
-            moisturizer: 4,
-            moisturiser: 4, // normalize just in case
-            sunscreen: 5,
+          const description =
+            typeof r.description === "string" ? r.description : "";
+
+          return {
+            productId,
+            category,
+            description,
+            aiOrder: index, // Preserve AI's intended order
           };
+        })
+        .filter(Boolean) as Array<{
+        productId: Id<"products">;
+        category: string;
+        description: string;
+        aiOrder: number;
+      }>;
 
-          const selectedSteps: Array<{
-            category: string;
-            productId: any;
-          }> = [];
+      const normalizeCategoryKey = (value: unknown): string | null => {
+        if (typeof value !== "string") return null;
+        const normalized = value.toLowerCase().trim();
+        if (!normalized.length) return null;
+        if (normalized === "moisturiser") return "moisturizer";
+        return normalized;
+      };
 
-          const seenPerCat = new Map<string, number>();
-          for (const r of lastParsedRecs) {
-            const catRaw = String(r?.category ?? "")
-              .toLowerCase()
-              .trim();
-            const category = catRaw === "moisturiser" ? "moisturizer" : catRaw;
-            const pid =
-              idByString.get(String(r?._id)) ?? idByName.get(String(r?.name));
-            if (!pid) continue;
-            selectedSteps.push({ category, productId: pid });
-            seenPerCat.set(category, (seenPerCat.get(category) || 0) + 1);
+      const extractCategoryKeys = (product: any): string[] => {
+        if (!product) return [];
+        const categories = Array.isArray(product.categories)
+          ? product.categories
+          : [];
+        const keys = new Set<string>();
+        for (const category of categories) {
+          if (typeof category === "string") {
+            const key = normalizeCategoryKey(category);
+            if (key) keys.add(key);
+            continue;
           }
+          if (!category || typeof category !== "object") continue;
+          const record = category as Record<string, unknown>;
+          const fromName = normalizeCategoryKey(record.name);
+          if (fromName) keys.add(fromName);
+          const fromSlug = normalizeCategoryKey(record.slug);
+          if (fromSlug) keys.add(fromSlug);
+        }
+        return Array.from(keys);
+      };
 
-          // Compute orders within category groups based on base order + index
-          let stepsForSave = selectedSteps
-            .slice()
-            .sort(
-              (a, b) =>
-                (orderBase[a.category] || 99) - (orderBase[b.category] || 99)
-            )
-            .map((s, idx, arr) => {
-              const idxInCat =
-                arr.filter((x, i) => i <= idx && x.category === s.category)
-                  .length - 1;
-              const order =
-                (orderBase[s.category] || 99) +
-                (s.category === "serum" || s.category === "toner"
-                  ? idxInCat
-                  : 0);
-              return {
-                id: `${s.category}_${idxInCat + 1}`,
-                order,
-                category: s.category,
-                productId: s.productId,
-                alternateProductIds: [] as any[],
-                period: "either" as const,
-                frequency: "daily" as const,
-                notes: undefined as string | undefined,
-              };
-            });
+      const toLowerArray = (value: unknown): string[] => {
+        if (Array.isArray(value)) {
+          return value
+            .map((entry) => String(entry || "").toLowerCase().trim())
+            .filter((entry) => entry.length > 0);
+        }
+        if (typeof value === "string") {
+          const normalized = value.toLowerCase().trim();
+          return normalized.length ? [normalized] : [];
+        }
+        return [];
+      };
 
-          const now = Date.now();
-          const name = `AI Routine · ${String(skinProfile.skinType)} · ${skinProfile.skinConcern.join(", ")}`;
-          const save = await ctx.runMutation(internal.routine.saveRoutine, {
-            routine: {
-              userId: skinProfile.userId,
-              name,
-              status: "active",
-              version: 1,
-              previousVersionId: undefined,
-              createdAt: now,
-              updatedAt: now,
-              steps: stepsForSave as any,
-              constraints: {
-                maxSerumsPerSession: 2,
-                requireSunscreenForAM: true,
-                conflictRules: [],
-              },
-              skinSnapshot: {
-                types: skinProfile.skinType,
-                concerns: skinProfile.skinConcern,
-                notes,
-              } as any,
-              source: { createdFromOrderId: undefined, createdBy: "ai" },
-              metrics: { usageCount: 0, lastUsedAt: undefined },
-            },
-          });
-          routineId = save?.routineId ?? null;
-        } catch (e) {
-          // Non-fatal: if routine creation fails, still return recommendations
-          console.warn("recommend.createRoutine failed:", (e as any)?.message);
+      const userConcerns = new Set<string>(
+        Array.isArray(skinProfile.skinConcern)
+          ? skinProfile.skinConcern.map((c: string) => c.toLowerCase())
+          : []
+      );
+      const userSkinType =
+        typeof skinProfile.skinType === "string"
+          ? skinProfile.skinType.toLowerCase()
+          : "";
+
+      const computeAlternativeScore = (product: any): number => {
+        if (!product) return 0;
+        let score = 0;
+
+        const productConcerns = toLowerArray(product.concerns);
+        if (productConcerns.includes("all")) {
+          score += 0.5;
+        }
+        const matchedConcerns = productConcerns.filter((concern) =>
+          userConcerns.has(concern)
+        ).length;
+        score += matchedConcerns * 1.5;
+
+        const productSkinTypes = toLowerArray(product.skinType);
+        if (productSkinTypes.includes(userSkinType)) {
+          score += 1.2;
+        } else if (productSkinTypes.includes("all")) {
+          score += 0.6;
+        }
+
+        if (Array.isArray(product.ingredients)) {
+          const hasHeavyActives = product.ingredients.some((ingredient: any) =>
+            typeof ingredient === "string"
+              ? /retinol|retinoid|glycolic|salicylic|lactic|aha|bha|ascorbic/i.test(
+                  ingredient
+                )
+              : false
+          );
+          if (!hasHeavyActives) {
+            score += 0.2;
+          }
+        }
+
+        return score;
+      };
+
+      const primaryIds = new Set<string>(
+        resolvedRecs.map((rec) => String(rec.productId))
+      );
+      const categoriesInRoutine = new Set<string>(
+        resolvedRecs.map((rec) => rec.category)
+      );
+      const MAX_ALTERNATIVES_PER_CATEGORY = 2;
+
+      const alternativesByCategory = new Map<
+        string,
+        Array<{ productId: Id<"products">; score: number }>
+      >();
+
+      for (const product of all) {
+        if (!product || typeof product !== "object") continue;
+        const productId = (product as any)?._id as Id<"products"> | undefined;
+        if (!productId) continue;
+        const idString = String(productId);
+        if (primaryIds.has(idString)) continue;
+        if (excludedLookup.has(idString.toLowerCase())) continue;
+
+        const categoryKeys = extractCategoryKeys(product);
+        if (!categoryKeys.length) continue;
+
+        const matchedCategories = categoryKeys.filter((category) =>
+          categoriesInRoutine.has(category)
+        );
+        if (!matchedCategories.length) continue;
+
+        const score = computeAlternativeScore(product);
+        if (score <= 0) continue;
+
+        for (const category of matchedCategories) {
+          const current = alternativesByCategory.get(category) ?? [];
+          current.push({ productId, score });
+          alternativesByCategory.set(category, current);
         }
       }
 
-      return { recommendations: recommendations, notes, routineId };
+      const selectedAlternatives = new Map<
+        string,
+        Array<{ productId: Id<"products">; score: number }>
+      >();
+
+      for (const [category, options] of alternativesByCategory.entries()) {
+        const deduped = new Map<string, { productId: Id<"products">; score: number }>();
+        for (const option of options) {
+          const key = String(option.productId);
+          const existing = deduped.get(key);
+          if (!existing || existing.score < option.score) {
+            deduped.set(key, option);
+          }
+        }
+        const ranked = Array.from(deduped.values())
+          .sort((a, b) => b.score - a.score)
+          .slice(0, MAX_ALTERNATIVES_PER_CATEGORY);
+        if (ranked.length) {
+          selectedAlternatives.set(category, ranked);
+        }
+      }
+
+      const alternativeIds = Array.from(
+        new Set(
+          Array.from(selectedAlternatives.values()).flatMap((options) =>
+            options.map((option) => option.productId)
+          )
+        )
+      );
+
+      const ids = Array.from(
+        new Set([
+          ...resolvedRecs.map((rec) => rec.productId),
+          ...alternativeIds,
+        ])
+      );
+
+      // Fetch full product docs
+      const recommendedProducts = ids.length
+        ? await ctx.runQuery(internal.products._getProductsByIdsRaw, { ids })
+        : [];
+
+      const productById = new Map<string, Doc<"products">>(
+        (recommendedProducts as Doc<"products">[]).map(
+          (product: Doc<"products">) => [String(product._id), product]
+        )
+      );
+
+      const normalizeDescription = (input: unknown) =>
+        typeof input === "string" ? input.replace(/\s+/g, " ").trim() : "";
+
+      const fallbackDescriptionFor = (product: Doc<"products">) => {
+        const anyProduct = product as any;
+        const source =
+          typeof anyProduct?.shortDescription === "string"
+            ? anyProduct.shortDescription
+            : typeof anyProduct?.description === "string"
+              ? anyProduct.description
+              : "";
+        const normalized = normalizeDescription(source);
+        if (!normalized.length) return "";
+        const sentenceMatch = normalized.match(/^[^.?!]+[.?!]?/);
+        return sentenceMatch ? sentenceMatch[0] : normalized;
+      };
+
+      const limitWords = (text: string, maxWords = 20) => {
+        const words = text.split(" ").filter(Boolean);
+        if (words.length <= maxWords) return text;
+        return `${words.slice(0, maxWords).join(" ")}…`;
+      };
+
+      notes = normalizeDescription(notes);
+
+      const seenProductIds = new Set<string>();
+
+      // Build recommendations preserving AI's order
+      const recommendations: Array<{
+        category: string;
+        description: string;
+        productId: Id<"products">;
+        product: Doc<"products">;
+        order: number;
+        alternatives?: Array<{
+          productId: Id<"products">;
+          product: Doc<"products">;
+          description: string;
+        }>;
+      } | null> = resolvedRecs
+        .sort((a, b) => a.aiOrder - b.aiOrder) // ← Trust AI's order
+        .map(
+          (
+            rec: AIRecommendation,
+            finalOrder
+          ): {
+            category: string;
+            description: string;
+            productId: Id<"products">;
+            product: Doc<"products">;
+            order: number;
+            alternatives?: Array<{
+              productId: Id<"products">;
+              product: Doc<"products">;
+              description: string;
+            }>;
+          } | null => {
+            const product: Doc<"products"> | undefined = productById.get(
+              String(rec.productId)
+            );
+            if (!product) return null;
+
+            const key = String(rec.productId);
+            if (seenProductIds.has(key)) return null;
+            seenProductIds.add(key);
+
+            const normalizedDescription = normalizeDescription(rec.description);
+            const fallback = fallbackDescriptionFor(product);
+            const description =
+              normalizedDescription.length > 0
+                ? limitWords(normalizedDescription, 20)
+                : fallback.length > 0
+                  ? limitWords(fallback, 20)
+                  : "";
+
+            const categoryAlternatives =
+              selectedAlternatives.get(rec.category) ?? [];
+            const alternatives = categoryAlternatives
+              .map((option) => {
+                const altKey = String(option.productId);
+                if (altKey === key) return null;
+                const altProduct = productById.get(altKey);
+                if (!altProduct) return null;
+                const altDescriptionSource = fallbackDescriptionFor(altProduct);
+                const altDescription = limitWords(
+                  normalizeDescription(altDescriptionSource),
+                  20
+                );
+                return {
+                  productId: option.productId,
+                  product: altProduct,
+                  description: altDescription,
+                };
+              })
+              .filter(
+                (
+                  value
+                ): value is {
+                  productId: Id<"products">;
+                  product: Doc<"products">;
+                  description: string;
+                } => Boolean(value)
+              );
+
+            return {
+              category: rec.category,
+              description,
+              productId: rec.productId,
+              product,
+              order: finalOrder, // Sequential order for frontend
+              alternatives: alternatives.length ? alternatives : undefined,
+            };
+          }
+        )
+        .filter(
+          (
+            rec
+          ): rec is {
+            category: string;
+            description: string;
+            productId: Id<"products">;
+            product: Doc<"products">;
+            order: number;
+            alternatives?: Array<{
+              productId: Id<"products">;
+              product: Doc<"products">;
+              description: string;
+            }>;
+          } => rec !== null
+        );
+
+      return { recommendations, notes };
     } catch (err) {
+      console.error("recommend handler error:", err);
       return {
         success: false,
         message: "Error getting product recommendations.",
@@ -947,14 +1316,12 @@ async function searchProductsByQueryImpl(
     : [];
 
   const ingredientQueryGroupsRaw = ingredientQueryRaw.map((value) =>
-    value
-      .split("||")
-      .flatMap((part) =>
-        part
-          .split(/[,;]/)
-          .map((chunk) => chunk.trim())
-          .filter((chunk) => chunk.length > 0)
-      )
+    value.split("||").flatMap((part) =>
+      part
+        .split(/[,;]/)
+        .map((chunk) => chunk.trim())
+        .filter((chunk) => chunk.length > 0)
+    )
   );
 
   const implicitIngredientGroups = Array.from(implicitIngredients).map(
@@ -1346,7 +1713,10 @@ async function searchProductsByQueryImpl(
           })),
           ingredients: Array.isArray(item.ingredients)
             ? item.ingredients
-                .filter((ingredient): ingredient is string => typeof ingredient === "string")
+                .filter(
+                  (ingredient): ingredient is string =>
+                    typeof ingredient === "string"
+                )
                 .slice(0, 2)
             : undefined,
         };
@@ -1410,7 +1780,10 @@ async function searchProductsByQueryImpl(
           })),
           ingredients: Array.isArray(item.ingredients)
             ? item.ingredients
-                .filter((ingredient): ingredient is string => typeof ingredient === "string")
+                .filter(
+                  (ingredient): ingredient is string =>
+                    typeof ingredient === "string"
+                )
                 .slice(0, 2)
             : undefined,
         };

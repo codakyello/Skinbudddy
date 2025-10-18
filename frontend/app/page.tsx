@@ -13,12 +13,21 @@ import remarkGfm from "remark-gfm";
 import { ArrowUpRight } from "lucide-react";
 import { useUser } from "@/app/_contexts/CreateConvexUser";
 import ProductCard from "@/app/_components/ProductCard";
-import type { Product, Size, Category } from "@/app/_utils/types";
+import type {
+  Product,
+  Size,
+  Category,
+  Routine,
+  RoutineStep,
+  MessageSummary,
+  ChatMessage,
+} from "@/app/_utils/types";
 import { Box } from "@chakra-ui/react";
 import Modal, { ModalWindow } from "./_components/Modal";
 import Image from "next/image";
 import { formatPrice } from "./_utils/utils";
 import { IoChevronDownOutline } from "react-icons/io5";
+import RoutineCard from "./_components/RoutineCard";
 // import useProducts from "./_hooks/useProducts";
 
 const SUGGESTIONS = [
@@ -68,15 +77,6 @@ const SUGGESTIONS = [
 const getRandomSuggestions = (count: number) => {
   const shuffled = [...SUGGESTIONS].sort(() => 0.5 - Math.random());
   return shuffled.slice(0, count);
-};
-
-type ChatRole = "assistant" | "user";
-
-type ChatMessage = {
-  id: string;
-  role: ChatRole;
-  content: string;
-  products?: Product[];
 };
 
 const normalizeHeader = (line: string) =>
@@ -270,6 +270,67 @@ const normalizeProductArray = (items: unknown[]): Product[] => {
     byId.set(key, product);
   });
   return Array.from(byId.values());
+};
+
+const normalizeRoutinePayload = (input: unknown): Routine | null => {
+  if (!isRecord(input)) return null;
+  const rawSteps = Array.isArray(input.steps) ? input.steps : [];
+  const steps: RoutineStep[] = [];
+
+  rawSteps.forEach((entry, index) => {
+    if (!isRecord(entry)) return;
+    const productSourceRaw = (entry as Record<string, unknown>)["product"];
+    const productSource = isRecord(productSourceRaw)
+      ? productSourceRaw
+      : (productSourceRaw ?? entry);
+    const productCandidate = mapToolProductToProduct(productSource);
+    if (!productCandidate) return;
+    const stepNumber = typeof entry.step === "number" ? entry.step : index + 1;
+    const category =
+      typeof entry.category === "string" ? entry.category : undefined;
+    const title = typeof entry.title === "string" ? entry.title : undefined;
+    const description =
+      typeof entry.description === "string" ? entry.description : undefined;
+    const productId =
+      typeof entry.productId === "string"
+        ? entry.productId
+        : typeof productCandidate._id === "string"
+          ? productCandidate._id
+          : undefined;
+
+    steps.push({
+      step: stepNumber,
+      category,
+      title,
+      description,
+      productId,
+      product: productCandidate,
+    });
+  });
+
+  if (!steps.length) return null;
+
+  steps.sort((a, b) => a.step - b.step);
+
+  const notes = typeof input.notes === "string" ? input.notes : undefined;
+
+  return { steps, notes };
+};
+
+const normalizeSummary = (input: unknown): MessageSummary | null => {
+  if (!isRecord(input)) return null;
+  const rawHeadline =
+    typeof input.headline === "string" ? input.headline.trim() : "";
+  if (!rawHeadline.length) return null;
+  const rawSubheading =
+    typeof input.subheading === "string" ? input.subheading.trim() : "";
+  const rawIcon = typeof input.icon === "string" ? input.icon.trim() : "";
+
+  return {
+    headline: rawHeadline,
+    subheading: rawSubheading.length ? rawSubheading : undefined,
+    icon: rawIcon.length ? rawIcon : undefined,
+  };
 };
 
 export default function ChatPage() {
@@ -486,6 +547,9 @@ export default function ChatPage() {
       let finalReply = "";
       let finalSessionId: string | null = null;
       let finalProducts: Product[] = [];
+      let finalRoutine: Routine | null = null;
+      let finalResultType: string | null = null;
+      let finalSummary: MessageSummary | null = null;
 
       const processPayload = (line: string) => {
         const trimmed = line.trim();
@@ -497,6 +561,10 @@ export default function ChatPage() {
           products?: unknown[];
           sessionId?: string;
           message?: string;
+          resultType?: string;
+          routine?: unknown;
+          headline?: string;
+          summary?: unknown;
         };
 
         if (payload.type === "delta" && typeof payload.token === "string") {
@@ -509,8 +577,21 @@ export default function ChatPage() {
           if (typeof payload.reply === "string") {
             finalReply = payload.reply.trim();
           }
-          if (Array.isArray(payload.products)) {
+          if (payload.resultType === "routine" && payload.routine) {
+            const normalizedRoutine = normalizeRoutinePayload(payload.routine);
+            if (normalizedRoutine) {
+              finalRoutine = normalizedRoutine;
+              finalResultType = "routine";
+              finalProducts = [];
+            }
+          } else if (Array.isArray(payload.products)) {
             finalProducts = normalizeProductArray(payload.products);
+          }
+          if (payload.summary) {
+            const normalizedSummary = normalizeSummary(payload.summary);
+            if (normalizedSummary) {
+              finalSummary = normalizedSummary;
+            }
           }
           if (typeof payload.sessionId === "string") {
             finalSessionId = payload.sessionId;
@@ -545,12 +626,19 @@ export default function ChatPage() {
       const resolvedContent = finalReply.length ? finalReply : accumulated;
 
       const hasProducts = finalProducts.length > 0;
+      const routineResult = finalResultType === "routine" ? finalRoutine : null;
+      const summary = finalSummary ?? undefined;
 
       updateAssistant({
         content: resolvedContent.length
           ? resolvedContent
-          : "I rounded up a few options—let me know if anything catches your eye!",
+          : finalResultType === "routine"
+            ? "I pulled together a full routine—let me know if you want to tweak any step!"
+            : "I rounded up a few options—let me know if anything catches your eye!",
         products: hasProducts ? finalProducts : undefined,
+        resultType: routineResult ? "routine" : undefined,
+        routine: routineResult ?? undefined,
+        summary,
       });
 
       if (finalSessionId) {
@@ -645,25 +733,79 @@ export default function ChatPage() {
                 >
                   {message.role === "assistant" ? (
                     <Box className="w-full ">
-                      {message.products?.length ? (
-                        <Box className="mt-6 flex items-stretch gap-[1rem] overflow-auto mb-[20px]">
-                          {message.products.map((product, index) => {
-                            const productKey = `${message.id}-${String(
-                              product._id ?? product.slug ?? index
-                            )}`;
-                            return (
-                              <Box
-                                key={productKey}
-                                className="min-w-[90%] md:min-w-[75%] flex"
-                              >
-                                <ProductCard
+                      {message.resultType === "routine" &&
+                      message.routine?.steps?.length ? (
+                        <Box className="mt-6 flex flex-col gap-[1.6rem] mb-[24px]">
+                          {message.summary?.headline ? (
+                            <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
+                              <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex items-center gap-[0.6rem]">
+                                {message.summary.icon ? (
+                                  <span>{message.summary.icon}</span>
+                                ) : null}
+                                {message.summary.headline}
+                              </h3>
+                              {message.summary.subheading ? (
+                                <p className="text-[1.4rem] text-[#1b1f26]">
+                                  {message.summary.subheading}
+                                </p>
+                              ) : null}
+                            </Box>
+                          ) : null}
+                          {message.routine.notes ? (
+                            <p className="text-[1.4rem]">
+                              {message.routine.notes}
+                            </p>
+                          ) : null}
+                          <Box className="flex flex-col gap-[16px]">
+                            {message.routine.steps.map((routine) => {
+                              const productKey = `${message.id}-routine-${routine.productId ?? routine.step}`;
+                              return (
+                                <RoutineCard
+                                  key={productKey}
+                                  routine={routine}
                                   onProductToPreview={handleProductToPreview}
-                                  inChat={true}
-                                  product={product}
                                 />
-                              </Box>
-                            );
-                          })}
+                              );
+                            })}
+                          </Box>
+                        </Box>
+                      ) : message.products?.length ? (
+                        <Box>
+                          {message.summary?.headline ? (
+                            <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
+                              <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex items-center gap-[0.6rem]">
+                                {message.summary.icon ? (
+                                  <span>{message.summary.icon}</span>
+                                ) : null}
+                                {message.summary.headline}
+                              </h3>
+                              {message.summary.subheading ? (
+                                <p className="text-[1.4rem] text-[#1b1f26]">
+                                  {message.summary.subheading}
+                                </p>
+                              ) : null}
+                            </Box>
+                          ) : null}
+
+                          <Box className="mt-6 flex items-stretch gap-[1rem] overflow-auto mb-[20px]">
+                            {message.products.map((product, index) => {
+                              const productKey = `${message.id}-${String(
+                                product._id ?? product.slug ?? index
+                              )}`;
+                              return (
+                                <Box
+                                  key={productKey}
+                                  className="min-w-[90%] md:min-w-[75%] flex"
+                                >
+                                  <ProductCard
+                                    onProductToPreview={handleProductToPreview}
+                                    inChat={true}
+                                    product={product}
+                                  />
+                                </Box>
+                              );
+                            })}
+                          </Box>
                         </Box>
                       ) : null}
 

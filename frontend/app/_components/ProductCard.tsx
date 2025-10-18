@@ -97,7 +97,9 @@ export default function ProductCard({
 
   if (inChat)
     return (
-      <Box className="border-[1px] w-full p-[8px] grid grid-cols-[13rem_1fr] gap-[12px] border-[#1b1f2614] rounded-[24px] min-h-[176px] ">
+      <Box
+        className={`${className || ""} border-[1px] w-full p-[8px] grid grid-cols-[13rem_1fr] gap-[12px] border-[#1b1f2614] rounded-[24px] min-h-[176px] `}
+      >
         <Box className="bg-[#E8E9E9] rounded-[16px] overflow-hidden relative">
           <Image
             src={product.images?.[0] || "/images/product-1.webp"}

@@ -1,5 +1,5 @@
 import z from "zod";
-import { fetchMutation, fetchQuery } from "convex/nextjs";
+import { fetchAction, fetchMutation, fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -69,6 +69,12 @@ const searchProductsSchema = z
         "If true, only return products containing fragrance; if false, only return fragrance-free options."
       ),
     limit: z.number().int().min(1).max(10).optional(),
+    excludeProductIds: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Product IDs or slugs already shown to the user that should be excluded."
+      ),
   })
   .strict();
 
@@ -121,6 +127,12 @@ const searchProductsParameters = {
       minimum: 1,
       maximum: 10,
     },
+    excludeProductIds: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "List of product IDs or slugs to skip (already suggested or rejected).",
+    },
   },
   additionalProperties: false,
 };
@@ -151,6 +163,109 @@ const productFiltersParameters = {
   additionalProperties: false,
 };
 
+const recommendRoutineSchema = z
+  .object({
+    userId: z
+      .string()
+      .optional()
+      .describe(
+        "User identifier for saving routines; use 'guest' if the user is anonymous."
+      ),
+    skinType: z
+      .string()
+      .min(1)
+      .describe(
+        "Canonical or user-provided skin type (oily, dry, combination, sensitive, balanced, etc.)."
+      ),
+    skinConcerns: z
+      .array(
+        z
+          .string()
+          .min(1)
+          .describe(
+            "Primary skin concerns the routine must target (acne, hyperpigmentation, sensitivity, dullness, etc.)."
+          )
+      )
+      .min(1),
+    ingredientsToAvoid: z
+      .array(
+        z
+          .string()
+          .describe(
+            "Ingredient sensitivities or exclusions (e.g. alcohol, retinoids, essential oils)."
+          )
+      )
+      .optional(),
+    fragranceFree: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set true to only include fragrance-free products; omit when the user has no preference."
+      ),
+    createRoutine: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set true to persist the generated routine for the user (when authenticated)."
+      ),
+    excludeProductIds: z
+      .array(
+        z
+          .string()
+          .describe(
+            "Product IDs or slugs that should NOT appear in the returned routine (e.g. previously rejected items)."
+          )
+      )
+      .optional(),
+  })
+  .strict();
+
+const recommendRoutineParameters = {
+  type: "object",
+  properties: {
+    userId: {
+      type: "string",
+      description:
+        "User identifier for saving the routine; provide 'guest' if the user is anonymous.",
+    },
+    skinType: {
+      type: "string",
+      description:
+        "Canonical skin type label (oily, dry, combination, sensitive, balanced, etc.).",
+    },
+    skinConcerns: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "List of key skin concerns the routine must address (acne, dark spots, redness, etc.).",
+    },
+    ingredientsToAvoid: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Optional list of ingredient sensitivities to exclude (alcohol, retinoids, essential oils, etc.).",
+    },
+    fragranceFree: {
+      type: "boolean",
+      description:
+        "Set true when the user insists on fragrance-free products; omit otherwise.",
+    },
+    createRoutine: {
+      type: "boolean",
+      description:
+        "Set true to persist the generated routine for the user (requires authenticated userId).",
+    },
+    excludeProductIds: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "IDs or slugs for products that should be omitted from the result set (e.g. user rejected them).",
+    },
+  },
+  required: ["skinType", "skinConcerns"],
+  additionalProperties: false,
+};
+
 const ensureApi = async () => api;
 
 type SanitizedSize = {
@@ -175,6 +290,16 @@ type SanitizedProduct = {
   categories?: Array<{ name?: string; slug?: string }>;
   ingredients?: string[];
 };
+
+type IngredientSensitivityCanonical =
+  | "alcohol"
+  | "retinoids"
+  | "retinol"
+  | "niacinamide"
+  | "ahas-bhas"
+  | "vitamin-c"
+  | "essential-oils"
+  | "mandelic acid";
 
 const toNumber = (value: unknown): number | undefined => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -303,6 +428,344 @@ const extractRelevantProductInfo = (
 
 const localTools: ToolSpec[] = [
   {
+    name: "recommendRoutine",
+    description:
+      "Generate a complete skincare routine (cleanser → sunscreen) tailored to the user's skin type, concerns, and preferences. Use this when the user asks for routine suggestions or wants to swap a step. Pass excludeProductIds to avoid previously suggested products.",
+    parameters: recommendRoutineParameters,
+    schema: recommendRoutineSchema,
+    handler: async (rawInput) => {
+      const input = recommendRoutineSchema.parse(rawInput);
+      const apiModule = await ensureApi();
+
+      const allowedSkinTypes = new Set<SkinTypeCanonical>([
+        "normal",
+        "oily",
+        "dry",
+        "combination",
+        "sensitive",
+        "mature",
+        "acne-prone",
+        "all",
+      ]);
+
+      const allowedSkinConcerns = new Set<SkinConcernCanonical>([
+        "acne",
+        "blackheads",
+        "hyperpigmentation",
+        "uneven-tone",
+        "dryness",
+        "oiliness",
+        "redness",
+        "sensitivity",
+        "fine-lines",
+        "wrinkles",
+        "loss-of-firmness",
+        "dullness",
+        "sun-damage",
+        "all",
+      ]);
+
+      const resolveCanonicalSkinType = (
+        value: string
+      ): SkinTypeCanonical | null => {
+        const resolved = resolveSkinType(value);
+        if (resolved) return resolved;
+        const normalized = value.toLowerCase().trim();
+        return allowedSkinTypes.has(normalized as SkinTypeCanonical)
+          ? (normalized as SkinTypeCanonical)
+          : null;
+      };
+
+      const resolveCanonicalSkinConcern = (
+        value: string
+      ): SkinConcernCanonical | null => {
+        const resolved = resolveSkinConcern(value);
+        if (resolved) return resolved;
+        const normalized = value.toLowerCase().trim();
+        return allowedSkinConcerns.has(
+          normalized as SkinConcernCanonical
+        )
+          ? (normalized as SkinConcernCanonical)
+          : null;
+      };
+
+      const canonicalSkinType = resolveCanonicalSkinType(input.skinType);
+      if (!canonicalSkinType) {
+        throw new Error(
+          `Unsupported skin type "${input.skinType}". Provide a canonical type (oily, dry, combination, sensitive, mature, acne-prone, normal, all).`
+        );
+      }
+
+      const concernSet = new Set<SkinConcernCanonical>();
+      input.skinConcerns.forEach((concern) => {
+        const resolved = resolveCanonicalSkinConcern(concern);
+        if (resolved) concernSet.add(resolved);
+      });
+
+      if (!concernSet.size) {
+        throw new Error(
+          "At least one recognized skin concern is required (acne, hyperpigmentation, redness, etc.)."
+        );
+      }
+
+      const ingredientSensitivityLookup: Record<
+        string,
+        IngredientSensitivityCanonical
+      > = {
+        alcohol: "alcohol",
+        "alcohol-free": "alcohol",
+        "no alcohol": "alcohol",
+        retinoid: "retinoids",
+        retinoids: "retinoids",
+        retinol: "retinol",
+        niacinamide: "niacinamide",
+        aha: "ahas-bhas",
+        "aha/bha": "ahas-bhas",
+        "ahas-bhas": "ahas-bhas",
+        "aha-bha": "ahas-bhas",
+        bha: "ahas-bhas",
+        "vitamin c": "vitamin-c",
+        "vitamin-c": "vitamin-c",
+        "essential oils": "essential-oils",
+        "essential-oil": "essential-oils",
+        fragrance: "essential-oils",
+        "mandelic acid": "mandelic acid",
+      };
+
+      const resolveSensitivity = (
+        raw: string
+      ): IngredientSensitivityCanonical | null => {
+        const normalized = raw.toLowerCase().trim();
+        if (normalized.length === 0) return null;
+        const direct = ingredientSensitivityLookup[normalized];
+        if (direct) return direct;
+        const hyphenated = ingredientSensitivityLookup[
+          normalized.replace(/\s+/g, "-")
+        ];
+        return hyphenated ?? null;
+      };
+
+      const ingredientsToAvoid = Array.isArray(input.ingredientsToAvoid)
+        ? Array.from(
+            new Set(
+              input.ingredientsToAvoid
+                .map(resolveSensitivity)
+                .filter(
+                  (
+                    value
+                  ): value is IngredientSensitivityCanonical => value !== null
+                )
+            )
+          )
+        : undefined;
+
+      const excludeProductIds = Array.from(
+        new Set(
+          (input.excludeProductIds ?? [])
+            .map((value) => String(value).trim())
+            .filter((value) => value.length > 0)
+        )
+      );
+
+      const payload = {
+        userId: input.userId ?? "guest",
+        skinType: canonicalSkinType,
+        skinConcern: Array.from(concernSet),
+        ingredientsToAvoid:
+          ingredientsToAvoid && ingredientsToAvoid.length
+            ? ingredientsToAvoid
+            : undefined,
+        fragranceFree: input.fragranceFree,
+        createRoutine: input.createRoutine ?? false,
+        excludeProductIds:
+          excludeProductIds.length > 0 ? excludeProductIds : undefined,
+      };
+
+      const stepOrder: Record<string, number> = {
+        cleanser: 1,
+        toner: 2,
+        serum: 3,
+        moisturizer: 4,
+        sunscreen: 5,
+      };
+
+      const normalizeCategory = (value: unknown): string | undefined => {
+        if (typeof value !== "string") return undefined;
+        const normalized = value.toLowerCase().trim();
+        if (!normalized) return undefined;
+        if (normalized === "moisturiser") return "moisturizer";
+        if (normalized === "serums") return "serum";
+        return normalized;
+      };
+
+      const formatCategoryLabel = (category: string | undefined) => {
+        if (!category) return "";
+        return category
+          .split("-")
+          .map((part) =>
+            part.length ? part[0].toUpperCase() + part.slice(1) : part
+          )
+          .join(" ");
+      };
+
+      const sanitizeStepDescription = (value: unknown) => {
+        if (typeof value !== "string") return "";
+        const trimmed = value.replace(/\s+/g, " ").trim();
+        if (!trimmed) return "";
+        const words = trimmed.split(" ");
+        if (words.length <= 24) return trimmed;
+        return `${words.slice(0, 24).join(" ")}…`;
+      };
+
+      try {
+        const result = await fetchAction(apiModule.products.recommend, payload);
+
+        if (
+          result &&
+          typeof result === "object" &&
+          "success" in result &&
+          (result as { success: boolean }).success === false
+        ) {
+          return result;
+        }
+
+        if (!result || typeof result !== "object") {
+          return result;
+        }
+
+        const resultRecord = result as Record<string, unknown>;
+        const rawRecommendations = Array.isArray(resultRecord["recommendations"])
+          ? (resultRecord["recommendations"] as Array<Record<string, unknown>>)
+          : [];
+
+        const seenProductIds = new Set<string>();
+        const recommendations = rawRecommendations
+          .map((entry) => {
+            const entryRecord = entry as Record<string, unknown>;
+            const category = normalizeCategory(entryRecord["category"]);
+            if (!category) return null;
+            if (!(category in stepOrder)) return null;
+
+            const productInfo = extractRelevantProductInfo(
+              entryRecord["product"] ?? entryRecord
+            );
+            if (!productInfo) return null;
+
+            const productId =
+              typeof entryRecord["productId"] === "string"
+                ? (entryRecord["productId"] as string)
+                : productInfo._id;
+            if (!productId) return null;
+
+            const normalizedId = productId.toLowerCase();
+            if (seenProductIds.has(normalizedId)) return null;
+            seenProductIds.add(normalizedId);
+
+            const description = sanitizeStepDescription(
+              entryRecord["description"]
+            );
+            const order =
+              typeof entryRecord["order"] === "number"
+                ? (entryRecord["order"] as number)
+                : stepOrder[category];
+
+            const alternativeEntries =
+              Array.isArray(entryRecord["alternatives"]) &&
+              entryRecord["alternatives"].length
+                ? entryRecord["alternatives"]
+                    .map((altEntry) => {
+                      if (!altEntry || typeof altEntry !== "object") return null;
+                      const altRecord = altEntry as Record<string, unknown>;
+                      const altProductInfo = extractRelevantProductInfo(
+                        altRecord["product"] ?? altRecord
+                      );
+                      if (!altProductInfo) return null;
+                      const altProductId =
+                        typeof altRecord["productId"] === "string"
+                          ? (altRecord["productId"] as string)
+                          : altProductInfo._id;
+                      if (!altProductId) return null;
+                      const altNormalizedId = altProductId.toLowerCase();
+                      if (altNormalizedId === normalizedId) return null;
+                      const altDescription = sanitizeStepDescription(
+                        altRecord["description"]
+                      );
+                      return {
+                        productId: altProductId,
+                        product: altProductInfo,
+                        description: altDescription,
+                      };
+                    })
+                    .filter(
+                      (
+                        altEntry
+                      ): altEntry is {
+                        productId: string;
+                        product: SanitizedProduct;
+                        description: string;
+                      } => Boolean(altEntry)
+                    )
+                : [];
+
+            return {
+              category,
+              categoryLabel: formatCategoryLabel(category),
+              description,
+              productId,
+              product: productInfo,
+              order,
+              alternatives: alternativeEntries,
+            };
+          })
+          .filter(
+            (
+              entry
+            ): entry is {
+              category: string;
+              categoryLabel: string;
+              description: string;
+              productId: string;
+              product: SanitizedProduct;
+              order: number;
+              alternatives: Array<{
+                productId: string;
+                product: SanitizedProduct;
+                description: string;
+              }>;
+            } => Boolean(entry)
+          );
+
+        const steps = recommendations
+          .slice()
+          .sort((a, b) => a.order - b.order)
+          .map((entry, index) => ({
+            step: index + 1,
+            category: entry.category,
+            title: entry.categoryLabel,
+            description: entry.description,
+            productId: entry.productId,
+            product: entry.product,
+            alternatives: entry.alternatives,
+          }));
+
+        const notes = sanitizeStepDescription(resultRecord["notes"]);
+
+        return {
+          ...resultRecord,
+          notes,
+          recommendations,
+          steps,
+        };
+      } catch (error) {
+        throw new Error(
+          error instanceof Error
+            ? error.message
+            : "Failed to generate a skincare routine."
+        );
+      }
+    },
+  },
+  {
     name: "searchProductsByQuery",
     description:
       "List products using free-text queries for category, brand, or name. Resolves fuzzy text to exact DB slugs and returns matching products.",
@@ -311,6 +774,11 @@ const localTools: ToolSpec[] = [
     handler: async (rawInput) => {
       const input = searchProductsSchema.parse(rawInput);
       const apiModule = await ensureApi();
+      const excludedIds = new Set(
+        (input.excludeProductIds ?? []).map((value) =>
+          String(value).toLowerCase()
+        )
+      );
 
       const processValues = <T extends string>(
         values: string[] | undefined,
@@ -399,6 +867,16 @@ const localTools: ToolSpec[] = [
               .map((product) => {
                 const info = extractRelevantProductInfo(product);
                 if (!info) return null;
+                if (excludedIds.size > 0) {
+                  const idMatch = info._id
+                    ? excludedIds.has(info._id.toLowerCase())
+                    : false;
+                  const slugMatch =
+                    info.slug && excludedIds.has(info.slug.toLowerCase());
+                  if (idMatch || slugMatch) {
+                    return null;
+                  }
+                }
                 const score =
                   typeof (product as Record<string, unknown>).score === "number"
                     ? ((product as Record<string, unknown>).score as number)

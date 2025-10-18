@@ -139,3 +139,40 @@ export type FormError = {
   additionalAddress?: string | null;
   companyName?: string | null;
 };
+
+export type ChatRole = "assistant" | "user";
+
+export type RoutineStep = {
+  step: number;
+  category?: string;
+  title?: string;
+  description?: string;
+  productId?: string;
+  product: Product;
+  alternatives?: Array<{
+    productId?: string;
+    description?: string;
+    product: Product;
+  }>;
+};
+
+export type Routine = {
+  steps: RoutineStep[];
+  notes?: string;
+};
+
+export type MessageSummary = {
+  icon?: string;
+  headline: string;
+  subheading?: string;
+};
+
+export type ChatMessage = {
+  id: string;
+  role: ChatRole;
+  content: string;
+  products?: Product[];
+  resultType?: "routine";
+  routine?: Routine;
+  summary?: MessageSummary;
+};
