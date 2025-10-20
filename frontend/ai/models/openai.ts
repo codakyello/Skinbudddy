@@ -122,6 +122,214 @@ type ReplySummary = {
   subheading?: string;
 };
 
+type RoutineSummaryContext = {
+  type: "routine";
+  stepCount: number;
+  skinType?: string;
+  concerns?: string[];
+  stepHighlights: string[];
+  iconSuggestion?: string;
+  headlineHint?: string;
+  routineDescription?: string;
+};
+
+type ProductSummaryContext = {
+  type: "products";
+  productCount: number;
+  filters: {
+    category?: string;
+    skinTypes?: string[];
+    skinConcerns?: string[];
+    ingredientQueries?: string[];
+    brand?: string;
+    nameQuery?: string;
+  };
+  topProducts: Array<{
+    name?: string;
+    brand?: string;
+    category?: string;
+  }>;
+  notes?: string;
+  iconSuggestion?: string;
+  headlineHint?: string;
+  filterDescription?: string;
+};
+
+type SummaryContext = RoutineSummaryContext | ProductSummaryContext;
+
+const replySummarySchema = z
+  .object({
+    headline: z.string().min(1).max(120),
+    subheading: z.string().min(1).max(200),
+    icon: z.string().min(1).max(4).optional(),
+  })
+  .strict();
+
+const truncateString = (value: string, maxLength: number): string => {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 3)}...`;
+};
+
+const coerceString = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : undefined;
+};
+
+const formatList = (
+  items: string[],
+  conjunction: "and" | "or" = "and"
+): string => {
+  if (!items.length) return "";
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} ${conjunction} ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, ${conjunction} ${items.at(-1)}`;
+};
+
+const extractProductMetadataForSummary = (
+  products: ProductCandidate[]
+): ProductSummaryContext["topProducts"] => {
+  return products.slice(0, 4).map((product) => {
+    const record = product as UnknownRecord;
+    const nestedProduct =
+      record.product && typeof record.product === "object"
+        ? (record.product as UnknownRecord)
+        : null;
+    const brandRecord =
+      (record.brand && typeof record.brand === "object"
+        ? (record.brand as UnknownRecord)
+        : null) ??
+      (nestedProduct?.brand && typeof nestedProduct.brand === "object"
+        ? (nestedProduct.brand as UnknownRecord)
+        : null);
+
+    const categoriesArray =
+      Array.isArray(record.categories) && record.categories.length
+        ? record.categories
+        : Array.isArray(nestedProduct?.categories)
+          ? nestedProduct?.categories
+          : [];
+
+    const firstCategory = categoriesArray
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") return null;
+        const catRecord = entry as UnknownRecord;
+        return coerceString(catRecord.name);
+      })
+      .find((value): value is string => Boolean(value));
+
+    const slugString = coerceString(record.slug);
+    const name =
+      coerceString(record.name) ??
+      coerceString(nestedProduct?.name) ??
+      (slugString ? toTitleCase(slugString) : undefined);
+
+    const brand =
+      coerceString(brandRecord?.name) ?? coerceString(brandRecord?._id);
+
+    return {
+      name,
+      brand,
+      category: firstCategory ?? coerceString(record.category),
+    };
+  });
+};
+
+async function generateReplySummaryWithLLM({
+  reply,
+  userMessage,
+  context,
+  model,
+}: {
+  reply: string;
+  userMessage?: string;
+  context?: SummaryContext | null;
+  model: string;
+}): Promise<ReplySummary | null> {
+  const trimmedReply = reply.trim();
+  if (!trimmedReply.length) return null;
+
+  const payload = {
+    userMessage: userMessage ? truncateString(userMessage, 600) : undefined,
+    assistantReply: truncateString(trimmedReply, 1200),
+    context,
+  };
+
+  const icon = context?.iconSuggestion ?? "🧪";
+  const stepCountText =
+    context?.type === "routine"
+      ? context.stepCount === 1
+        ? "1 step"
+        : `${context.stepCount} steps`
+      : undefined;
+  const filterDescription =
+    context?.type === "products" ? context.filterDescription : undefined;
+
+  const routineGuidance =
+    context?.type === "routine"
+      ? [
+          'Begin the headline with the exact phrase "Here is the routine I built for" followed immediately by the routineDescription (or "your skin" if routineDescription is missing).',
+          'The routineDescription field already captures the skin type and focus (e.g., "oily skin and focused on acne concerns"); reuse that wording verbatim without reordering its meaning.',
+          "Keep the remainder of the headline concise—if you need to add a short clause about the routine's focus, do so naturally.",
+          stepCountText
+            ? `In the subheading, reference that the routine covers ${stepCountText} and, if possible, nod to one of the stepHighlights or invite the user to tweak steps.`
+            : "In the subheading, highlight what the routine focuses on and invite the user to tweak steps.",
+        ].join(" ")
+      : "";
+
+  const productGuidance =
+    context?.type === "products"
+      ? [
+          `Begin the headline with "Here are the products I found" and immediately append the provided filterDescription${filterDescription ? ' exactly as written (it already begins with wording like "including category cleanser")' : " or, if missing, summarize the most relevant filters (category, skin type, concerns, actives, brand)"}.`,
+          "Keep the headline brief and action-oriented.",
+          "Use the subheading to reiterate the key filters in one sentence and invite the user to take next steps like comparing or learning more.",
+        ].join(" ")
+      : "";
+
+  const contextualInstructions = [routineGuidance, productGuidance]
+    .filter(Boolean)
+    .join(" ");
+
+  const iconInstruction = `Set the "icon" field in your JSON to "${icon}". Do not place any emoji inside the headline or subheading. Provide exactly one headline and one subheading—no additional fields or sentences.`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model,
+      temperature: 0.4,
+      messages: [
+        {
+          role: "system",
+          content: `You are a succinct copywriter for SkinBuddy, a skincare assistant. Given the assistant's reply and the structured context, craft a heading and subheading that match the requested format. Keep the headline between 3–10 words (≤60 characters) and ensure it stays conversational and skincare-focused. The subheading must be exactly one supportive sentence (≤110 characters) that complements—but never repeats verbatim—the headline. ${iconInstruction} ${contextualInstructions} Output ONLY a JSON object with keys headline, subheading, and optional icon—no prose, no markdown, no code fences.`,
+        },
+        {
+          role: "user",
+          content: JSON.stringify(payload),
+        },
+      ],
+    });
+
+    const content = completion.choices?.[0]?.message?.content?.trim() ?? "";
+    if (!content.length) return null;
+
+    const sanitized = content.replace(/```(?:json)?|```/gi, "").trim();
+    const parsed = JSON.parse(sanitized);
+    const result = replySummarySchema.safeParse(parsed);
+    if (!result.success) {
+      console.warn("Failed to parse summary JSON:", result.error);
+      return null;
+    }
+
+    return {
+      headline: result.data.headline.trim(),
+      subheading: result.data.subheading.trim(),
+      icon: result.data.icon?.trim() || undefined,
+    };
+  } catch (error) {
+    console.error("Failed to generate reply summary:", error);
+    return null;
+  }
+}
+
 const selectProductsParameters = {
   type: "object",
   properties: {
@@ -525,6 +733,7 @@ export async function callOpenAI({
 
     const toolCalls = Array.from(toolCallMap.values());
 
+    // if toolCall is present, dont send out final message (content)
     if (toolCalls.length) {
       chatMessages.push({
         role: "assistant",
@@ -547,7 +756,7 @@ export async function callOpenAI({
   let finalContent = "";
   let lastRoutine: RoutineSelection | null = null;
   let lastResultType: "routine" | null = null;
-  let lastSummary: ReplySummary | null = null;
+  let summaryContext: SummaryContext | null = null;
 
   console.log("calling openAi");
 
@@ -592,7 +801,7 @@ export async function callOpenAI({
 
           // console.log(result, "This is the result of the tool call");
 
-          // we are building tool outputs for multiple tool calling iteration
+          // we are building tool outputs from multiple tool calling iteration
           toolOutputs.push({
             name: toolCall.function.name,
             arguments: validatedArgs,
@@ -627,7 +836,7 @@ export async function callOpenAI({
       // console.log(toolOutputs, "This is the toolOutput");
 
       // our frontend can handle one routine at a time
-      lastSummary = null;
+      summaryContext = null;
 
       // latest routine output (just one)
       const latestRoutineOutput = [...toolOutputs]
@@ -769,22 +978,55 @@ export async function callOpenAI({
                 ? `Routine for ${skinTypePretty} Skin`
                 : "Personalized Routine";
           const stepCount = normalizedSteps.length;
-          const stepLabel = stepCount === 1 ? "1 step" : `${stepCount} steps`;
-          const summaryDetails: string[] = [stepLabel];
-          if (skinTypePretty) {
-            summaryDetails.push(`skin type: ${skinTypePretty.toLowerCase()}`);
-          }
-          if (concernsPretty.length) {
-            summaryDetails.push(
-              `concerns: ${concernsPretty
-                .map((item) => item.toLowerCase())
-                .join(", ")}`
-            );
-          }
-          lastSummary = {
-            icon: "🧪",
-            headline: routineHeadline,
-            subheading: `Tailored ${summaryDetails.join(" · ")}`,
+          const stepHighlights = normalizedSteps
+            .slice(0, 5)
+            .map((step) => {
+              const label =
+                (typeof step.title === "string" && step.title.length
+                  ? step.title
+                  : step.category) ??
+                (step?.step !== undefined && step?.step !== null
+                  ? `Step ${step.step}`
+                  : "");
+              const productName =
+                typeof step.product?.name === "string"
+                  ? step.product.name
+                  : typeof step.product?.slug === "string"
+                    ? step.product.slug
+                    : undefined;
+              const parts: string[] = [];
+              if (step?.step !== undefined && step?.step !== null) {
+                parts.push(`Step ${step.step}`);
+              }
+              if (label) {
+                parts.push(label);
+              }
+              if (productName) {
+                parts.push(productName);
+              }
+              return parts.join(" · ");
+            })
+            .filter((entry): entry is string => Boolean(entry));
+
+          const routineAudience = skinTypePretty?.toLowerCase() ?? "your skin";
+          const routineConcernFocus = concernsPretty.length
+            ? `focused on ${formatList(
+                concernsPretty.map((item) => item.toLowerCase())
+              )}`
+            : undefined;
+          const routineDescription = [routineAudience, routineConcernFocus]
+            .filter(Boolean)
+            .join(" and ");
+
+          summaryContext = {
+            type: "routine",
+            stepCount,
+            skinType: skinTypePretty,
+            concerns: concernsPretty.length ? concernsPretty : undefined,
+            stepHighlights,
+            iconSuggestion: "🧪",
+            headlineHint: routineHeadline,
+            routineDescription,
           };
 
           const routineSummary = normalizedSteps
@@ -831,10 +1073,22 @@ export async function callOpenAI({
             });
           }
 
+          // chatMessages.push({
+          //   role: "developer",
+          //   content:
+          //     "Explain how this full routine supports the user's skin goals. Reference the routine collectively (Step 1 cleanser, Step 2 serum, etc.) in a concise paragraph, and invite follow-up like swapping a step or learning usage tips.",
+          // });
+
+          // chatMessages.push({
+          //   role: "developer",
+          //   content:
+          //     "If the last tool call how this full routine supports the user's skin goals. Reference the routine collectively (Step 1 cleanser, Step 2 serum, etc.) in a concise paragraph, and invite follow-up like swapping a step or learning usage tips.",
+          // });
+
           chatMessages.push({
             role: "developer",
             content:
-              "Explain how this full routine supports the user's skin goals. Reference the routine collectively (Step 1 cleanser, Step 2 serum, etc.) in a concise paragraph, and invite follow-up like swapping a step or learning usage tips.",
+              "You have the routines passed in previous tool call. Dont generate any final content, text or routine description.",
           });
 
           continue;
@@ -915,23 +1169,36 @@ export async function callOpenAI({
             skinConcerns.length > 0 ||
             ingredientQueries.length > 0;
 
+          const normalizedSkinTypes = skinTypes
+            .map((type) => toTitleCase(type))
+            .filter(Boolean);
+          const normalizedConcerns = skinConcerns
+            .map((concern) => toTitleCase(concern))
+            .filter(Boolean);
+          const normalizedCategory = category
+            ? toTitleCase(category)
+            : undefined;
+          const normalizedBrand = brandQuery
+            ? toTitleCase(brandQuery)
+            : undefined;
+          const topProducts =
+            extractProductMetadataForSummary(selectedProducts);
+
+          let headlineHint: string | undefined;
           if (hasMeaningfulFilters) {
-            const skinPhrase = skinTypes
-              .map((type) => `${toTitleCase(type)} skin`)
+            const skinPhrase = normalizedSkinTypes
+              .map((type) => `${type} skin`)
               .join(" & ");
-            const concernPhrase = skinConcerns
-              .map((concern) => toTitleCase(concern))
-              .join(" & ");
-            const categoryPhrase = category ? toTitleCase(category) : undefined;
+            const concernPhrase = normalizedConcerns.join(" & ");
             const nameOrBrand = nameQuery ?? brandQuery;
 
             const headlineFragments: string[] = [];
-            if (categoryPhrase && skinPhrase) {
+            if (normalizedCategory && skinPhrase) {
               headlineFragments.push(
-                `${skinPhrase.toLowerCase()} ${categoryPhrase.toLowerCase()}`
+                `${skinPhrase.toLowerCase()} ${normalizedCategory.toLowerCase()}`
               );
-            } else if (categoryPhrase) {
-              headlineFragments.push(categoryPhrase.toLowerCase());
+            } else if (normalizedCategory) {
+              headlineFragments.push(normalizedCategory.toLowerCase());
             }
             if (skinPhrase && !headlineFragments.length) {
               headlineFragments.push(skinPhrase.toLowerCase());
@@ -946,47 +1213,71 @@ export async function callOpenAI({
             const headlineDescription = headlineFragments.length
               ? headlineFragments.join(" with ")
               : "your skincare request";
-            const headline = `Product suggestions for ${headlineDescription}`;
-
-            const subheadingParts: string[] = [];
-            if (categoryPhrase) {
-              subheadingParts.push(`category: ${categoryPhrase}`);
-            }
-            if (skinTypes.length) {
-              subheadingParts.push(
-                `skin type: ${skinTypes
-                  .map((type) => toTitleCase(type))
-                  .join(", ")}`
-              );
-            }
-            if (skinConcerns.length) {
-              subheadingParts.push(
-                `concerns: ${skinConcerns
-                  .map((concern) => toTitleCase(concern))
-                  .join(", ")}`
-              );
-            }
-            if (ingredientQueries.length) {
-              subheadingParts.push(
-                `actives: ${ingredientQueries
-                  .map((ingredient) => ingredient.toLowerCase())
-                  .join(", ")}`
-              );
-            }
-            if (brandQuery && !nameQuery) {
-              subheadingParts.push(`brand: ${toTitleCase(brandQuery)}`);
-            }
-
-            lastSummary = {
-              icon: "💧",
-              headline,
-              subheading: subheadingParts.length
-                ? `Here are the products I found ${subheadingParts.join(
-                    " · "
-                  )}.`
-                : undefined,
-            };
+            headlineHint = `Product suggestions for ${headlineDescription}`;
           }
+
+          const filterDetails: string[] = [];
+          if (normalizedCategory) {
+            filterDetails.push(`category ${normalizedCategory.toLowerCase()}`);
+          }
+          if (normalizedSkinTypes.length) {
+            filterDetails.push(
+              `suitable for ${formatList(
+                normalizedSkinTypes.map((type) => type.toLowerCase())
+              )} skin`
+            );
+          }
+          if (normalizedConcerns.length) {
+            filterDetails.push(
+              `targeting ${formatList(
+                normalizedConcerns.map((concern) => concern.toLowerCase())
+              )} concerns`
+            );
+          }
+          if (ingredientQueries.length) {
+            filterDetails.push(
+              `featuring ${formatList(
+                ingredientQueries.map((item) => item.toLowerCase())
+              )} actives`
+            );
+          }
+          if (normalizedBrand) {
+            filterDetails.push(`from ${normalizedBrand}`);
+          }
+          if (!normalizedBrand && typeof nameQuery === "string" && nameQuery) {
+            filterDetails.push(`matching "${nameQuery.toLowerCase()}"`);
+          }
+
+          const filterDescription = filterDetails.length
+            ? `including ${formatList(filterDetails)}`
+            : undefined;
+
+          summaryContext = {
+            type: "products",
+            productCount: selectedProducts.length,
+            filters: {
+              category: normalizedCategory,
+              skinTypes: normalizedSkinTypes.length
+                ? normalizedSkinTypes
+                : undefined,
+              skinConcerns: normalizedConcerns.length
+                ? normalizedConcerns
+                : undefined,
+              ingredientQueries: ingredientQueries.length
+                ? ingredientQueries.map((item) => item.toLowerCase())
+                : undefined,
+              brand: normalizedBrand,
+              nameQuery: nameQuery ?? undefined,
+            },
+            topProducts,
+            notes:
+              typeof refinedProductsResult?.notes === "string"
+                ? refinedProductsResult.notes
+                : undefined,
+            iconSuggestion: "🧪",
+            headlineHint,
+            filterDescription,
+          };
         }
 
         const reasonContext = selectedProducts
@@ -1054,6 +1345,24 @@ export async function callOpenAI({
       : "💧 I rounded up a few options that should fit nicely—happy to break any of them down further or pop one into your bag!"
     : finalContent;
 
+  let generatedSummary: ReplySummary | null = null;
+  if (replyText.trim().length) {
+    generatedSummary = await generateReplySummaryWithLLM({
+      reply: replyText,
+      userMessage: latestUserMessageContent,
+      context: summaryContext,
+      model,
+    });
+    if (generatedSummary) {
+      const resolvedIcon =
+        summaryContext?.iconSuggestion ?? generatedSummary.icon;
+      generatedSummary = {
+        ...generatedSummary,
+        icon: resolvedIcon,
+      };
+    }
+  }
+
   // it is the reply that is being saved in conversation history
   return {
     reply: replyText,
@@ -1061,6 +1370,6 @@ export async function callOpenAI({
     products: productsPayload.length ? productsPayload : undefined,
     resultType: lastResultType ?? undefined,
     routine: lastRoutine ?? undefined,
-    summary: lastSummary ?? undefined,
+    summary: generatedSummary ?? undefined,
   };
 }

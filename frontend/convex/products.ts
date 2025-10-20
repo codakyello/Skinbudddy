@@ -61,13 +61,6 @@ const jaccardSimilarity = (a: Set<string>, b: Set<string>) => {
   return intersection / union;
 };
 
-interface AIRecommendation {
-  productId: Id<"products">;
-  aiOrder: number;
-  category: string;
-  description: string;
-}
-
 export const recommend = action({
   args: {
     skinConcern: v.array(SkinConcern),
@@ -94,10 +87,6 @@ export const recommend = action({
       const all = await ctx.runQuery(
         internalAny.products._getAllProductsRaw,
         {}
-      );
-
-      const allById = new Map<string, any>(
-        all.map((item: any) => [String(item?._id), item])
       );
 
       const excludeValues = Array.isArray(skinProfile.excludeProductIds)
@@ -348,20 +337,42 @@ export const recommend = action({
       
       Return ONLY this JSON:
       {
-  "recommendations": [
+  "steps": [
     {
-      "_id": "exact_id",
-      "name": "exact_name",
-      "category": "from_product_data",
-      "description": "User benefit summary focusing on what the product does FOR skin (prevents, protects, treats, improves). Avoid listing features like SPF numbers or ingredients. ≤18 words."
+      "category": "cleanser",
+      "primary": {
+        "_id": "exact_id_from_availableProducts",
+        "description": "User benefit summary focusing on what the product does FOR skin (≤18 words, no ingredients/percentages)."
+      },
+      "alternates": [
+        {
+          "_id": "alternate_id_from_availableProducts",
+          "description": "Only include if it stays compatible with ENTIRE routine (≤18 words)."
+        }
+      ]
     }
   ],
   "notes": "Brief explanation of why these products work together + ONLY necessary caution notes for potent actives (e.g., retinoids, strong acids)."
 }
+      
+      HARD RULES FOR ALTERNATES:
+      - Max 2 alternates per step.
+      - Only include alternates that are fully compatible with EVERY other selected product (respect active/conflict guidance above).
+      - Skip alternates entirely if no safe option exists.
+      - Alternates must be the same category as the primary and use IDs from availableProducts.
+      - Never repeat the same product across steps or alternates.
       `;
 
-      // Validate using the AI's category assignments
-      const isValidSelection = (recs: any[]): boolean => {
+      const normalizeCategoryKey = (value: unknown): string | null => {
+        if (typeof value !== "string") return null;
+        const normalized = value.toLowerCase().trim();
+        if (!normalized.length) return null;
+        if (normalized === "moisturiser") return "moisturizer";
+        return normalized;
+      };
+
+      // Validate using the AI's assignments
+      const isValidSelection = (steps: any[]): boolean => {
         const allowed = new Set([
           "cleanser",
           "toner",
@@ -371,16 +382,41 @@ export const recommend = action({
           "sunscreen",
         ]);
         const counts: Record<string, number> = {};
-        for (const r of recs) {
-          const cat = String(r?.category || "")
-            .toLowerCase()
-            .trim();
-          if (!allowed.has(cat)) return false;
+        const seenPrimaryIds = new Set<string>();
+        for (const step of steps) {
+          if (!step || typeof step !== "object") return false;
+          const category = normalizeCategoryKey(
+            (step as Record<string, unknown>).category
+          );
+          if (!category || !allowed.has(category)) return false;
+          counts[category] = (counts[category] || 0) + 1;
 
-          // Normalize moisturiser to moisturizer for counting
-          const normalizedCat = cat === "moisturiser" ? "moisturizer" : cat;
-          counts[normalizedCat] = (counts[normalizedCat] || 0) + 1;
+          const primary = (step as Record<string, unknown>).primary;
+          if (!primary || typeof primary !== "object") return false;
+          const primaryRecord = primary as Record<string, unknown>;
+          const rawPrimaryId =
+            typeof primaryRecord._id === "string"
+              ? primaryRecord._id.toLowerCase()
+              : typeof primaryRecord.productId === "string"
+                ? primaryRecord.productId.toLowerCase()
+                : typeof primaryRecord.id === "string"
+                  ? primaryRecord.id.toLowerCase()
+                  : undefined;
+          const rawPrimarySlug =
+            typeof primaryRecord.slug === "string"
+              ? primaryRecord.slug.toLowerCase()
+              : undefined;
+          const rawPrimaryName =
+            typeof primaryRecord.name === "string"
+              ? primaryRecord.name.toLowerCase()
+              : undefined;
+          const primaryKey =
+            rawPrimaryId ?? rawPrimarySlug ?? rawPrimaryName ?? null;
+          if (!primaryKey) return false;
+          if (seenPrimaryIds.has(primaryKey)) return false;
+          seenPrimaryIds.add(primaryKey);
         }
+
         // Mandatory singles
         if ((counts["cleanser"] || 0) !== 1) return false;
         if ((counts["moisturizer"] || 0) !== 1) return false;
@@ -393,7 +429,7 @@ export const recommend = action({
 
       const MAX_ATTEMPTS = 3;
       let attempts = 0;
-      let lastParsedRecs: any[] = [];
+      let lastParsedSteps: any[] = [];
       let notes = "";
 
       do {
@@ -405,15 +441,15 @@ export const recommend = action({
           const match = data.match(/\{[\s\S]*\}/);
           parsed = match ? JSON.parse(match[0]) : null;
         }
-        const recs = Array.isArray(parsed?.recommendations)
-          ? parsed.recommendations
+        const stepsOutput = Array.isArray(parsed?.steps)
+          ? parsed.steps
           : [];
 
         notes = typeof parsed?.notes === "string" ? parsed.notes : "";
-        lastParsedRecs = recs;
+        lastParsedSteps = stepsOutput;
 
         attempts++;
-      } while (!isValidSelection(lastParsedRecs) && attempts < MAX_ATTEMPTS);
+      } while (!isValidSelection(lastParsedSteps) && attempts < MAX_ATTEMPTS);
 
       // Resolve strictly against the allowed pool
       const idByString = new Map<string, any>(
@@ -430,31 +466,52 @@ export const recommend = action({
           .map((p: any) => [String(p.slug).toLowerCase(), p._id])
       );
 
-      const resolvedRecs = lastParsedRecs
-        .map((r: any, index: number) => {
-          if (!r) return null;
-          const rawId =
-            typeof r._id === "string" ? r._id.toLowerCase() : undefined;
-          const rawName =
-            typeof r.name === "string" ? r.name.toLowerCase() : undefined;
-          const rawSlug =
-            typeof r.slug === "string" ? r.slug.toLowerCase() : undefined;
+      type ResolvedStep = {
+        category: string;
+        aiOrder: number;
+        primary: {
+          productId: Id<"products">;
+          description: string;
+        };
+        alternates: Array<{
+          productId: Id<"products">;
+          description: string;
+        }>;
+      };
 
-          const productId =
-            (rawId && idByString.get(rawId)) ||
-            (rawSlug && idBySlug.get(rawSlug)) ||
-            (rawName && idByName.get(rawName));
+      const resolveProductId = (
+        value: Record<string, unknown>
+      ): Id<"products"> | null => {
+        const rawId =
+          typeof value._id === "string" ? value._id.toLowerCase() : undefined;
+        const rawProductId =
+          typeof value.productId === "string"
+            ? value.productId.toLowerCase()
+            : undefined;
+        const rawIdField =
+          typeof value.id === "string" ? value.id.toLowerCase() : undefined;
+        const rawSlug =
+          typeof value.slug === "string" ? value.slug.toLowerCase() : undefined;
+        const rawName =
+          typeof value.name === "string" ? value.name.toLowerCase() : undefined;
 
-          if (!productId) return null;
+        return (
+          (rawId && idByString.get(rawId)) ||
+          (rawProductId && idByString.get(rawProductId)) ||
+          (rawIdField && idByString.get(rawIdField)) ||
+          (rawSlug && idBySlug.get(rawSlug)) ||
+          (rawName && idByName.get(rawName)) ||
+          null
+        );
+      };
 
-          const categoryRaw = String(r?.category ?? "")
-            .toLowerCase()
-            .trim();
-
-          const category =
-            categoryRaw === "moisturiser" ? "moisturizer" : categoryRaw;
-
+      const resolvedSteps = lastParsedSteps
+        .map((step: any, index: number) => {
+          if (!step || typeof step !== "object") return null;
+          const record = step as Record<string, unknown>;
+          const category = normalizeCategoryKey(record.category);
           if (
+            !category ||
             ![
               "cleanser",
               "toner",
@@ -466,192 +523,81 @@ export const recommend = action({
             return null;
           }
 
-          if (
-            excludedLookup.has(String(productId).toLowerCase()) ||
-            (rawName && excludedLookup.has(rawName))
-          ) {
-            return null;
-          }
+          const primaryRaw = record.primary;
+          if (!primaryRaw || typeof primaryRaw !== "object") return null;
+          const primaryRecord = primaryRaw as Record<string, unknown>;
+          const primaryId = resolveProductId(primaryRecord);
+          if (!primaryId) return null;
+          const primaryKey = String(primaryId).toLowerCase();
+          if (excludedLookup.has(primaryKey)) return null;
 
-          const description =
-            typeof r.description === "string" ? r.description : "";
+          const primaryDescription =
+            typeof primaryRecord.description === "string"
+              ? primaryRecord.description
+              : "";
+
+          const alternatesRaw = Array.isArray(record.alternates)
+            ? record.alternates
+            : [];
+          const alternates: Array<{
+            productId: Id<"products">;
+            description: string;
+          }> = [];
+          const seenAltIds = new Set<string>();
+
+          for (const alt of alternatesRaw) {
+            if (!alt || typeof alt !== "object") continue;
+            const altRecord = alt as Record<string, unknown>;
+            const altId = resolveProductId(altRecord);
+            if (!altId) continue;
+            const altKey = String(altId).toLowerCase();
+            if (altKey === primaryKey) continue;
+            if (excludedLookup.has(altKey)) continue;
+            if (seenAltIds.has(altKey)) continue;
+            seenAltIds.add(altKey);
+            const altDescription =
+              typeof altRecord.description === "string"
+                ? altRecord.description
+                : "";
+            alternates.push({
+              productId: altId,
+              description: altDescription,
+            });
+            if (alternates.length >= 2) break;
+          }
 
           return {
-            productId,
             category,
-            description,
-            aiOrder: index, // Preserve AI's intended order
-          };
+            primary: {
+              productId: primaryId,
+              description: primaryDescription,
+            },
+            alternates,
+            aiOrder: index,
+          } as ResolvedStep;
         })
-        .filter(Boolean) as Array<{
-        productId: Id<"products">;
-        category: string;
-        description: string;
-        aiOrder: number;
-      }>;
-
-      const normalizeCategoryKey = (value: unknown): string | null => {
-        if (typeof value !== "string") return null;
-        const normalized = value.toLowerCase().trim();
-        if (!normalized.length) return null;
-        if (normalized === "moisturiser") return "moisturizer";
-        return normalized;
-      };
-
-      const extractCategoryKeys = (product: any): string[] => {
-        if (!product) return [];
-        const categories = Array.isArray(product.categories)
-          ? product.categories
-          : [];
-        const keys = new Set<string>();
-        for (const category of categories) {
-          if (typeof category === "string") {
-            const key = normalizeCategoryKey(category);
-            if (key) keys.add(key);
-            continue;
-          }
-          if (!category || typeof category !== "object") continue;
-          const record = category as Record<string, unknown>;
-          const fromName = normalizeCategoryKey(record.name);
-          if (fromName) keys.add(fromName);
-          const fromSlug = normalizeCategoryKey(record.slug);
-          if (fromSlug) keys.add(fromSlug);
-        }
-        return Array.from(keys);
-      };
-
-      const toLowerArray = (value: unknown): string[] => {
-        if (Array.isArray(value)) {
-          return value
-            .map((entry) => String(entry || "").toLowerCase().trim())
-            .filter((entry) => entry.length > 0);
-        }
-        if (typeof value === "string") {
-          const normalized = value.toLowerCase().trim();
-          return normalized.length ? [normalized] : [];
-        }
-        return [];
-      };
-
-      const userConcerns = new Set<string>(
-        Array.isArray(skinProfile.skinConcern)
-          ? skinProfile.skinConcern.map((c: string) => c.toLowerCase())
-          : []
-      );
-      const userSkinType =
-        typeof skinProfile.skinType === "string"
-          ? skinProfile.skinType.toLowerCase()
-          : "";
-
-      const computeAlternativeScore = (product: any): number => {
-        if (!product) return 0;
-        let score = 0;
-
-        const productConcerns = toLowerArray(product.concerns);
-        if (productConcerns.includes("all")) {
-          score += 0.5;
-        }
-        const matchedConcerns = productConcerns.filter((concern) =>
-          userConcerns.has(concern)
-        ).length;
-        score += matchedConcerns * 1.5;
-
-        const productSkinTypes = toLowerArray(product.skinType);
-        if (productSkinTypes.includes(userSkinType)) {
-          score += 1.2;
-        } else if (productSkinTypes.includes("all")) {
-          score += 0.6;
-        }
-
-        if (Array.isArray(product.ingredients)) {
-          const hasHeavyActives = product.ingredients.some((ingredient: any) =>
-            typeof ingredient === "string"
-              ? /retinol|retinoid|glycolic|salicylic|lactic|aha|bha|ascorbic/i.test(
-                  ingredient
-                )
-              : false
-          );
-          if (!hasHeavyActives) {
-            score += 0.2;
-          }
-        }
-
-        return score;
-      };
-
-      const primaryIds = new Set<string>(
-        resolvedRecs.map((rec) => String(rec.productId))
-      );
-      const categoriesInRoutine = new Set<string>(
-        resolvedRecs.map((rec) => rec.category)
-      );
-      const MAX_ALTERNATIVES_PER_CATEGORY = 2;
-
-      const alternativesByCategory = new Map<
-        string,
-        Array<{ productId: Id<"products">; score: number }>
-      >();
-
-      for (const product of all) {
-        if (!product || typeof product !== "object") continue;
-        const productId = (product as any)?._id as Id<"products"> | undefined;
-        if (!productId) continue;
-        const idString = String(productId);
-        if (primaryIds.has(idString)) continue;
-        if (excludedLookup.has(idString.toLowerCase())) continue;
-
-        const categoryKeys = extractCategoryKeys(product);
-        if (!categoryKeys.length) continue;
-
-        const matchedCategories = categoryKeys.filter((category) =>
-          categoriesInRoutine.has(category)
+        .filter(
+          (step): step is ResolvedStep =>
+            step !== null
         );
-        if (!matchedCategories.length) continue;
 
-        const score = computeAlternativeScore(product);
-        if (score <= 0) continue;
-
-        for (const category of matchedCategories) {
-          const current = alternativesByCategory.get(category) ?? [];
-          current.push({ productId, score });
-          alternativesByCategory.set(category, current);
-        }
+      if (!resolvedSteps.length) {
+        throw new Error("Failed to resolve recommended routine steps.");
       }
 
-      const selectedAlternatives = new Map<
-        string,
-        Array<{ productId: Id<"products">; score: number }>
-      >();
-
-      for (const [category, options] of alternativesByCategory.entries()) {
-        const deduped = new Map<string, { productId: Id<"products">; score: number }>();
-        for (const option of options) {
-          const key = String(option.productId);
-          const existing = deduped.get(key);
-          if (!existing || existing.score < option.score) {
-            deduped.set(key, option);
-          }
-        }
-        const ranked = Array.from(deduped.values())
-          .sort((a, b) => b.score - a.score)
-          .slice(0, MAX_ALTERNATIVES_PER_CATEGORY);
-        if (ranked.length) {
-          selectedAlternatives.set(category, ranked);
+      const requiredCategories = ["cleanser", "moisturizer", "sunscreen"];
+      for (const category of requiredCategories) {
+        if (!resolvedSteps.some((step) => step.category === category)) {
+          throw new Error("Routine response missing required categories.");
         }
       }
-
-      const alternativeIds = Array.from(
-        new Set(
-          Array.from(selectedAlternatives.values()).flatMap((options) =>
-            options.map((option) => option.productId)
-          )
-        )
-      );
 
       const ids = Array.from(
         new Set([
-          ...resolvedRecs.map((rec) => rec.productId),
-          ...alternativeIds,
+          ...resolvedSteps.map((step) => step.primary.productId),
+          ...resolvedSteps.flatMap((step) =>
+            step.alternates.map((alt) => alt.productId)
+          ),
         ])
       );
 
@@ -705,11 +651,11 @@ export const recommend = action({
           product: Doc<"products">;
           description: string;
         }>;
-      } | null> = resolvedRecs
-        .sort((a, b) => a.aiOrder - b.aiOrder) // ← Trust AI's order
+      } | null> = resolvedSteps
+        .sort((a, b) => a.aiOrder - b.aiOrder)
         .map(
           (
-            rec: AIRecommendation,
+            step,
             finalOrder
           ): {
             category: string;
@@ -724,15 +670,17 @@ export const recommend = action({
             }>;
           } | null => {
             const product: Doc<"products"> | undefined = productById.get(
-              String(rec.productId)
+              String(step.primary.productId)
             );
             if (!product) return null;
 
-            const key = String(rec.productId);
+            const key = String(step.primary.productId);
             if (seenProductIds.has(key)) return null;
             seenProductIds.add(key);
 
-            const normalizedDescription = normalizeDescription(rec.description);
+            const normalizedDescription = normalizeDescription(
+              step.primary.description
+            );
             const fallback = fallbackDescriptionFor(product);
             const description =
               normalizedDescription.length > 0
@@ -741,19 +689,19 @@ export const recommend = action({
                   ? limitWords(fallback, 20)
                   : "";
 
-            const categoryAlternatives =
-              selectedAlternatives.get(rec.category) ?? [];
-            const alternatives = categoryAlternatives
+            const alternatives = step.alternates
               .map((option) => {
                 const altKey = String(option.productId);
-                if (altKey === key) return null;
                 const altProduct = productById.get(altKey);
                 if (!altProduct) return null;
-                const altDescriptionSource = fallbackDescriptionFor(altProduct);
-                const altDescription = limitWords(
-                  normalizeDescription(altDescriptionSource),
-                  20
-                );
+                const altNormalized = normalizeDescription(option.description);
+                const altFallback = fallbackDescriptionFor(altProduct);
+                const altDescription =
+                  altNormalized.length > 0
+                    ? limitWords(altNormalized, 20)
+                    : altFallback.length > 0
+                      ? limitWords(altFallback, 20)
+                      : "";
                 return {
                   productId: option.productId,
                   product: altProduct,
@@ -771,11 +719,11 @@ export const recommend = action({
               );
 
             return {
-              category: rec.category,
+              category: step.category,
               description,
-              productId: rec.productId,
+              productId: step.primary.productId,
               product,
-              order: finalOrder, // Sequential order for frontend
+              order: finalOrder,
               alternatives: alternatives.length ? alternatives : undefined,
             };
           }

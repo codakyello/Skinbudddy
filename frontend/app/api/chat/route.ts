@@ -113,11 +113,22 @@ export async function POST(req: NextRequest) {
           .filter((product): product is NormalizedProduct => product !== null);
       };
 
+      type NormalizedRoutineSize = {
+        sizeId: string;
+        size?: number;
+        unit?: string;
+        price?: number;
+        currency?: string;
+        discount?: number;
+        stock?: number;
+      };
+
       type NormalizedRoutineAlternative = {
         productId?: string;
         slug?: string;
         productName?: string;
         description?: string;
+        sizes?: NormalizedRoutineSize[];
       };
 
       type NormalizedRoutineStep = {
@@ -133,6 +144,7 @@ export async function POST(req: NextRequest) {
         productName?: string;
         instruction?: string;
         timeOfDay?: string;
+        sizes?: NormalizedRoutineSize[];
         alternatives?: NormalizedRoutineAlternative[];
       };
 
@@ -149,174 +161,238 @@ export async function POST(req: NextRequest) {
         if (!routine || typeof routine !== "object") return undefined;
         const raw = routine as Record<string, unknown>;
 
-        const steps: NormalizedRoutineStep[] = Array.isArray(raw.steps)
-          ? raw.steps.flatMap((step) => {
-                if (!step || typeof step !== "object") return [];
-                const record = step as Record<string, unknown>;
-                const productRecord =
-                  record.product && typeof record.product === "object"
-                    ? (record.product as Record<string, unknown>)
-                    : undefined;
+        const toNumber = (value: unknown): number | undefined => {
+          if (typeof value === "number" && Number.isFinite(value)) return value;
+          if (typeof value === "string" && value.trim().length) {
+            const parsed = Number(value);
+            if (Number.isFinite(parsed)) return parsed;
+          }
+          return undefined;
+        };
 
-                const productId =
-                  typeof record.productId === "string"
-                    ? record.productId
+        const parseSizes = (input: unknown): NormalizedRoutineSize[] => {
+          if (!Array.isArray(input)) return [];
+          return input
+            .map((entry) => {
+              if (!entry || typeof entry !== "object") return null;
+              const record = entry as Record<string, unknown>;
+              const sizeId =
+                typeof record.sizeId === "string"
+                  ? record.sizeId
+                  : typeof record.id === "string"
+                    ? record.id
                     : typeof record._id === "string"
                       ? record._id
-                      : typeof productRecord?._id === "string"
-                        ? (productRecord._id as string)
-                        : typeof productRecord?.id === "string"
-                          ? (productRecord.id as string)
-                          : undefined;
-                const productSlug =
-                  typeof record.slug === "string"
-                    ? record.slug
-                    : typeof productRecord?.slug === "string"
-                      ? (productRecord.slug as string)
                       : undefined;
-                const productName =
-                  typeof record.productName === "string"
-                    ? record.productName
-                    : typeof productRecord?.name === "string"
-                      ? (productRecord.name as string)
-                      : undefined;
-                const instruction =
-                  typeof record.instruction === "string"
-                    ? record.instruction.slice(0, 320)
-                    : undefined;
-                const timeOfDay =
-                  typeof record.timeOfDay === "string"
-                    ? record.timeOfDay
-                    : undefined;
+              if (!sizeId) return null;
 
-                const order =
-                  typeof record.order === "number" ? record.order : undefined;
-                const stepNumber =
-                  typeof record.step === "number" ? record.step : undefined;
-                const category =
-                  typeof record.category === "string"
-                    ? record.category
-                    : undefined;
-                let categorySlug =
-                  typeof record.categorySlug === "string"
-                    ? record.categorySlug
-                    : category;
+              const sizeValue = toNumber(record.size);
+              const unit =
+                typeof record.unit === "string" ? record.unit : undefined;
+              const price = toNumber(record.price);
+              const currency =
+                typeof record.currency === "string"
+                  ? record.currency
+                  : undefined;
+              const discount = toNumber(record.discount);
+              const stock = toNumber(record.stock);
 
-                let categoryName: string | undefined;
-                if (typeof record.categoryName === "string") {
-                  categoryName = record.categoryName;
-                } else if (typeof record.categoryLabel === "string") {
-                  categoryName = record.categoryLabel;
-                } else if (typeof record.title === "string") {
-                  categoryName = record.title;
+              const normalized: NormalizedRoutineSize = { sizeId };
+              if (typeof sizeValue === "number") normalized.size = sizeValue;
+              if (unit) normalized.unit = unit;
+              if (typeof price === "number") normalized.price = price;
+              if (currency) normalized.currency = currency;
+              if (typeof discount === "number") normalized.discount = discount;
+              if (typeof stock === "number") normalized.stock = stock;
+
+              return normalized;
+            })
+            .filter((entry): entry is NormalizedRoutineSize => entry !== null);
+        };
+
+        const steps: NormalizedRoutineStep[] = Array.isArray(raw.steps)
+          ? raw.steps.flatMap((step) => {
+              if (!step || typeof step !== "object") return [];
+              const record = step as Record<string, unknown>;
+              const productRecord =
+                record.product && typeof record.product === "object"
+                  ? (record.product as Record<string, unknown>)
+                  : undefined;
+
+              const productId =
+                typeof record.productId === "string"
+                  ? record.productId
+                  : typeof record._id === "string"
+                    ? record._id
+                    : typeof productRecord?._id === "string"
+                      ? (productRecord._id as string)
+                      : typeof productRecord?.id === "string"
+                        ? (productRecord.id as string)
+                        : undefined;
+              const productSlug =
+                typeof record.slug === "string"
+                  ? record.slug
+                  : typeof productRecord?.slug === "string"
+                    ? (productRecord.slug as string)
+                    : undefined;
+              // const productName =
+              //   typeof record.productName === "string"
+              //     ? record.productName
+              //     : typeof productRecord?.name === "string"
+              //       ? (productRecord.name as string)
+              //       : undefined;
+              const instruction =
+                typeof record.instruction === "string"
+                  ? record.instruction.slice(0, 320)
+                  : undefined;
+              const timeOfDay =
+                typeof record.timeOfDay === "string"
+                  ? record.timeOfDay
+                  : undefined;
+
+              const order =
+                typeof record.order === "number" ? record.order : undefined;
+              const stepNumber =
+                typeof record.step === "number" ? record.step : undefined;
+              const category =
+                typeof record.category === "string"
+                  ? record.category
+                  : undefined;
+              let categorySlug =
+                typeof record.categorySlug === "string"
+                  ? record.categorySlug
+                  : category;
+
+              let categoryName: string | undefined;
+              if (typeof record.categoryName === "string") {
+                categoryName = record.categoryName;
+              } else if (typeof record.categoryLabel === "string") {
+                categoryName = record.categoryLabel;
+              } else if (typeof record.title === "string") {
+                categoryName = record.title;
+              }
+
+              if (Array.isArray(productRecord?.categories)) {
+                type CategoryInfo = { name?: string; slug?: string };
+                const categories: CategoryInfo[] = (
+                  productRecord.categories as unknown[]
+                )
+                  .map((entry): CategoryInfo | null => {
+                    if (typeof entry === "string") {
+                      return { name: entry };
+                    }
+                    if (!entry || typeof entry !== "object") return null;
+                    const ref = entry as Record<string, unknown>;
+                    const name =
+                      typeof ref.name === "string" ? ref.name : undefined;
+                    const slugValue =
+                      typeof ref.slug === "string" ? ref.slug : undefined;
+                    if (!name && !slugValue) return null;
+                    return { name, slug: slugValue };
+                  })
+                  .filter((value): value is CategoryInfo => value !== null);
+                if (!categoryName) {
+                  const nameCandidate = categories.find(
+                    (entry) => typeof entry?.name === "string"
+                  );
+                  categoryName = nameCandidate?.name;
                 }
-
-                if (Array.isArray(productRecord?.categories)) {
-                  type CategoryInfo = { name?: string; slug?: string };
-                  const categories: CategoryInfo[] = (
-                    productRecord.categories as unknown[]
-                  )
-                    .map((entry): CategoryInfo | null => {
-                      if (typeof entry === "string") {
-                        return { name: entry };
-                      }
-                      if (!entry || typeof entry !== "object") return null;
-                      const ref = entry as Record<string, unknown>;
-                      const name =
-                        typeof ref.name === "string" ? ref.name : undefined;
-                      const slugValue =
-                        typeof ref.slug === "string" ? ref.slug : undefined;
-                      if (!name && !slugValue) return null;
-                      return { name, slug: slugValue };
-                    })
-                    .filter((value): value is CategoryInfo => value !== null);
-                  if (!categoryName) {
-                    const nameCandidate = categories.find(
-                      (entry) => typeof entry?.name === "string"
-                    );
-                    categoryName = nameCandidate?.name;
-                  }
-                  if (!categorySlug) {
-                    const slugCandidate = categories.find(
-                      (entry) => typeof entry?.slug === "string"
-                    );
-                    categorySlug = slugCandidate?.slug ?? categorySlug;
-                  }
+                if (!categorySlug) {
+                  const slugCandidate = categories.find(
+                    (entry) => typeof entry?.slug === "string"
+                  );
+                  categorySlug = slugCandidate?.slug ?? categorySlug;
                 }
+              }
 
-                const alternatives: NormalizedRoutineAlternative[] =
-                  Array.isArray(record.alternatives) && record.alternatives.length
-                    ? (record.alternatives as unknown[])
-                        .map((entry) => {
-                          if (!entry || typeof entry !== "object") return null;
-                          const option = entry as Record<string, unknown>;
-                          const optionProduct =
-                            option.product && typeof option.product === "object"
-                              ? (option.product as Record<string, unknown>)
-                              : undefined;
-                          const altProductId =
-                            typeof option.productId === "string"
-                              ? option.productId
-                              : typeof option._id === "string"
-                                ? option._id
-                                : typeof optionProduct?._id === "string"
-                                  ? (optionProduct._id as string)
-                                  : typeof optionProduct?.id === "string"
-                                    ? (optionProduct.id as string)
-                                    : undefined;
-                          const altSlug =
-                            typeof option.slug === "string"
-                              ? option.slug
-                              : typeof optionProduct?.slug === "string"
-                                ? (optionProduct.slug as string)
-                                : undefined;
-                          const altName =
-                            typeof option.productName === "string"
-                              ? option.productName
-                              : typeof optionProduct?.name === "string"
-                                ? (optionProduct.name as string)
-                                : undefined;
-                          const altDescription =
-                            typeof option.description === "string"
-                              ? option.description
-                              : undefined;
-                          if (!altProductId && !altSlug) return null;
-                          return {
-                            productId: altProductId,
-                            slug: altSlug,
-                            productName: altName,
-                            description: altDescription,
-                          } as NormalizedRoutineAlternative;
-                        })
-                        .filter(
-                          (
-                            entry
-                          ): entry is NormalizedRoutineAlternative =>
-                            Boolean(entry)
-                        )
+              const recordSizes = parseSizes(record["sizes"]);
+              const productSizes = productRecord
+                ? parseSizes(productRecord["sizes"])
+                : [];
+              const stepSizes =
+                recordSizes.length > 0
+                  ? recordSizes
+                  : productSizes.length > 0
+                    ? productSizes
                     : [];
 
-                if (!productId && !productSlug) return [];
+              const alternatives: NormalizedRoutineAlternative[] =
+                Array.isArray(record.alternatives) && record.alternatives.length
+                  ? (record.alternatives as unknown[])
+                      .map((entry) => {
+                        if (!entry || typeof entry !== "object") return null;
+                        const option = entry as Record<string, unknown>;
+                        const optionProduct =
+                          option.product && typeof option.product === "object"
+                            ? (option.product as Record<string, unknown>)
+                            : undefined;
+                        const altProductId =
+                          typeof option.productId === "string"
+                            ? option.productId
+                            : typeof option._id === "string"
+                              ? option._id
+                              : typeof optionProduct?._id === "string"
+                                ? (optionProduct._id as string)
+                                : typeof optionProduct?.id === "string"
+                                  ? (optionProduct.id as string)
+                                  : undefined;
+                        const altSlug =
+                          typeof option.slug === "string"
+                            ? option.slug
+                            : typeof optionProduct?.slug === "string"
+                              ? (optionProduct.slug as string)
+                              : undefined;
+                        // const altProductName =
+                        //   typeof option.productName === "string"
+                        //     ? option.productName
+                        //     : typeof optionProduct?.name === "string"
+                        //       ? (optionProduct.name as string)
+                        //       : undefined;
+                        // const altDescription =
+                        //   typeof option.description === "string"
+                        //     ? option.description
+                        //     : undefined;
+                        const optionSizes = parseSizes(option["sizes"]);
+                        const optionProductSizes = optionProduct
+                          ? parseSizes(optionProduct["sizes"])
+                          : [];
+                        const altSizes =
+                          optionSizes.length > 0
+                            ? optionSizes
+                            : optionProductSizes.length > 0
+                              ? optionProductSizes
+                              : [];
 
-                const normalized: NormalizedRoutineStep = {
-                  index:
-                    typeof record.index === "number" ? record.index : undefined,
-                  order,
-                  step: stepNumber,
-                  productId,
-                  slug: productSlug,
-                  productSlug,
-                  productName,
-                  category,
-                  categoryName,
-                  categorySlug,
-                  instruction,
-                  timeOfDay,
-                  alternatives: alternatives.length ? alternatives : undefined,
-                };
+                        if (!altProductId && !altSlug) return null;
+                        return {
+                          productId: altProductId,
+                          slug: altSlug,
+                          sizes: altSizes.length ? altSizes : undefined,
+                        } as NormalizedRoutineAlternative;
+                      })
+                      .filter((entry): entry is NormalizedRoutineAlternative =>
+                        Boolean(entry)
+                      )
+                  : [];
 
-                return [normalized];
-              })
+              if (!productId && !productSlug) return [];
+
+              const normalized: NormalizedRoutineStep = {
+                index:
+                  typeof record.index === "number" ? record.index : undefined,
+                order,
+                step: stepNumber,
+                productId,
+                productSlug,
+                category,
+                instruction,
+                timeOfDay,
+                sizes: stepSizes.length ? stepSizes : undefined,
+                alternatives: alternatives.length ? alternatives : undefined,
+              };
+
+              return [normalized];
+            })
           : [];
 
         return {
@@ -441,7 +517,10 @@ export async function POST(req: NextRequest) {
           }
 
           // Same for routine too
+
           const sanitizedRoutine = sanitizeRoutine(routine);
+
+          console.log(sanitizedRoutine, "this is the routine");
 
           if (sanitizedRoutine && sanitizedRoutine.steps.length) {
             schedule(

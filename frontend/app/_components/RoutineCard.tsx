@@ -9,6 +9,9 @@ export default function RoutineCard({
   routine: RoutineStep;
   onProductToPreview: (product: Product) => void;
 }) {
+  console.log(routine, "This is routine in routine card");
+  const alternativeProducts = routine?.alternatives?.map((alt) => alt.product);
+  const products = [routine.product, ...(alternativeProducts ?? [])];
   return (
     <Box className="flex flex-col gap-4">
       <Box>
@@ -24,28 +27,35 @@ export default function RoutineCard({
         ) : null}
       </Box>
       <Box className="mt-6 flex items-stretch gap-[1rem] overflow-auto">
-        <Box className="w-[90%] md:w-[75%] flex">
-          <ProductCard
-            onProductToPreview={onProductToPreview}
-            inChat={true}
-            product={routine.product}
-          />
-        </Box>
-
-        {Array.isArray(routine.alternatives) &&
+        {products.map((product, index) => (
+          <Box
+            key={index}
+            className={`${products.length > 1 ? "min-w-[85%]  md:min-w-[75%]" : "w-[85%] md:w-[75%]"}  flex`}
+          >
+            <ProductCard
+              onProductToPreview={onProductToPreview}
+              inChat={true}
+              product={product}
+            />
+          </Box>
+        ))}
+        {/* {Array.isArray(routine.alternatives) &&
           routine.alternatives.length > 0 &&
           routine.alternatives.map((option, index) => (
             <Box
               key={`${option.productId ?? option.product?._id ?? index}`}
               className="min-w-[90%] md:min-w-[75%] flex"
             >
-              <ProductCard
-                onProductToPreview={onProductToPreview}
-                inChat={true}
-                product={option.product}
-              />
+              {products.map((product) => (
+                <ProductCard
+                  onProductToPreview={onProductToPreview}
+                  inChat={true}
+                  product={option.product}
+                />
+              ))}
             </Box>
           ))}
+       </Box> */}
       </Box>
     </Box>
   );

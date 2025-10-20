@@ -298,6 +298,43 @@ const normalizeRoutinePayload = (input: unknown): Routine | null => {
           ? productCandidate._id
           : undefined;
 
+    const alternatives: Array<{
+      productId?: string;
+      description?: string;
+      product: Product;
+    }> = [];
+
+    if (Array.isArray(entry.alternatives)) {
+      entry.alternatives.forEach((alternative) => {
+        if (!isRecord(alternative)) return;
+        const altProductSourceRaw = alternative["product"];
+        const altProductSource = isRecord(altProductSourceRaw)
+          ? altProductSourceRaw
+          : (altProductSourceRaw ?? alternative);
+        const altProductCandidate = mapToolProductToProduct(altProductSource);
+        if (!altProductCandidate) return;
+        const altProductId =
+          typeof alternative.productId === "string"
+            ? alternative.productId
+            : typeof altProductCandidate._id === "string"
+              ? altProductCandidate._id
+              : undefined;
+        const altDescription =
+          typeof alternative.description === "string"
+            ? alternative.description
+            : undefined;
+        alternatives.push({
+          productId: altProductId,
+          description: altDescription,
+          product: altProductCandidate,
+        });
+      });
+    }
+
+    const normalizedAlternatives = alternatives.length
+      ? alternatives
+      : undefined;
+
     steps.push({
       step: stepNumber,
       category,
@@ -305,6 +342,7 @@ const normalizeRoutinePayload = (input: unknown): Routine | null => {
       description,
       productId,
       product: productCandidate,
+      alternatives: normalizedAlternatives,
     });
   });
 
@@ -421,7 +459,7 @@ export default function ChatPage() {
         </h2>
       ),
       h3: ({ children }) => (
-        <h3 className="text-[1.5rem] font-semibold text-[#311d60]">
+        <h3 className="text-[1.5rem] font-semibold text-[#311d60] leading-[1.25px]">
           {children}
         </h3>
       ),
@@ -445,7 +483,7 @@ export default function ChatPage() {
         <strong className="font-semibold text-[#2b1958]">{children}</strong>
       ),
       em: ({ children }) => (
-        <em className="font-medium text-[#af51d6]">{children}</em>
+        <em className="font-medium text-[#311d60]">{children}</em>
       ),
       a: ({ children, href }) => (
         <a
@@ -679,7 +717,7 @@ export default function ChatPage() {
 
   return (
     <Modal>
-      <main className="flex h-[calc(100vh-75px)] overflow-hidden  flex-col font-['Inter'] text-[#2f1f53]">
+      <main className="flex h-[calc(100vh-45px)] overflow-hidden  flex-col font-['Inter'] text-[#2f1f53]">
         <Box
           className={`flex relative flex-1 min-h-0 w-full flex-col items-center ${!hasMessages && "justify-center"} px-8 `}
         >
@@ -722,7 +760,7 @@ export default function ChatPage() {
               </Box>
             )}
 
-            <section className="mt-12 space-y-10 pb-36">
+            <section className="mt-8 space-y-10 pb-36">
               {messages.map((message, index) => (
                 <Box
                   id={`message-${message.id}`}
@@ -735,26 +773,16 @@ export default function ChatPage() {
                     <Box className="w-full ">
                       {message.resultType === "routine" &&
                       message.routine?.steps?.length ? (
-                        <Box className="mt-6 flex flex-col gap-[1.6rem] mb-[24px]">
+                        <Box className="mt-6 flex flex-col mb-[24px]">
                           {message.summary?.headline ? (
                             <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
-                              <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex items-center gap-[0.6rem]">
+                              <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
                                 {message.summary.icon ? (
                                   <span>{message.summary.icon}</span>
                                 ) : null}
                                 {message.summary.headline}
                               </h3>
-                              {message.summary.subheading ? (
-                                <p className="text-[1.4rem] text-[#1b1f26]">
-                                  {message.summary.subheading}
-                                </p>
-                              ) : null}
                             </Box>
-                          ) : null}
-                          {message.routine.notes ? (
-                            <p className="text-[1.4rem]">
-                              {message.routine.notes}
-                            </p>
                           ) : null}
                           <Box className="flex flex-col gap-[16px]">
                             {message.routine.steps.map((routine) => {
@@ -773,7 +801,7 @@ export default function ChatPage() {
                         <Box>
                           {message.summary?.headline ? (
                             <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
-                              <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex items-center gap-[0.6rem]">
+                              <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
                                 {message.summary.icon ? (
                                   <span>{message.summary.icon}</span>
                                 ) : null}

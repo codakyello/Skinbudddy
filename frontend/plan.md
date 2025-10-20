@@ -21,7 +21,7 @@
 ## Routine Alternatives
 
 - [x] **Server Options**
-  - Return primary + alternate product options per step from `convex/products.recommend`.
+  - Return primary + alternate product options per step directly from the LLM-driven `convex/products.recommend` response.
 - [x] **Tool Sanitization**
   - Preserve alternatives through `recommendRoutine` handler and API sanitization.
 - [x] **UI Hookup**

@@ -39,7 +39,7 @@ export default function NavBar() {
 
   return (
     <Box className="fixed w-full z-[99]">
-      <Box className="py-[1.5rem] bg-white flex px-[2rem] gap-[3.2rem] items-center justify-center border-b">
+      <Box className=" bg-white flex px-[2rem] gap-[3.2rem] items-center justify-center border-b">
         <Box className="w-[1280px] flex items-center justify-between gap-x-[3.2rem] gap-y-[1.5rem]">
           <Box className="hidden md:block w-[400px]">
             <Search />
