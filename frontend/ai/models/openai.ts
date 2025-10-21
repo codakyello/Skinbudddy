@@ -214,12 +214,75 @@ const sanitizeProductForModel = (
     computePriceRange(extractPricesFromSizes(base.sizes)) ??
     computePriceRange(extractPricesFromSizes(record.sizes));
 
+  const rawSizesSource =
+    Array.isArray(base.sizes) && base.sizes.length
+      ? base.sizes
+      : Array.isArray(record.sizes)
+        ? record.sizes
+        : [];
+  const normalizedSizes = rawSizesSource
+    .map((sizeEntry) => {
+      if (!sizeEntry || typeof sizeEntry !== "object") return null;
+      const sizeRecord = sizeEntry as UnknownRecord;
+      const sizeId =
+        (typeof sizeRecord.sizeId === "string" && sizeRecord.sizeId) ||
+        (typeof sizeRecord.id === "string" && sizeRecord.id) ||
+        (typeof sizeRecord._id === "string" && sizeRecord._id) ||
+        undefined;
+      if (!sizeId) return null;
+
+      const labelCandidate =
+        typeof sizeRecord.name === "string" && sizeRecord.name.trim().length
+          ? sizeRecord.name
+          : undefined;
+      const quantity =
+        typeof sizeRecord.size === "number"
+          ? `${sizeRecord.size}`
+          : typeof sizeRecord.size === "string"
+            ? sizeRecord.size
+            : undefined;
+      const unit =
+        typeof sizeRecord.unit === "string" && sizeRecord.unit.trim().length
+          ? sizeRecord.unit
+          : undefined;
+      const label =
+        labelCandidate ??
+        (quantity && unit
+          ? `${quantity} ${unit}`.trim()
+          : (quantity ?? undefined));
+
+      const price =
+        typeof sizeRecord.price === "number"
+          ? sizeRecord.price
+          : typeof sizeRecord.price === "string" &&
+              sizeRecord.price.trim().length &&
+              Number.isFinite(Number(sizeRecord.price))
+            ? Number(sizeRecord.price)
+            : undefined;
+      const currency =
+        typeof sizeRecord.currency === "string" &&
+        sizeRecord.currency.trim().length
+          ? sizeRecord.currency
+          : undefined;
+
+      const sanitizedSize: Record<string, unknown> = {
+        sizeId,
+      };
+      if (label) sanitizedSize.label = label;
+      if (price !== undefined) sanitizedSize.price = price;
+      if (currency) sanitizedSize.currency = currency;
+
+      return sanitizedSize;
+    })
+    .filter((entry): entry is Record<string, unknown> => entry !== null);
+
   const sanitized: Record<string, unknown> = { productId };
   if (name) sanitized.name = name;
   if (brand) sanitized.brand = brand;
   if (categories.length) sanitized.categories = categories;
   if (ingredients.length) sanitized.keyIngredients = ingredients;
   if (priceRange) sanitized.priceRange = priceRange;
+  if (normalizedSizes.length) sanitized.sizes = normalizedSizes;
 
   return sanitized;
 };
@@ -263,11 +326,13 @@ const sanitizeProductsResultForModel = (rawResult: unknown): unknown => {
   if (Array.isArray(record.products)) addProducts(record.products);
   if (Array.isArray(record.results)) addProducts(record.results);
   if (Array.isArray(record.items)) addProducts(record.items);
-  if (Array.isArray(record.recommendations)) addProducts(record.recommendations);
+  if (Array.isArray(record.recommendations))
+    addProducts(record.recommendations);
 
   if (!aggregated.length) {
     const single =
-      sanitizeProductForModel(record.product) ?? sanitizeProductForModel(record);
+      sanitizeProductForModel(record.product) ??
+      sanitizeProductForModel(record);
     if (single) aggregated.push(single);
   }
 
@@ -285,7 +350,12 @@ const sanitizeProductsResultForModel = (rawResult: unknown): unknown => {
 
 const sanitizeRoutineStepForModel = (
   step: unknown
-): { step?: number; category?: string; productName?: string; keyIngredients?: string[] } | null => {
+): {
+  step?: number;
+  category?: string;
+  productName?: string;
+  keyIngredients?: string[];
+} | null => {
   if (!step || typeof step !== "object") return null;
   const record = step as UnknownRecord;
   const product =
@@ -305,15 +375,14 @@ const sanitizeRoutineStepForModel = (
   const productNameCandidates = [
     typeof record.productName === "string" ? record.productName : undefined,
     typeof record.title === "string" ? record.title : undefined,
-    product && typeof product.name === "string" ? (product.name as string) : undefined,
+    product && typeof product.name === "string"
+      ? (product.name as string)
+      : undefined,
   ];
   const productName = toUniqueStrings(productNameCandidates)[0];
 
   const keyIngredients = collectStringArray(
-    product?.ingredients ??
-      product?.keyIngredients ??
-      record.ingredients ??
-      [],
+    product?.ingredients ?? product?.keyIngredients ?? record.ingredients ?? [],
     4
   );
 
@@ -335,8 +404,7 @@ const sanitizeRoutineResultForModel = (rawResult: unknown): unknown => {
     coerceId(record._id) ??
     coerceId(record.id) ??
     undefined;
-  const title =
-    typeof record.title === "string" ? record.title : undefined;
+  const title = typeof record.title === "string" ? record.title : undefined;
   const skinType =
     typeof record.skinType === "string" ? record.skinType : undefined;
 
@@ -524,6 +592,170 @@ const formatList = (
   if (items.length === 1) return items[0];
   if (items.length === 2) return `${items[0]} ${conjunction} ${items[1]}`;
   return `${items.slice(0, -1).join(", ")}, ${conjunction} ${items.at(-1)}`;
+};
+
+const sentenceCase = (value: string): string => {
+  if (!value) return value;
+  const trimmed = value.trim();
+  if (!trimmed.length) return "";
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+};
+
+const describeSkinTypes = (skinTypes: string[]): string | undefined => {
+  if (!skinTypes.length) return undefined;
+  const items = skinTypes.map((type) => `${type.toLowerCase()} skin`);
+  return formatList(items);
+};
+
+const describeConcerns = (concerns: string[]): string | undefined => {
+  if (!concerns.length) return undefined;
+  const items = concerns.map((concern) => {
+    const lower = concern.toLowerCase();
+    if (lower.includes("concern")) return lower;
+    if (lower.endsWith("s")) return lower;
+    return `${lower} concerns`;
+  });
+  return formatList(items);
+};
+
+const describeIngredients = (ingredients: string[]): string | undefined => {
+  if (!ingredients.length) return undefined;
+  const normalized = ingredients.map((item) => item.toLowerCase());
+  return formatList(normalized);
+};
+
+const composeAudiencePhrase = (
+  skinTypes: string[],
+  concerns: string[]
+): string | undefined => {
+  const skin = describeSkinTypes(skinTypes);
+  const concernPhrase = describeConcerns(concerns);
+  if (skin && concernPhrase) return `${skin} with ${concernPhrase}`;
+  if (skin) return skin;
+  if (concernPhrase) return concernPhrase;
+  return undefined;
+};
+
+type ProductHeadlineInput = {
+  productCount: number;
+  category?: string;
+  audience?: string;
+  brand?: string;
+  nameQuery?: string;
+  ingredients?: string;
+};
+
+type ProductHeadlineResult = {
+  headline: string;
+  usedAudience: boolean;
+  usedBrand: boolean;
+  usedIngredients: boolean;
+};
+
+const buildProductHeadline = ({
+  productCount,
+  category,
+  audience,
+  brand,
+  nameQuery,
+  ingredients,
+}: ProductHeadlineInput): ProductHeadlineResult => {
+  const descriptor =
+    productCount >= 5 ? "Top" : productCount >= 3 ? "Curated" : "Featured";
+  let headline = "";
+  let usedAudience = false;
+  let usedBrand = false;
+  let usedIngredients = false;
+
+  if (category) {
+    const categoryLabel =
+      category.endsWith("s") || category.endsWith("S")
+        ? category
+        : `${category}s`;
+    if (audience) {
+      headline = `${descriptor} ${categoryLabel} for ${audience}`;
+      usedAudience = true;
+    } else if (brand) {
+      headline = `${descriptor} ${categoryLabel} from ${brand}`;
+      usedBrand = true;
+    } else if (ingredients) {
+      headline = `${descriptor} ${categoryLabel} with ${ingredients}`;
+      usedIngredients = true;
+    } else {
+      headline = `${descriptor} ${categoryLabel}`;
+    }
+  } else if (brand) {
+    headline =
+      productCount > 1 ? `${brand} Favorites` : `Featured ${brand} Pick`;
+    usedBrand = true;
+    if (audience) {
+      headline = `${headline} for ${audience}`;
+      usedAudience = true;
+    }
+  } else if (nameQuery) {
+    headline = `Results for "${nameQuery}"`;
+  } else if (audience) {
+    headline =
+      productCount > 1
+        ? `Product Picks for ${audience}`
+        : `Featured Pick for ${audience}`;
+    usedAudience = true;
+  } else if (ingredients) {
+    headline = `Products with ${ingredients}`;
+    usedIngredients = true;
+  } else {
+    headline =
+      productCount > 1
+        ? "Product Recommendations for You"
+        : "Featured Product Pick";
+  }
+
+  return { headline, usedAudience, usedBrand, usedIngredients };
+};
+
+const buildProductSubheading = ({
+  audiencePhrase,
+  brand,
+  ingredients,
+  nameQuery,
+  note,
+  usedAudience,
+  usedBrand,
+  usedIngredients,
+}: {
+  audiencePhrase?: string;
+  brand?: string;
+  ingredients?: string;
+  nameQuery?: string;
+  note?: string;
+  usedAudience: boolean;
+  usedBrand: boolean;
+  usedIngredients: boolean;
+}): string | undefined => {
+  const descriptorParts: string[] = [];
+  if (audiencePhrase && !usedAudience) {
+    descriptorParts.push(`tailored for ${audiencePhrase}`);
+  }
+  if (ingredients && !usedIngredients) {
+    descriptorParts.push(`features ${ingredients}`);
+  }
+  if (brand && !usedBrand) {
+    descriptorParts.push(`from ${brand}`);
+  }
+  if (nameQuery) {
+    descriptorParts.push(`matches "${nameQuery}"`);
+  }
+
+  const descriptor =
+    descriptorParts.length > 0
+      ? sentenceCase(descriptorParts.join(" · "))
+      : undefined;
+
+  if (note) {
+    return descriptor ? `${descriptor} · ${note}` : note;
+  }
+
+  return descriptor;
 };
 
 const extractProductMetadataForSummary = (
@@ -970,11 +1202,14 @@ async function refineProductSelection({
 export async function callOpenAI({
   messages,
   systemPrompt,
-  model = "gpt-4o-mini",
+  model = "gpt-5-nano",
   temperature = 1,
   useTools = true,
   maxToolRounds = 5, // prevent runaway loops
   onToken,
+  onProducts,
+  onRoutine,
+  onSummary,
 }: {
   messages: ChatMessage[];
   systemPrompt: string;
@@ -983,6 +1218,9 @@ export async function callOpenAI({
   useTools?: boolean;
   maxToolRounds?: number;
   onToken?: (chunk: string) => Promise<void> | void;
+  onProducts?: (products: ProductCandidate[]) => Promise<void> | void;
+  onRoutine?: (routine: RoutineSelection) => Promise<void> | void;
+  onSummary?: (summary: ReplySummary) => Promise<void> | void;
 }): Promise<{
   reply: string;
   toolOutputs?: ToolOutput[];
@@ -1020,6 +1258,13 @@ export async function callOpenAI({
     .find((msg) => msg.role === "user")?.content;
 
   let lastProductSelection: ProductCandidate[] = [];
+  let lastStreamedProductsSignature: string | null = null;
+  let lastStreamedRoutineSignature: string | null = null;
+  let lastStreamedSummarySignature: string | null = null;
+
+  let routineSummaryParts: ReplySummary | null = null;
+  let productSummaryParts: ReplySummary | null = null;
+  let combinedSummary: ReplySummary | null = null;
 
   // console.log(chatMessages, "This is conversation history");
 
@@ -1145,6 +1390,103 @@ export async function callOpenAI({
   let lastRoutine: RoutineSelection | null = null;
   let lastResultType: "routine" | null = null;
   let summaryContext: SummaryContext | null = null;
+
+  const recomputeCombinedSummary = (): ReplySummary | null => {
+    if (routineSummaryParts && productSummaryParts) {
+      const mergedHeadline = `${routineSummaryParts.headline} + ${productSummaryParts.headline}`;
+      const subheadingParts = [
+        routineSummaryParts.subheading,
+        productSummaryParts.subheading,
+      ].filter(
+        (entry): entry is string =>
+          typeof entry === "string" && entry.length > 0
+      );
+      combinedSummary = {
+        headline:
+          mergedHeadline.length > 160
+            ? `${mergedHeadline.slice(0, 157)}...`
+            : mergedHeadline,
+        subheading: subheadingParts.length
+          ? subheadingParts.join(" · ")
+          : undefined,
+        icon: routineSummaryParts.icon ?? productSummaryParts.icon ?? undefined,
+      };
+    } else {
+      combinedSummary = routineSummaryParts ?? productSummaryParts ?? null;
+    }
+    return combinedSummary;
+  };
+
+  const streamSummaryIfNeeded = async (): Promise<void> => {
+    const summary = recomputeCombinedSummary();
+    if (!summary || !onSummary) return;
+    const signature = JSON.stringify(summary);
+    if (signature === lastStreamedSummarySignature) return;
+    lastStreamedSummarySignature = signature;
+    try {
+      await onSummary(summary);
+    } catch (error) {
+      console.error("Summary streaming callback failed:", error);
+    }
+  };
+
+  const streamProductsIfNeeded = async (
+    products: ProductCandidate[]
+  ): Promise<void> => {
+    if (!onProducts || !products.length) return;
+    const signature = JSON.stringify(
+      products.map((product, index) => {
+        const id = coerceId(product);
+        if (id) return id;
+        const record =
+          product && typeof product === "object"
+            ? (product as UnknownRecord)
+            : null;
+        if (record) {
+          if (typeof record.slug === "string") return record.slug;
+          if (typeof record.name === "string")
+            return `name:${record.name.toLowerCase()}`;
+        }
+        return `idx:${index}`;
+      })
+    );
+    if (signature === lastStreamedProductsSignature) return;
+    lastStreamedProductsSignature = signature;
+    try {
+      await onProducts(products);
+    } catch (error) {
+      console.error("Product streaming callback failed:", error);
+    }
+  };
+
+  const streamRoutineIfNeeded = async (
+    routine: RoutineSelection | null
+  ): Promise<void> => {
+    if (!onRoutine || !routine || !routine.steps.length) return;
+    const signature = JSON.stringify(
+      routine.steps.map((step, index) => {
+        if (!step) return `idx:${index}`;
+        if (typeof step.productId === "string") return step.productId;
+        const productRecord =
+          step.product && typeof step.product === "object"
+            ? (step.product as UnknownRecord)
+            : null;
+        const productId = productRecord ? coerceId(productRecord) : undefined;
+        if (productId) return productId;
+        if (productRecord && typeof productRecord.slug === "string") {
+          return productRecord.slug;
+        }
+        return `step:${step.step ?? index}`;
+      })
+    );
+    if (signature === lastStreamedRoutineSignature) return;
+    lastStreamedRoutineSignature = signature;
+    try {
+      await onRoutine(routine);
+    } catch (error) {
+      console.error("Routine streaming callback failed:", error);
+    }
+  };
 
   console.log("calling openAi");
 
@@ -1407,19 +1749,24 @@ export async function callOpenAI({
           const concernsPretty = concernsRaw
             .map((concern) => toTitleCase(concern))
             .filter(Boolean);
-          const concernPhrase = concernsPretty.length
-            ? concernsPretty.join(", ")
+          const concernsPhrase = describeConcerns(concernsPretty);
+          const routineSkinPhrase = skinTypePretty
+            ? describeSkinTypes([skinTypePretty])
             : undefined;
-          const routineHeadlineParts = [
-            skinTypePretty ? `${skinTypePretty} Skin` : null,
-            concernPhrase ? `+ ${concernPhrase}` : null,
-          ].filter(Boolean);
-          const routineHeadline =
-            routineHeadlineParts.length > 0
-              ? `Routine for ${routineHeadlineParts.join(" ")}`
-              : skinTypePretty
-                ? `Routine for ${skinTypePretty} Skin`
-                : "Personalized Routine";
+          const routineHeadline = (() => {
+            if (skinTypePretty && concernsPhrase) {
+              return `Routine for ${skinTypePretty} Skin, tailored to ${sentenceCase(
+                concernsPhrase
+              )}`;
+            }
+            if (skinTypePretty) {
+              return `Routine for ${skinTypePretty} Skin`;
+            }
+            if (concernsPhrase) {
+              return `Routine targeting ${sentenceCase(concernsPhrase)}`;
+            }
+            return "Personalized Routine";
+          })();
           const stepCount = normalizedSteps.length;
           const stepHighlights = normalizedSteps
             .slice(0, 5)
@@ -1451,15 +1798,24 @@ export async function callOpenAI({
             })
             .filter((entry): entry is string => Boolean(entry));
 
-          const routineAudience = skinTypePretty?.toLowerCase() ?? "your skin";
-          const routineConcernFocus = concernsPretty.length
-            ? `focused on ${formatList(
-                concernsPretty.map((item) => item.toLowerCase())
-              )}`
+          const routineAudience = routineSkinPhrase ?? "your skin";
+          const routineConcernFocus = concernsPhrase
+            ? `focused on ${concernsPhrase}`
             : undefined;
           const routineDescription = [routineAudience, routineConcernFocus]
             .filter(Boolean)
             .join(" and ");
+
+          const routineIcon = "🧖";
+          routineSummaryParts = {
+            headline: routineHeadline,
+            subheading: routineDescription.length
+              ? sentenceCase(routineDescription)
+              : undefined,
+            icon: routineIcon,
+          };
+          await streamSummaryIfNeeded();
+          await streamRoutineIfNeeded(lastRoutine);
 
           summaryContext = {
             type: "routine",
@@ -1467,7 +1823,7 @@ export async function callOpenAI({
             skinType: skinTypePretty,
             concerns: concernsPretty.length ? concernsPretty : undefined,
             stepHighlights,
-            iconSuggestion: "🧪",
+            iconSuggestion: routineIcon,
             headlineHint: routineHeadline,
             routineDescription,
           };
@@ -1567,166 +1923,144 @@ export async function callOpenAI({
         const selectedProducts = refinedProductsResult?.products?.length
           ? refinedProductsResult.products
           : (productsArray as ProductCandidate[]);
+        const streamingProducts = selectedProducts.length
+          ? selectedProducts
+          : (productsArray as ProductCandidate[]);
 
-        lastProductSelection = selectedProducts;
-        if (selectedProducts.length) {
-          const latestSearchOutput = [...toolOutputs]
-            .slice()
-            .reverse()
-            .find((output) => output.name === "searchProductsByQuery");
-          const searchArgs =
-            (latestSearchOutput?.arguments as {
-              categoryQuery?: string;
-              nameQuery?: string;
-              brandQuery?: string;
-              skinTypes?: string[];
-              skinConcerns?: string[];
-              ingredientQueries?: string[];
-              hasAlcohol?: boolean;
-              hasFragrance?: boolean;
-            }) ?? {};
-          const category =
-            typeof searchArgs.categoryQuery === "string"
-              ? searchArgs.categoryQuery
-              : undefined;
-          const nameQuery =
-            typeof searchArgs.nameQuery === "string"
-              ? searchArgs.nameQuery
-              : undefined;
-          const brandQuery =
-            typeof searchArgs.brandQuery === "string"
-              ? searchArgs.brandQuery
-              : undefined;
-          const skinTypes = Array.isArray(searchArgs.skinTypes)
-            ? searchArgs.skinTypes
-            : [];
-          const skinConcerns = Array.isArray(searchArgs.skinConcerns)
-            ? searchArgs.skinConcerns
-            : [];
-          const ingredientQueries = Array.isArray(searchArgs.ingredientQueries)
-            ? searchArgs.ingredientQueries
-            : [];
-
-          const hasMeaningfulFilters =
-            Boolean(category) ||
-            Boolean(nameQuery) ||
-            Boolean(brandQuery) ||
-            skinTypes.length > 0 ||
-            skinConcerns.length > 0 ||
-            ingredientQueries.length > 0;
-
-          const normalizedSkinTypes = skinTypes
-            .map((type) => toTitleCase(type))
-            .filter(Boolean);
-          const normalizedConcerns = skinConcerns
-            .map((concern) => toTitleCase(concern))
-            .filter(Boolean);
-          const normalizedCategory = category
-            ? toTitleCase(category)
+        const latestSearchOutput = [...toolOutputs]
+          .slice()
+          .reverse()
+          .find((output) => output.name === "searchProductsByQuery");
+        const searchArgs =
+          (latestSearchOutput?.arguments as {
+            categoryQuery?: string;
+            nameQuery?: string;
+            brandQuery?: string;
+            skinTypes?: string[];
+            skinConcerns?: string[];
+            ingredientQueries?: string[];
+            hasAlcohol?: boolean;
+            hasFragrance?: boolean;
+          }) ?? {};
+        const category =
+          typeof searchArgs.categoryQuery === "string"
+            ? searchArgs.categoryQuery
             : undefined;
-          const normalizedBrand = brandQuery
-            ? toTitleCase(brandQuery)
+        const nameQuery =
+          typeof searchArgs.nameQuery === "string"
+            ? searchArgs.nameQuery.trim()
             : undefined;
-          const topProducts =
-            extractProductMetadataForSummary(selectedProducts);
+        const brandQuery =
+          typeof searchArgs.brandQuery === "string"
+            ? searchArgs.brandQuery
+            : undefined;
+        const rawSkinTypes = Array.isArray(searchArgs.skinTypes)
+          ? searchArgs.skinTypes.filter(
+              (entry): entry is string => typeof entry === "string"
+            )
+          : [];
+        const rawSkinConcerns = Array.isArray(searchArgs.skinConcerns)
+          ? searchArgs.skinConcerns.filter(
+              (entry): entry is string => typeof entry === "string"
+            )
+          : [];
+        const rawIngredientQueries = Array.isArray(searchArgs.ingredientQueries)
+          ? searchArgs.ingredientQueries.filter(
+              (entry): entry is string => typeof entry === "string"
+            )
+          : [];
 
-          let headlineHint: string | undefined;
-          if (hasMeaningfulFilters) {
-            const skinPhrase = normalizedSkinTypes
-              .map((type) => `${type} skin`)
-              .join(" & ");
-            const concernPhrase = normalizedConcerns.join(" & ");
-            const nameOrBrand = nameQuery ?? brandQuery;
+        const normalizedSkinTypes = rawSkinTypes
+          .map((type) => toTitleCase(type))
+          .filter(Boolean);
+        const normalizedConcerns = rawSkinConcerns
+          .map((concern) => toTitleCase(concern))
+          .filter(Boolean);
+        const normalizedCategory = category ? toTitleCase(category) : undefined;
+        const normalizedBrand = brandQuery
+          ? toTitleCase(brandQuery)
+          : undefined;
 
-            const headlineFragments: string[] = [];
-            if (normalizedCategory && skinPhrase) {
-              headlineFragments.push(
-                `${skinPhrase.toLowerCase()} ${normalizedCategory.toLowerCase()}`
-              );
-            } else if (normalizedCategory) {
-              headlineFragments.push(normalizedCategory.toLowerCase());
-            }
-            if (skinPhrase && !headlineFragments.length) {
-              headlineFragments.push(skinPhrase.toLowerCase());
-            }
-            if (concernPhrase) {
-              headlineFragments.push(concernPhrase.toLowerCase());
-            }
-            if (!headlineFragments.length && nameOrBrand) {
-              headlineFragments.push(nameOrBrand);
-            }
+        const audiencePhrase = composeAudiencePhrase(
+          normalizedSkinTypes,
+          normalizedConcerns
+        );
+        const audienceHeadline = audiencePhrase
+          ? toTitleCase(audiencePhrase)
+          : undefined;
+        const ingredientPhraseRaw = describeIngredients(rawIngredientQueries);
+        const ingredientHeadline = ingredientPhraseRaw
+          ? sentenceCase(ingredientPhraseRaw)
+          : undefined;
+        const nameQueryHeadline = nameQuery
+          ? toTitleCase(nameQuery)
+          : undefined;
 
-            const headlineDescription = headlineFragments.length
-              ? headlineFragments.join(" with ")
-              : "your skincare request";
-            headlineHint = `Product suggestions for ${headlineDescription}`;
-          }
-
-          const filterDetails: string[] = [];
-          if (normalizedCategory) {
-            filterDetails.push(`category ${normalizedCategory.toLowerCase()}`);
-          }
-          if (normalizedSkinTypes.length) {
-            filterDetails.push(
-              `suitable for ${formatList(
-                normalizedSkinTypes.map((type) => type.toLowerCase())
-              )} skin`
-            );
-          }
-          if (normalizedConcerns.length) {
-            filterDetails.push(
-              `targeting ${formatList(
-                normalizedConcerns.map((concern) => concern.toLowerCase())
-              )} concerns`
-            );
-          }
-          if (ingredientQueries.length) {
-            filterDetails.push(
-              `featuring ${formatList(
-                ingredientQueries.map((item) => item.toLowerCase())
-              )} actives`
-            );
-          }
-          if (normalizedBrand) {
-            filterDetails.push(`from ${normalizedBrand}`);
-          }
-          if (!normalizedBrand && typeof nameQuery === "string" && nameQuery) {
-            filterDetails.push(`matching "${nameQuery.toLowerCase()}"`);
-          }
-
-          const filterDescription = filterDetails.length
-            ? `including ${formatList(filterDetails)}`
+        const selectionNote =
+          typeof refinedProductsResult?.notes === "string"
+            ? refinedProductsResult.notes
             : undefined;
 
-          summaryContext = {
-            type: "products",
-            productCount: selectedProducts.length,
-            filters: {
-              category: normalizedCategory,
-              skinTypes: normalizedSkinTypes.length
-                ? normalizedSkinTypes
-                : undefined,
-              skinConcerns: normalizedConcerns.length
-                ? normalizedConcerns
-                : undefined,
-              ingredientQueries: ingredientQueries.length
-                ? ingredientQueries.map((item) => item.toLowerCase())
-                : undefined,
-              brand: normalizedBrand,
-              nameQuery: nameQuery ?? undefined,
-            },
-            topProducts,
-            notes:
-              typeof refinedProductsResult?.notes === "string"
-                ? refinedProductsResult.notes
-                : undefined,
-            iconSuggestion: "🧪",
-            headlineHint,
-            filterDescription,
-          };
-        }
+        const productIcon = "🛍️";
+        const {
+          headline: summaryHeadline,
+          usedAudience,
+          usedBrand,
+          usedIngredients,
+        } = buildProductHeadline({
+          productCount: streamingProducts.length,
+          category: normalizedCategory,
+          audience: audienceHeadline,
+          brand: normalizedBrand,
+          nameQuery: nameQueryHeadline,
+          ingredients: ingredientHeadline,
+        });
 
-        const reasonContext = selectedProducts
+        const summarySubheading = buildProductSubheading({
+          audiencePhrase,
+          brand: normalizedBrand,
+          ingredients: ingredientPhraseRaw,
+          nameQuery,
+          note: selectionNote,
+          usedAudience,
+          usedBrand,
+          usedIngredients,
+        });
+
+        summaryContext = {
+          type: "products",
+          productCount: streamingProducts.length,
+          filters: {
+            category: normalizedCategory,
+            skinTypes: normalizedSkinTypes.length
+              ? normalizedSkinTypes
+              : undefined,
+            skinConcerns: normalizedConcerns.length
+              ? normalizedConcerns
+              : undefined,
+            ingredientQueries: rawIngredientQueries.length
+              ? rawIngredientQueries.map((item) => item.toLowerCase())
+              : undefined,
+            brand: normalizedBrand,
+            nameQuery: nameQuery ?? undefined,
+          },
+          topProducts: extractProductMetadataForSummary(streamingProducts),
+          notes: selectionNote,
+          iconSuggestion: productIcon,
+          headlineHint: summaryHeadline,
+          filterDescription: summarySubheading ?? selectionNote,
+        };
+
+        productSummaryParts = {
+          headline: summaryHeadline,
+          subheading: summarySubheading ?? selectionNote,
+          icon: productIcon,
+        };
+        await streamSummaryIfNeeded();
+        await streamProductsIfNeeded(streamingProducts);
+        lastProductSelection = streamingProducts;
+
+        const reasonContext = streamingProducts
           .slice(0, 4)
           .map((product, index) => {
             if (typeof product.selectionReason !== "string") return null;
@@ -1793,8 +2127,8 @@ export async function callOpenAI({
       : "💧 I rounded up a few options that should fit nicely—happy to break any of them down further or pop one into your bag!"
     : finalContent;
 
-  let generatedSummary: ReplySummary | null = null;
-  if (replyText.trim().length) {
+  let generatedSummary: ReplySummary | null = combinedSummary;
+  if (!generatedSummary && replyText.trim().length) {
     generatedSummary = await generateReplySummaryWithLLM({
       reply: replyText,
       userMessage: latestUserMessageContent,
@@ -1809,6 +2143,19 @@ export async function callOpenAI({
         icon: resolvedIcon,
       };
     }
+  } else if (generatedSummary) {
+    const safeGeneratedSummary: ReplySummary = generatedSummary;
+    const summaryForIcon = recomputeCombinedSummary();
+    const resolvedIcon =
+      (summaryForIcon && typeof summaryForIcon.icon === "string"
+        ? summaryForIcon.icon
+        : undefined) ??
+      summaryContext?.iconSuggestion ??
+      safeGeneratedSummary.icon;
+    generatedSummary = {
+      ...safeGeneratedSummary!,
+      icon: resolvedIcon,
+    };
   }
 
   // it is the reply that is being saved in conversation history
