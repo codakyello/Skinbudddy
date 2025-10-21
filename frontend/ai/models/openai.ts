@@ -86,6 +86,346 @@ const normalizeProductsFromOutputs = (outputs: ToolOutput[]): unknown[] => {
   return Array.from(byId.values());
 };
 
+const toUniqueStrings = (values: Array<string | undefined>): string[] => {
+  const seen = new Set<string>();
+  const results: string[] = [];
+  for (const value of values) {
+    if (!value) continue;
+    const normalized = value.trim();
+    if (!normalized.length || seen.has(normalized)) continue;
+    seen.add(normalized);
+    results.push(normalized);
+  }
+  return results;
+};
+
+const collectStringArray = (input: unknown, limit = 6): string[] => {
+  const source = Array.isArray(input)
+    ? input
+    : input === undefined || input === null
+      ? []
+      : [input];
+  const results: string[] = [];
+  for (const entry of source) {
+    if (typeof entry === "string") {
+      const trimmed = entry.trim();
+      if (trimmed.length) {
+        results.push(trimmed);
+        if (results.length >= limit) break;
+      }
+      continue;
+    }
+    if (entry && typeof entry === "object") {
+      const record = entry as UnknownRecord;
+      if (typeof record.name === "string") {
+        const trimmed = record.name.trim();
+        if (trimmed.length) {
+          results.push(trimmed);
+          if (results.length >= limit) break;
+        }
+      }
+    }
+  }
+  return toUniqueStrings(results);
+};
+
+const extractPricesFromSizes = (input: unknown): number[] => {
+  if (!Array.isArray(input)) return [];
+  const prices: number[] = [];
+  for (const entry of input) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as UnknownRecord;
+    const rawPrice = record.price ?? record.listPrice ?? record.salePrice;
+    if (typeof rawPrice === "number" && Number.isFinite(rawPrice)) {
+      prices.push(rawPrice);
+      continue;
+    }
+    if (typeof rawPrice === "string") {
+      const parsed = Number(rawPrice);
+      if (Number.isFinite(parsed)) prices.push(parsed);
+    }
+  }
+  return prices;
+};
+
+const computePriceRange = (prices: number[]): string | undefined => {
+  if (!prices.length) return undefined;
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  if (!Number.isFinite(min) || min < 0) return undefined;
+  if (!Number.isFinite(max) || max < 0) return undefined;
+  if (min === max) return `$${min.toFixed(2)}`;
+  return `$${min.toFixed(2)}–$${max.toFixed(2)}`;
+};
+
+const sanitizeProductForModel = (
+  product: unknown
+): Record<string, unknown> | null => {
+  if (!product || typeof product !== "object") return null;
+  const record = product as UnknownRecord;
+  const base =
+    record.product && typeof record.product === "object"
+      ? (record.product as UnknownRecord)
+      : record;
+
+  const productId =
+    coerceId(record.productId) ??
+    coerceId(record._id) ??
+    coerceId(record.id) ??
+    coerceId(base._id) ??
+    coerceId(base.id);
+
+  if (!productId) return null;
+
+  const name =
+    typeof base.name === "string"
+      ? base.name
+      : typeof record.name === "string"
+        ? record.name
+        : undefined;
+
+  const brandRaw = base.brand ?? record.brand;
+  let brand: string | undefined;
+  if (typeof brandRaw === "string") {
+    brand = brandRaw;
+  } else if (brandRaw && typeof brandRaw === "object") {
+    const brandRecord = brandRaw as UnknownRecord;
+    if (typeof brandRecord.name === "string") {
+      brand = brandRecord.name;
+    }
+  }
+
+  const categories = toUniqueStrings([
+    ...collectStringArray(base.categories ?? record.categories ?? [], 4),
+    typeof base.category === "string" ? base.category : undefined,
+    typeof record.category === "string" ? record.category : undefined,
+  ]);
+
+  const ingredients = collectStringArray(
+    base.ingredients ??
+      base.keyIngredients ??
+      record.ingredients ??
+      record.keyIngredients ??
+      [],
+    5
+  );
+
+  const priceRange =
+    computePriceRange(extractPricesFromSizes(base.sizes)) ??
+    computePriceRange(extractPricesFromSizes(record.sizes));
+
+  const sanitized: Record<string, unknown> = { productId };
+  if (name) sanitized.name = name;
+  if (brand) sanitized.brand = brand;
+  if (categories.length) sanitized.categories = categories;
+  if (ingredients.length) sanitized.keyIngredients = ingredients;
+  if (priceRange) sanitized.priceRange = priceRange;
+
+  return sanitized;
+};
+
+const sanitizeProductListForModel = (
+  products: unknown
+): Array<Record<string, unknown>> => {
+  if (!Array.isArray(products)) return [];
+  const seen = new Set<string>();
+  const sanitized: Array<Record<string, unknown>> = [];
+  for (const entry of products) {
+    const product = sanitizeProductForModel(entry);
+    if (!product) continue;
+    const productId = product.productId as string;
+    if (productId && seen.has(productId)) continue;
+    if (productId) seen.add(productId);
+    sanitized.push(product);
+  }
+  return sanitized;
+};
+
+const sanitizeProductsResultForModel = (rawResult: unknown): unknown => {
+  if (!rawResult || typeof rawResult !== "object") {
+    const single = sanitizeProductForModel(rawResult);
+    return single ? { products: [single] } : {};
+  }
+
+  const record = rawResult as UnknownRecord;
+  const aggregated: Array<Record<string, unknown>> = [];
+
+  const addProducts = (value: unknown) => {
+    const list = sanitizeProductListForModel(value);
+    for (const item of list) {
+      const id = item.productId as string | undefined;
+      if (id && aggregated.some((existing) => existing.productId === id))
+        continue;
+      aggregated.push(item);
+    }
+  };
+
+  if (Array.isArray(record.products)) addProducts(record.products);
+  if (Array.isArray(record.results)) addProducts(record.results);
+  if (Array.isArray(record.items)) addProducts(record.items);
+  if (Array.isArray(record.recommendations)) addProducts(record.recommendations);
+
+  if (!aggregated.length) {
+    const single =
+      sanitizeProductForModel(record.product) ?? sanitizeProductForModel(record);
+    if (single) aggregated.push(single);
+  }
+
+  const payload: Record<string, unknown> = {};
+  if (aggregated.length) payload.products = aggregated;
+
+  const filters =
+    record.filters && typeof record.filters === "object"
+      ? record.filters
+      : undefined;
+  if (filters) payload.filters = filters;
+
+  return Object.keys(payload).length ? payload : {};
+};
+
+const sanitizeRoutineStepForModel = (
+  step: unknown
+): { step?: number; category?: string; productName?: string; keyIngredients?: string[] } | null => {
+  if (!step || typeof step !== "object") return null;
+  const record = step as UnknownRecord;
+  const product =
+    record.product && typeof record.product === "object"
+      ? (record.product as UnknownRecord)
+      : undefined;
+
+  const stepNumber = typeof record.step === "number" ? record.step : undefined;
+  const categoryCandidates = [
+    typeof record.category === "string" ? record.category : undefined,
+    typeof record.categoryName === "string" ? record.categoryName : undefined,
+    typeof record.categoryLabel === "string" ? record.categoryLabel : undefined,
+    typeof record.title === "string" ? record.title : undefined,
+  ];
+  const category = toUniqueStrings(categoryCandidates)[0];
+
+  const productNameCandidates = [
+    typeof record.productName === "string" ? record.productName : undefined,
+    typeof record.title === "string" ? record.title : undefined,
+    product && typeof product.name === "string" ? (product.name as string) : undefined,
+  ];
+  const productName = toUniqueStrings(productNameCandidates)[0];
+
+  const keyIngredients = collectStringArray(
+    product?.ingredients ??
+      product?.keyIngredients ??
+      record.ingredients ??
+      [],
+    4
+  );
+
+  const sanitized: Record<string, unknown> = {};
+  if (stepNumber !== undefined) sanitized.step = stepNumber;
+  if (category) sanitized.category = category;
+  if (productName) sanitized.productName = productName;
+  if (keyIngredients.length) sanitized.keyIngredients = keyIngredients;
+
+  return Object.keys(sanitized).length ? (sanitized as any) : null;
+};
+
+const sanitizeRoutineResultForModel = (rawResult: unknown): unknown => {
+  if (!rawResult || typeof rawResult !== "object") return {};
+  const record = rawResult as UnknownRecord;
+
+  const routineId =
+    coerceId(record.routineId) ??
+    coerceId(record._id) ??
+    coerceId(record.id) ??
+    undefined;
+  const title =
+    typeof record.title === "string" ? record.title : undefined;
+  const skinType =
+    typeof record.skinType === "string" ? record.skinType : undefined;
+
+  const rawConcerns = record.skinConcern ?? record.concerns;
+  const concerns = Array.isArray(rawConcerns)
+    ? collectStringArray(rawConcerns, 5)
+    : typeof rawConcerns === "string"
+      ? [rawConcerns]
+      : [];
+
+  const notes =
+    typeof record.notes === "string"
+      ? truncateString(record.notes, 320)
+      : undefined;
+
+  const stepsRaw = Array.isArray(record.steps) ? record.steps : [];
+  const stepHighlights = stepsRaw
+    .map((step) => sanitizeRoutineStepForModel(step))
+    .filter(
+      (
+        step
+      ): step is {
+        step?: number;
+        category?: string;
+        productName?: string;
+        keyIngredients?: string[];
+      } => step !== null
+    );
+
+  const stepCategories = toUniqueStrings(
+    stepHighlights.map((entry) => entry.category)
+  ).slice(0, 6);
+
+  const productHighlights = stepHighlights
+    .map((entry) => {
+      const highlight: Record<string, unknown> = {};
+      if (entry.category) highlight.category = entry.category;
+      if (entry.productName) highlight.productName = entry.productName;
+      if (entry.keyIngredients && entry.keyIngredients.length) {
+        highlight.keyIngredients = entry.keyIngredients;
+      }
+      return Object.keys(highlight).length ? highlight : null;
+    })
+    .filter(
+      (
+        entry
+      ): entry is {
+        category?: string;
+        productName?: string;
+        keyIngredients?: string[];
+      } => entry !== null
+    )
+    .slice(0, 6);
+
+  const recommendations = Array.isArray(record.recommendations)
+    ? sanitizeProductListForModel(record.recommendations)
+    : undefined;
+
+  const sanitized: Record<string, unknown> = {};
+  if (routineId) sanitized.routineId = routineId;
+  if (title) sanitized.title = title;
+  if (skinType) sanitized.skinType = skinType;
+  if (concerns.length) sanitized.concerns = concerns;
+  if (stepCategories.length) sanitized.stepCategories = stepCategories;
+  if (productHighlights.length) sanitized.productHighlights = productHighlights;
+  if (notes) sanitized.notes = notes;
+  if (recommendations && recommendations.length) {
+    sanitized.recommendations = recommendations;
+  }
+
+  return sanitized;
+};
+
+const sanitizeToolResultForModel = (
+  toolName: string,
+  rawResult: unknown
+): unknown => {
+  switch (toolName) {
+    case "searchProductsByQuery":
+    case "getAllProducts":
+    case "getProduct":
+      return sanitizeProductsResultForModel(rawResult);
+    case "recommendRoutine":
+      return sanitizeRoutineResultForModel(rawResult);
+    default:
+      return rawResult ?? {};
+  }
+};
+
 type ProductCandidate = Record<string, unknown>;
 
 type SizeSummary = {
@@ -298,7 +638,7 @@ async function generateReplySummaryWithLLM({
       model,
       store: false,
       ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
-      include: ["reasoning.encrypted_content"],
+      ...(isGPT5 ? { include: ["reasoning.encrypted_content" as const] } : {}),
       text: { format: { type: "json_object" } },
       input: [
         {
@@ -551,8 +891,8 @@ async function refineProductSelection({
     const selection = await openai.responses.create({
       model,
       store: false,
-      include: ["reasoning.encrypted_content"],
       ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
+      ...(isGPT5 ? { include: ["reasoning.encrypted_content" as const] } : {}),
       input: selectionMessages,
       tools: [
         {
@@ -711,7 +1051,7 @@ export async function callOpenAI({
           continue;
         }
         // Easy input message
-        items.push({
+        const messageItem: Record<string, unknown> = {
           type: "message",
           role:
             msg.role === "developer" ||
@@ -723,7 +1063,8 @@ export async function callOpenAI({
                 ? "user"
                 : "user",
           content: msg.content,
-        });
+        };
+        items.push(messageItem);
       }
       // Append any extra input items (e.g., function_call_output) for this round
       return items.concat(extraInputItems);
@@ -820,9 +1161,38 @@ export async function callOpenAI({
     if (useTools && toolCalls.length > 0 && rounds < maxToolRounds) {
       rounds++;
 
+      toolCalls.forEach((toolCall, index) => {
+        const existing =
+          toolCall.call_id && toolCall.call_id.startsWith("fc_")
+            ? toolCall.call_id
+            : toolCall.id && toolCall.id.startsWith("fc_")
+              ? toolCall.id
+              : `fc_${rounds}_${index}_${Date.now()}`;
+        toolCall.call_id = existing;
+        toolCall.id = existing;
+      });
+
       // Execute tool calls and prepare function_call_output inputs for the next round
+      const functionCallInputsForNextRound: any[] = toolCalls.map(
+        (toolCall, index) => {
+          const callId =
+            toolCall.call_id ||
+            toolCall.id ||
+            `fc_${rounds}_${index}_${Date.now()}`;
+          return {
+            type: "function_call",
+            call_id: callId,
+            name: toolCall.name,
+            arguments: toolCall.arguments,
+          };
+        }
+      );
       const functionCallOutputsForNextRound: any[] = [];
       for (const toolCall of toolCalls) {
+        const callId =
+          toolCall.call_id ||
+          toolCall.id ||
+          `fc_${rounds}_${functionCallOutputsForNextRound.length}`;
         try {
           const rawArgs =
             typeof toolCall.arguments === "string"
@@ -845,18 +1215,29 @@ export async function callOpenAI({
             result: result ?? null,
           });
 
+          const sanitizedResult = sanitizeToolResultForModel(
+            toolCall.name,
+            result ?? {}
+          );
+          const normalizedSanitized =
+            sanitizedResult && typeof sanitizedResult === "object"
+              ? sanitizedResult
+              : sanitizedResult === undefined
+                ? {}
+                : { value: sanitizedResult };
+
           // Provide result to the model via function_call_output item
           functionCallOutputsForNextRound.push({
             type: "function_call_output",
-            call_id: toolCall.call_id,
-            output: JSON.stringify(result ?? {}),
+            call_id: callId,
+            output: JSON.stringify(normalizedSanitized),
           });
 
           // Also keep a tool message in local transcript for product/routine extraction logic
           chatMessages.push({
             role: "tool",
-            tool_call_id: toolCall.call_id,
-            content: JSON.stringify(result ?? {}),
+            tool_call_id: callId,
+            content: JSON.stringify(normalizedSanitized),
           });
         } catch (err) {
           console.error(
@@ -865,7 +1246,7 @@ export async function callOpenAI({
           );
           functionCallOutputsForNextRound.push({
             type: "function_call_output",
-            call_id: toolCall.call_id,
+            call_id: callId,
             output: JSON.stringify({
               error: true,
               message: (err as Error)?.message || "Tool execution failed",
@@ -873,7 +1254,7 @@ export async function callOpenAI({
           });
           chatMessages.push({
             role: "tool",
-            tool_call_id: toolCall.call_id,
+            tool_call_id: callId,
             content: JSON.stringify({
               error: true,
               message: (err as Error)?.message || "Tool execution failed",
@@ -881,6 +1262,11 @@ export async function callOpenAI({
           });
         }
       }
+
+      const extraInputItemsForNextRound = [
+        ...functionCallInputsForNextRound,
+        ...functionCallOutputsForNextRound,
+      ];
 
       // All of the toolOutputs when no more tool calls
       // console.log(toolOutputs, "This is the toolOutput");
@@ -902,6 +1288,12 @@ export async function callOpenAI({
 
       // out of foor loop, no more tool calls
       if (latestRoutineOutput) {
+        // lets append devleloper message to get the final reply for the routine tool call
+        chatMessages.push({
+          role: "developer",
+          content:
+            "You have the routine returned in the previous tool call. Write a friendly response (2-3 sentences) that: 1) Confirms you've found a routine tailored to their skin type/concerns, 2) Briefly mentions the key categories or types of products included (e.g., cleansers, moisturizers, sunscreens), highlighting how they address the user's needs, and 3) Offers helpful next steps like getting more details on specific products, adjusting preferences, or taking action like adding to cart or comparing options. You may include one relevant emoji at the start if appropriate.",
+        });
         const routineResult = latestRoutineOutput.result as Record<
           string,
           unknown
@@ -1080,49 +1472,49 @@ export async function callOpenAI({
             routineDescription,
           };
 
-          const routineSummary = normalizedSteps
-            .map((step) => {
-              if (step === null || step === undefined) return null; // Added explicit null check for step
-              const label =
-                (typeof step.title === "string" && step.title.length
-                  ? step.title
-                  : step.category) ??
-                (step?.step !== undefined && step?.step !== null
-                  ? `Step ${step.step}`
-                  : "");
-              const productName =
-                typeof step.product?.name === "string"
-                  ? step.product.name
-                  : typeof step.product?.slug === "string"
-                    ? step.product.slug
-                    : undefined;
-              return `${
-                step?.step !== undefined && step?.step !== null
-                  ? `Step ${step.step}`
-                  : ""
-              }: ${label}${productName ? ` · ${productName}` : ""}`;
-            })
-            .filter((entry): entry is string => entry !== null) // Filter out nulls after mapping
-            .slice(0, 5)
-            .join(" | ");
+          // const routineSummary = normalizedSteps
+          //   .map((step) => {
+          //     if (step === null || step === undefined) return null; // Added explicit null check for step
+          //     const label =
+          //       (typeof step.title === "string" && step.title.length
+          //         ? step.title
+          //         : step.category) ??
+          //       (step?.step !== undefined && step?.step !== null
+          //         ? `Step ${step.step}`
+          //         : "");
+          //     const productName =
+          //       typeof step.product?.name === "string"
+          //         ? step.product.name
+          //         : typeof step.product?.slug === "string"
+          //           ? step.product.slug
+          //           : undefined;
+          //     return `${
+          //       step?.step !== undefined && step?.step !== null
+          //         ? `Step ${step.step}`
+          //         : ""
+          //     }: ${label}${productName ? ` · ${productName}` : ""}`;
+          //   })
+          //   .filter((entry): entry is string => entry !== null) // Filter out nulls after mapping
+          //   .slice(0, 5)
+          //   .join(" | ");
 
-          if (routineSummary.length) {
-            chatMessages.push({
-              role: "developer",
-              content:
-                "Routine outline (do not enumerate verbatim): " +
-                routineSummary,
-            });
-          }
+          // if (routineSummary.length) {
+          //   chatMessages.push({
+          //     role: "developer",
+          //     content:
+          //       "Routine outline (do not enumerate verbatim): " +
+          //       routineSummary,
+          //   });
+          // }
 
-          if (lastRoutine?.notes) {
-            chatMessages.push({
-              role: "developer",
-              content:
-                "Routine notes (context only, paraphrase if helpful): " +
-                lastRoutine.notes,
-            });
-          }
+          // if (lastRoutine?.notes) {
+          //   chatMessages.push({
+          //     role: "developer",
+          //     content:
+          //       "Routine notes (context only, paraphrase if helpful): " +
+          //       lastRoutine.notes,
+          //   });
+          // }
 
           // chatMessages.push({
           //   role: "developer",
@@ -1136,18 +1528,20 @@ export async function callOpenAI({
           //     "If the last tool call how this full routine supports the user's skin goals. Reference the routine collectively (Step 1 cleanser, Step 2 serum, etc.) in a concise paragraph, and invite follow-up like swapping a step or learning usage tips.",
           // });
 
-          chatMessages.push({
-            role: "developer",
-            content:
-              "You have the routines passed in previous tool call. Dont generate any final content, text or routine description.",
-          });
+          // chatMessages.push({
+          //   role: "developer",
+          //   content:
+          //     "You have the routines passed in previous tool call. Dont generate any final content, text or routine description.",
+          // });
+
+          pendingExtraInputItems = extraInputItemsForNextRound;
 
           continue;
         }
       }
 
-      // Make sure next round includes function_call_output items
-      pendingExtraInputItems = functionCallOutputsForNextRound;
+      // Make sure next round includes function_call and function_call_output items
+      pendingExtraInputItems = extraInputItemsForNextRound;
 
       const productsArray =
         toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
