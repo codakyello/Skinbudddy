@@ -124,19 +124,24 @@ async function generateSummaryText(
 
   const client = new OpenAI({ apiKey });
   try {
-    const completion = await client.chat.completions.create({
+    const isGPT5 = /(^|\b)gpt-5(\b|\-)/i.test(SUMMARISER_MODEL);
+    const resp = await client.responses.create({
       model: SUMMARISER_MODEL,
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: systemPrompt },
+      store: false,
+      include: ["reasoning.encrypted_content"],
+      ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
+      input: [
+        { role: "system", type: "message", content: systemPrompt },
         {
           role: "user",
+          type: "message",
           content: `Summarise the following snippets:\n\n${truncated}`,
         },
       ],
-      max_tokens: Math.min(maxTokens, 600),
+      ...(isGPT5 ? { temperature: 1 as const } : { temperature: 0.2 }),
+      max_output_tokens: Math.min(maxTokens, 600),
     });
-    const content = completion.choices?.[0]?.message?.content?.trim();
+    const content = (resp as any).output_text?.trim?.();
     return content || truncated.slice(0, maxTokens * 4);
   } catch (error) {
     console.warn("summary generation failed", error);

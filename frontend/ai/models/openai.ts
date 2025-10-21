@@ -293,22 +293,29 @@ async function generateReplySummaryWithLLM({
   const iconInstruction = `Set the "icon" field in your JSON to "${icon}". Do not place any emoji inside the headline or subheading. Provide exactly one headline and one subheading—no additional fields or sentences.`;
 
   try {
-    const completion = await openai.chat.completions.create({
+    const isGPT5 = /(^|\b)gpt-5(\b|\-)/i.test(model);
+    const resp = await openai.responses.create({
       model,
-      temperature: 0.4,
-      messages: [
+      store: false,
+      ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
+      include: ["reasoning.encrypted_content"],
+      text: { format: { type: "json_object" } },
+      input: [
         {
           role: "system",
           content: `You are a succinct copywriter for SkinBuddy, a skincare assistant. Given the assistant's reply and the structured context, craft a heading and subheading that match the requested format. Keep the headline between 3–10 words (≤60 characters) and ensure it stays conversational and skincare-focused. The subheading must be exactly one supportive sentence (≤110 characters) that complements—but never repeats verbatim—the headline. ${iconInstruction} ${contextualInstructions} Output ONLY a JSON object with keys headline, subheading, and optional icon—no prose, no markdown, no code fences.`,
+          type: "message",
         },
         {
           role: "user",
           content: JSON.stringify(payload),
+          type: "message",
         },
       ],
+      ...(isGPT5 ? { temperature: 1 as const } : { temperature: 0.4 }),
     });
 
-    const content = completion.choices?.[0]?.message?.content?.trim() ?? "";
+    const content = (resp as any).output_text?.trim?.() ?? "";
     if (!content.length) return null;
 
     const sanitized = content.replace(/```(?:json)?|```/gi, "").trim();
@@ -521,14 +528,16 @@ async function refineProductSelection({
   const limitedCandidates = candidates.slice(0, 12);
   const { summaries, keyMap } = summarizeCandidates(limitedCandidates);
 
-  const selectionMessages: OpenAI.ChatCompletionMessageParam[] = [
+  const selectionMessages = [
     {
-      role: "system",
+      role: "system" as const,
+      type: "message" as const,
       content:
         "You are a meticulous skincare merchandiser. You will select the best matches from the provided candidate list. Only choose from the candidates and never invent new products. Your response must call the selectProducts function.",
     },
     {
-      role: "user",
+      role: "user" as const,
+      type: "message" as const,
       content: `User request:\n${userRequest || "(not provided)"}\n\nCandidates (JSON):\n${JSON.stringify(
         summaries,
         null,
@@ -538,37 +547,39 @@ async function refineProductSelection({
   ];
 
   try {
-    const selection = await openai.chat.completions.create({
+    const isGPT5 = /(^|\b)gpt-5(\b|\-)/i.test(model);
+    const selection = await openai.responses.create({
       model,
-      temperature: 0,
-      messages: selectionMessages,
+      store: false,
+      include: ["reasoning.encrypted_content"],
+      ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
+      input: selectionMessages,
       tools: [
         {
           type: "function",
-          function: {
-            name: "selectProducts",
-            description:
-              "Select the best products for the user from the candidate list.",
-            parameters: selectProductsParameters,
-          },
+          name: "selectProducts",
+          description:
+            "Select the best products for the user from the candidate list.",
+          parameters: selectProductsParameters,
+          strict: false,
         },
       ],
-      tool_choice: {
-        type: "function",
-        function: { name: "selectProducts" },
-      },
+      tool_choice: { type: "function", name: "selectProducts" },
+      ...(isGPT5 ? { temperature: 1 as const } : { temperature: 0 }),
     });
 
-    const toolCall = selection.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall || toolCall.type !== "function" || !toolCall.function) {
+    const toolCall = (selection.output || []).find(
+      (item: any) => item?.type === "function_call"
+    );
+    if (!toolCall || toolCall.type !== "function_call") {
       return { products: limitedCandidates };
     }
 
-    if (toolCall.function.name !== "selectProducts") {
+    if (toolCall.name !== "selectProducts") {
       return { products: limitedCandidates };
     }
 
-    const rawArguments = toolCall.function.arguments ?? "{}";
+    const rawArguments = toolCall.arguments ?? "{}";
     const parsed = selectProductsResponseSchema.safeParse(
       JSON.parse(rawArguments)
     );
@@ -641,15 +652,21 @@ export async function callOpenAI({
   summary?: ReplySummary;
   updatedContext?: object;
 }> {
-  const tools = toolSpecs;
+  const tools = toolSpecs.map((tool) => ({
+    type: "function" as const,
+    name: tool.function.name,
+    description: tool.function.description ?? undefined,
+    parameters: tool.function.parameters ?? null,
+    strict: false as const,
+  }));
 
-  const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
+  // Build a local message history we can augment
+  const chatMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
   ];
 
   for (const msg of messages) {
-    const mappedRole = msg.role === "tool" ? "assistant" : msg.role;
-    chatMessages.push({ role: mappedRole, content: msg.content });
+    chatMessages.push({ role: msg.role, content: msg.content });
   }
 
   chatMessages.push({
@@ -669,82 +686,112 @@ export async function callOpenAI({
   // messages.push({ role: "user", content: userMessage });
 
   const streamCompletion = async (
-    forceFinal: boolean
+    forceFinal: boolean,
+    extraInputItems: any[] = []
   ): Promise<{
     content: string;
     toolCalls: Array<{
-      id: string;
-      type: "function";
-      function: { name: string; arguments: string };
+      id: string; // internal item id
+      call_id: string;
+      name: string;
+      arguments: string;
     }>;
   }> => {
-    const toolCallMap = new Map<
-      number,
-      {
-        id: string;
-        type: "function";
-        function: { name: string; arguments: string };
-      }
+    const toolCallsByItemId = new Map<
+      string,
+      { id: string; call_id: string; name: string; arguments: string }
     >();
 
+    const toInputFromChat = (): any[] => {
+      const items: any[] = [];
+      for (const msg of chatMessages) {
+        if (msg.role === "tool") {
+          // We do not directly inject prior tool messages; tool function outputs
+          // are provided via function_call_output items when applicable.
+          continue;
+        }
+        // Easy input message
+        items.push({
+          type: "message",
+          role:
+            msg.role === "developer" ||
+            msg.role === "system" ||
+            msg.role === "user" ||
+            msg.role === "assistant"
+              ? (msg.role as any)
+              : msg.role === "tool"
+                ? "user"
+                : "user",
+          content: msg.content,
+        });
+      }
+      // Append any extra input items (e.g., function_call_output) for this round
+      return items.concat(extraInputItems);
+    };
+
+    const isGPT5 = /(^|\b)gpt-5(\b|\-)/i.test(model);
     let content = "";
 
-    const stream = await openai.chat.completions.create({
+    const stream = await openai.responses.create({
       model,
-      temperature,
-      messages: chatMessages,
-      tools,
+      store: false,
+      // include: ["reasoning.encrypted_content"],
+      ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
+      input: toInputFromChat(),
+      tools: useTools ? (tools as any) : undefined,
       tool_choice: useTools ? (forceFinal ? "none" : "auto") : "none",
       stream: true,
+      ...(isGPT5 ? { temperature: 1 as const } : { temperature }),
     });
 
-    for await (const part of stream) {
-      const choice = part.choices?.[0];
-      if (!choice) continue;
+    for await (const event of stream as any) {
+      const type = event?.type as string | undefined;
+      if (!type) continue;
 
-      const delta = choice.delta ?? {};
-
-      if (delta.content) {
-        content += delta.content;
-        if (onToken) {
-          await onToken(delta.content);
+      if (type === "response.output_text.delta") {
+        const delta = event.delta ?? "";
+        if (delta) {
+          content += delta;
+          if (onToken) await onToken(delta);
         }
+        continue;
       }
 
-      if (Array.isArray(delta.tool_calls)) {
-        for (const toolDelta of delta.tool_calls) {
-          const index = toolDelta.index ?? 0;
-          const existing = toolCallMap.get(index) ?? {
-            id: toolDelta.id ?? `call_${index}`,
-            type: "function" as const,
-            function: { name: "", arguments: "" },
-          };
-          if (toolDelta.id) existing.id = toolDelta.id;
-          if (toolDelta.function?.name) {
-            existing.function.name = toolDelta.function.name;
-          }
-          if (toolDelta.function?.arguments) {
-            existing.function.arguments += toolDelta.function.arguments;
-          }
-          toolCallMap.set(index, existing);
+      if (type === "response.output_item.added") {
+        const item = event.item;
+        if (item?.type === "function_call") {
+          const id =
+            item.id ||
+            event.item_id ||
+            item.call_id ||
+            `call_${event.output_index ?? 0}`;
+          toolCallsByItemId.set(id, {
+            id,
+            call_id: item.call_id,
+            name: item.name,
+            arguments: "",
+          });
         }
+        continue;
+      }
+
+      if (type === "response.function_call_arguments.delta") {
+        const itemId = event.item_id as string;
+        const existing = toolCallsByItemId.get(itemId);
+        if (existing) {
+          existing.arguments += event.delta ?? "";
+        }
+        continue;
       }
     }
 
-    const toolCalls = Array.from(toolCallMap.values());
+    const toolCalls = Array.from(toolCallsByItemId.values());
 
-    // if toolCall is present, dont send out final message (content)
     if (toolCalls.length) {
-      chatMessages.push({
-        role: "assistant",
-        content: "",
-        tool_calls: toolCalls,
-      });
+      // Record that the assistant produced tool calls (no direct content)
+      chatMessages.push({ role: "assistant", content: "" });
     } else {
-      chatMessages.push({
-        role: "assistant",
-        content,
-      });
+      chatMessages.push({ role: "assistant", content });
     }
 
     return { content, toolCalls };
@@ -761,69 +808,72 @@ export async function callOpenAI({
   console.log("calling openAi");
 
   // main
+  let pendingExtraInputItems: any[] = [];
   while (true) {
     const { content, toolCalls } = await streamCompletion(
-      rounds >= maxToolRounds
+      rounds >= maxToolRounds,
+      pendingExtraInputItems
     );
+    // clear after consumption
+    pendingExtraInputItems = [];
 
     if (useTools && toolCalls.length > 0 && rounds < maxToolRounds) {
       rounds++;
 
+      // Execute tool calls and prepare function_call_output inputs for the next round
+      const functionCallOutputsForNextRound: any[] = [];
       for (const toolCall of toolCalls) {
-        if (toolCall.type !== "function") {
-          chatMessages.push({
-            role: "tool",
-            tool_call_id: toolCall.id,
-            content: JSON.stringify({
-              error: true,
-              message: `Unsupported tool type: ${toolCall.type}`,
-            }),
-          });
-          continue;
-        }
-
         try {
           const rawArgs =
-            typeof toolCall.function.arguments === "string"
-              ? JSON.parse(toolCall.function.arguments || "{}")
-              : (toolCall.function.arguments ?? {});
+            typeof toolCall.arguments === "string"
+              ? JSON.parse(toolCall.arguments || "{}")
+              : (toolCall.arguments ?? {});
 
-          console.log(`Executing tool: ${toolCall.function.name}`, rawArgs);
+          console.log(`Executing tool: ${toolCall.name}`, rawArgs);
 
-          const toolDef = getToolByName(toolCall.function.name);
+          const toolDef = getToolByName(toolCall.name);
           if (!toolDef) {
-            throw new Error(`Unknown tool: ${toolCall.function.name}`);
+            throw new Error(`Unknown tool: ${toolCall.name}`);
           }
 
           const validatedArgs = toolDef.schema.parse(rawArgs);
-
           const result = await toolDef.handler(validatedArgs);
 
-          // console.log(result, "This is the result of the tool call");
-
-          // we are building tool outputs from multiple tool calling iteration
           toolOutputs.push({
-            name: toolCall.function.name,
+            name: toolCall.name,
             arguments: validatedArgs,
             result: result ?? null,
           });
 
-          // result: {recommendations: []}
+          // Provide result to the model via function_call_output item
+          functionCallOutputsForNextRound.push({
+            type: "function_call_output",
+            call_id: toolCall.call_id,
+            output: JSON.stringify(result ?? {}),
+          });
 
-          // pushing the tool reslult here
+          // Also keep a tool message in local transcript for product/routine extraction logic
           chatMessages.push({
             role: "tool",
-            tool_call_id: toolCall.id,
+            tool_call_id: toolCall.call_id,
             content: JSON.stringify(result ?? {}),
           });
         } catch (err) {
           console.error(
-            `Tool execution error (${toolCall.function?.name ?? "unknown"}):`,
+            `Tool execution error (${toolCall.name ?? "unknown"}):`,
             err
           );
+          functionCallOutputsForNextRound.push({
+            type: "function_call_output",
+            call_id: toolCall.call_id,
+            output: JSON.stringify({
+              error: true,
+              message: (err as Error)?.message || "Tool execution failed",
+            }),
+          });
           chatMessages.push({
             role: "tool",
-            tool_call_id: toolCall.id,
+            tool_call_id: toolCall.call_id,
             content: JSON.stringify({
               error: true,
               message: (err as Error)?.message || "Tool execution failed",
@@ -850,6 +900,7 @@ export async function callOpenAI({
             Array.isArray((output.result as Record<string, unknown>).steps)
         );
 
+      // out of foor loop, no more tool calls
       if (latestRoutineOutput) {
         const routineResult = latestRoutineOutput.result as Record<
           string,
@@ -1095,12 +1146,13 @@ export async function callOpenAI({
         }
       }
 
+      // Make sure next round includes function_call_output items
+      pendingExtraInputItems = functionCallOutputsForNextRound;
+
       const productsArray =
         toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
 
-      // console.log(productsArray, "This is the product array");
-
-      // routine object {category: "", description: "", product: ""}
+      // for products array in tool call
       if (productsArray.length) {
         let refinedProductsResult: {
           products: ProductCandidate[];
@@ -1312,6 +1364,8 @@ export async function callOpenAI({
           });
         }
 
+        // instead of passing the products to the llm to generate final products, we tell it to give us a summary instead
+        // we leave the heavy lifting of the product selection to another model, that follows the user prompts
         chatMessages.push({
           role: "developer",
           content:

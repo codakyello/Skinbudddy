@@ -29,13 +29,16 @@ export async function runChatCompletion(
   temperature = 1,
   systemPrompt?: string
 ) {
-  const resp = await openai.chat.completions.create({
+  const isGPT5 = /(^|\b)gpt-5(\b|\-)/i.test(model);
+  const resp = await openai.responses.create({
     model,
-    temperature,
-    response_format: { type: "json_object" },
-    messages: [
+    store: false,
+    ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
+    text: { format: { type: "json_object" } },
+    input: [
       {
         role: "system",
+        type: "message",
         content:
           systemPrompt ||
           `You are SkinBuddy AI, a professional skincare recommender and expert. 
@@ -45,9 +48,10 @@ export async function runChatCompletion(
     Only recommend products that are available in the database. If no products are available, don't recommend any products. Never hallucinate anything, products, brands, categories, etc.
     `,
       },
-      { role: "user", content: userPrompt },
+      { role: "user", type: "message", content: userPrompt },
     ],
+    ...(isGPT5 ? { temperature: 1 as const } : { temperature }),
   });
 
-  return resp.choices?.[0]?.message?.content?.trim() ?? "{}";
+  return ((resp as any).output_text as string | undefined)?.trim() ?? "{}";
 }
