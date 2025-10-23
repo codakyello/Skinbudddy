@@ -1202,7 +1202,7 @@ async function refineProductSelection({
 export async function callOpenAI({
   messages,
   systemPrompt,
-  model = "gpt-5-nano",
+  model = "gpt-4o-mini",
   temperature = 1,
   useTools = true,
   maxToolRounds = 5, // prevent runaway loops
