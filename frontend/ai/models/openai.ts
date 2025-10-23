@@ -14,6 +14,8 @@ type ChatMessage = {
   role: "user" | "assistant" | "system" | "tool" | "developer";
   content: string;
   tool_call_id?: string;
+  tool_name?: string;
+  tool_arguments?: string;
   tool_calls?: Array<{
     id: string;
     type: "function";
@@ -1289,29 +1291,53 @@ export async function callOpenAI({
 
     const toInputFromChat = (): any[] => {
       const items: any[] = [];
+      let historicalToolCounter = 0;
       for (const msg of chatMessages) {
         if (msg.role === "tool") {
-          // We do not directly inject prior tool messages; tool function outputs
-          // are provided via function_call_output items when applicable.
+          const callId =
+            msg.tool_call_id && typeof msg.tool_call_id === "string"
+              ? msg.tool_call_id
+              : `hist_tool_${historicalToolCounter++}`;
+          const toolName =
+            msg.tool_name && typeof msg.tool_name === "string"
+              ? msg.tool_name
+              : "historical_tool";
+          const toolArgumentsString =
+            msg.tool_arguments && typeof msg.tool_arguments === "string"
+              ? msg.tool_arguments
+              : "{}";
+          items.push({
+            type: "function_call",
+            call_id: callId,
+            name: toolName,
+            arguments: toolArgumentsString,
+          });
+          items.push({
+            type: "function_call_output",
+            call_id: callId,
+            output:
+              typeof msg.content === "string" && msg.content.length
+                ? msg.content
+                : "{}",
+          });
           continue;
         }
-        // Easy input message
-        const messageItem: Record<string, unknown> = {
+
+        const roleForMessage =
+          msg.role === "developer" ||
+          msg.role === "system" ||
+          msg.role === "user" ||
+          msg.role === "assistant"
+            ? msg.role
+            : "user";
+
+        items.push({
           type: "message",
-          role:
-            msg.role === "developer" ||
-            msg.role === "system" ||
-            msg.role === "user" ||
-            msg.role === "assistant"
-              ? (msg.role as any)
-              : msg.role === "tool"
-                ? "user"
-                : "user",
+          role: roleForMessage,
           content: msg.content,
-        };
-        items.push(messageItem);
+        });
       }
-      // Append any extra input items (e.g., function_call_output) for this round
+
       return items.concat(extraInputItems);
     };
 
@@ -1493,6 +1519,10 @@ export async function callOpenAI({
   // main
   let pendingExtraInputItems: any[] = [];
   while (true) {
+    console.log(
+      rounds,
+      "This is how many times we have called openAi " + rounds
+    );
     const { content, toolCalls } = await streamCompletion(
       rounds >= maxToolRounds,
       pendingExtraInputItems
@@ -1514,41 +1544,44 @@ export async function callOpenAI({
         toolCall.id = existing;
       });
 
-      // Execute tool calls and prepare function_call_output inputs for the next round
-      const functionCallInputsForNextRound: any[] = toolCalls.map(
-        (toolCall, index) => {
-          const callId =
-            toolCall.call_id ||
-            toolCall.id ||
-            `fc_${rounds}_${index}_${Date.now()}`;
-          return {
-            type: "function_call",
-            call_id: callId,
-            name: toolCall.name,
-            arguments: toolCall.arguments,
-          };
-        }
-      );
-      const functionCallOutputsForNextRound: any[] = [];
+      // Execute tool calls and log outputs into the transcript for the next round
+      let toolExecutionIndex = 0;
       for (const toolCall of toolCalls) {
         const callId =
           toolCall.call_id ||
           toolCall.id ||
-          `fc_${rounds}_${functionCallOutputsForNextRound.length}`;
+          `fc_${rounds}_${toolExecutionIndex++}_${Date.now()}`;
+
+        const toolDef = getToolByName(toolCall.name);
+        if (!toolDef) {
+          console.error(`Unknown tool: ${toolCall.name}`);
+          chatMessages.push({
+            role: "tool",
+            tool_call_id: callId,
+            tool_name: toolCall.name,
+            tool_arguments: "{}",
+            content: JSON.stringify({
+              error: true,
+              message: `Unknown tool: ${toolCall.name}`,
+            }),
+          });
+          continue;
+        }
+
+        let serializedArgsForHistory = "{}";
+        let originalArgsObject: unknown = {};
+
         try {
-          const rawArgs =
+          const rawArgs: unknown =
             typeof toolCall.arguments === "string"
               ? JSON.parse(toolCall.arguments || "{}")
               : (toolCall.arguments ?? {});
-
-          console.log(`Executing tool: ${toolCall.name}`, rawArgs);
-
-          const toolDef = getToolByName(toolCall.name);
-          if (!toolDef) {
-            throw new Error(`Unknown tool: ${toolCall.name}`);
-          }
-
+          originalArgsObject = rawArgs;
           const validatedArgs = toolDef.schema.parse(rawArgs);
+          serializedArgsForHistory = JSON.stringify(validatedArgs ?? {});
+
+          console.log(`Executing tool: ${toolCall.name}`, validatedArgs);
+
           const result = await toolDef.handler(validatedArgs);
 
           toolOutputs.push({
@@ -1568,17 +1601,11 @@ export async function callOpenAI({
                 ? {}
                 : { value: sanitizedResult };
 
-          // Provide result to the model via function_call_output item
-          functionCallOutputsForNextRound.push({
-            type: "function_call_output",
-            call_id: callId,
-            output: JSON.stringify(normalizedSanitized),
-          });
-
-          // Also keep a tool message in local transcript for product/routine extraction logic
           chatMessages.push({
             role: "tool",
             tool_call_id: callId,
+            tool_name: toolCall.name,
+            tool_arguments: serializedArgsForHistory,
             content: JSON.stringify(normalizedSanitized),
           });
         } catch (err) {
@@ -1586,17 +1613,19 @@ export async function callOpenAI({
             `Tool execution error (${toolCall.name ?? "unknown"}):`,
             err
           );
-          functionCallOutputsForNextRound.push({
-            type: "function_call_output",
-            call_id: callId,
-            output: JSON.stringify({
-              error: true,
-              message: (err as Error)?.message || "Tool execution failed",
-            }),
-          });
+
+          const fallbackArgsString =
+            serializedArgsForHistory !== "{}"
+              ? serializedArgsForHistory
+              : typeof toolCall.arguments === "string"
+                ? toolCall.arguments
+                : JSON.stringify(originalArgsObject ?? {});
+
           chatMessages.push({
             role: "tool",
             tool_call_id: callId,
+            tool_name: toolCall.name,
+            tool_arguments: fallbackArgsString,
             content: JSON.stringify({
               error: true,
               message: (err as Error)?.message || "Tool execution failed",
@@ -1604,11 +1633,6 @@ export async function callOpenAI({
           });
         }
       }
-
-      const extraInputItemsForNextRound = [
-        ...functionCallInputsForNextRound,
-        ...functionCallOutputsForNextRound,
-      ];
 
       // All of the toolOutputs when no more tool calls
       // console.log(toolOutputs, "This is the toolOutput");
@@ -1890,14 +1914,14 @@ export async function callOpenAI({
           //     "You have the routines passed in previous tool call. Dont generate any final content, text or routine description.",
           // });
 
-          pendingExtraInputItems = extraInputItemsForNextRound;
+          pendingExtraInputItems = [];
 
           continue;
         }
       }
 
       // Make sure next round includes function_call and function_call_output items
-      pendingExtraInputItems = extraInputItemsForNextRound;
+      pendingExtraInputItems = [];
 
       const productsArray =
         toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
