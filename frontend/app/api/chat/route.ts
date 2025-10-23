@@ -18,6 +18,9 @@ export async function POST(req: NextRequest) {
       };
 
       const scheduled: Promise<void>[] = [];
+      let streamedProductSignature: string | null = null;
+      let streamedRoutineSignature: string | null = null;
+      let streamedSummarySignature: string | null = null;
 
       const schedule = (promise: Promise<unknown>) => {
         scheduled.push(
@@ -474,6 +477,55 @@ export async function POST(req: NextRequest) {
             onToken: async (token) => {
               if (!token) return;
               await send({ type: "delta", token });
+            },
+            onSummary: async (summaryChunk) => {
+              if (!summaryChunk || typeof summaryChunk !== "object") return;
+              const signature = JSON.stringify(summaryChunk);
+              if (signature === streamedSummarySignature) return;
+              streamedSummarySignature = signature;
+              await send({ type: "summary", summary: summaryChunk });
+            },
+            onProducts: async (productsChunk) => {
+              if (!Array.isArray(productsChunk) || !productsChunk.length) return;
+              const sanitized = sanitizeProducts(productsChunk);
+              const signature = JSON.stringify(
+                (sanitized.length ? sanitized : productsChunk).map(
+                  (product, index) => {
+                    if (!product || typeof product !== "object") {
+                      return `product-${index}`;
+                    }
+                    const record = product as Record<string, unknown>;
+                    return (
+                      (record.productId && String(record.productId)) ||
+                      (record._id && String(record._id)) ||
+                      (record.id && String(record.id)) ||
+                      (record.slug && String(record.slug)) ||
+                      (record.categoryName && String(record.categoryName)) ||
+                      `product-${index}`
+                    );
+                  }
+                )
+              );
+              if (signature === streamedProductSignature) return;
+              streamedProductSignature = signature;
+              await send({ type: "products", products: productsChunk });
+            },
+            onRoutine: async (routineChunk) => {
+              const sanitized = sanitizeRoutine(routineChunk);
+              if (!sanitized || !sanitized.steps.length) return;
+              const signature = JSON.stringify(
+                sanitized.steps.map((step, index) => {
+                  return (
+                    step.productId ||
+                    step.slug ||
+                    step.productSlug ||
+                    `routine-${step.step ?? index}`
+                  );
+                })
+              );
+              if (signature === streamedRoutineSignature) return;
+              streamedRoutineSignature = signature;
+              await send({ type: "routine", routine: routineChunk });
             },
           });
 

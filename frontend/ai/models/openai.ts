@@ -14,6 +14,8 @@ type ChatMessage = {
   role: "user" | "assistant" | "system" | "tool" | "developer";
   content: string;
   tool_call_id?: string;
+  tool_name?: string;
+  tool_arguments?: string;
   tool_calls?: Array<{
     id: string;
     type: "function";
@@ -84,6 +86,414 @@ const normalizeProductsFromOutputs = (outputs: ToolOutput[]): unknown[] => {
   });
 
   return Array.from(byId.values());
+};
+
+const toUniqueStrings = (values: Array<string | undefined>): string[] => {
+  const seen = new Set<string>();
+  const results: string[] = [];
+  for (const value of values) {
+    if (!value) continue;
+    const normalized = value.trim();
+    if (!normalized.length || seen.has(normalized)) continue;
+    seen.add(normalized);
+    results.push(normalized);
+  }
+  return results;
+};
+
+const collectStringArray = (input: unknown, limit = 6): string[] => {
+  const source = Array.isArray(input)
+    ? input
+    : input === undefined || input === null
+      ? []
+      : [input];
+  const results: string[] = [];
+  for (const entry of source) {
+    if (typeof entry === "string") {
+      const trimmed = entry.trim();
+      if (trimmed.length) {
+        results.push(trimmed);
+        if (results.length >= limit) break;
+      }
+      continue;
+    }
+    if (entry && typeof entry === "object") {
+      const record = entry as UnknownRecord;
+      if (typeof record.name === "string") {
+        const trimmed = record.name.trim();
+        if (trimmed.length) {
+          results.push(trimmed);
+          if (results.length >= limit) break;
+        }
+      }
+    }
+  }
+  return toUniqueStrings(results);
+};
+
+const extractPricesFromSizes = (input: unknown): number[] => {
+  if (!Array.isArray(input)) return [];
+  const prices: number[] = [];
+  for (const entry of input) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as UnknownRecord;
+    const rawPrice = record.price ?? record.listPrice ?? record.salePrice;
+    if (typeof rawPrice === "number" && Number.isFinite(rawPrice)) {
+      prices.push(rawPrice);
+      continue;
+    }
+    if (typeof rawPrice === "string") {
+      const parsed = Number(rawPrice);
+      if (Number.isFinite(parsed)) prices.push(parsed);
+    }
+  }
+  return prices;
+};
+
+const computePriceRange = (prices: number[]): string | undefined => {
+  if (!prices.length) return undefined;
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  if (!Number.isFinite(min) || min < 0) return undefined;
+  if (!Number.isFinite(max) || max < 0) return undefined;
+  if (min === max) return `$${min.toFixed(2)}`;
+  return `$${min.toFixed(2)}–$${max.toFixed(2)}`;
+};
+
+const sanitizeProductForModel = (
+  product: unknown
+): Record<string, unknown> | null => {
+  if (!product || typeof product !== "object") return null;
+  const record = product as UnknownRecord;
+  const base =
+    record.product && typeof record.product === "object"
+      ? (record.product as UnknownRecord)
+      : record;
+
+  const productId =
+    coerceId(record.productId) ??
+    coerceId(record._id) ??
+    coerceId(record.id) ??
+    coerceId(base._id) ??
+    coerceId(base.id);
+
+  if (!productId) return null;
+
+  const name =
+    typeof base.name === "string"
+      ? base.name
+      : typeof record.name === "string"
+        ? record.name
+        : undefined;
+
+  const brandRaw = base.brand ?? record.brand;
+  let brand: string | undefined;
+  if (typeof brandRaw === "string") {
+    brand = brandRaw;
+  } else if (brandRaw && typeof brandRaw === "object") {
+    const brandRecord = brandRaw as UnknownRecord;
+    if (typeof brandRecord.name === "string") {
+      brand = brandRecord.name;
+    }
+  }
+
+  const categories = toUniqueStrings([
+    ...collectStringArray(base.categories ?? record.categories ?? [], 4),
+    typeof base.category === "string" ? base.category : undefined,
+    typeof record.category === "string" ? record.category : undefined,
+  ]);
+
+  const ingredients = collectStringArray(
+    base.ingredients ??
+      base.keyIngredients ??
+      record.ingredients ??
+      record.keyIngredients ??
+      [],
+    5
+  );
+
+  const priceRange =
+    computePriceRange(extractPricesFromSizes(base.sizes)) ??
+    computePriceRange(extractPricesFromSizes(record.sizes));
+
+  const rawSizesSource =
+    Array.isArray(base.sizes) && base.sizes.length
+      ? base.sizes
+      : Array.isArray(record.sizes)
+        ? record.sizes
+        : [];
+  const normalizedSizes = rawSizesSource
+    .map((sizeEntry) => {
+      if (!sizeEntry || typeof sizeEntry !== "object") return null;
+      const sizeRecord = sizeEntry as UnknownRecord;
+      const sizeId =
+        (typeof sizeRecord.sizeId === "string" && sizeRecord.sizeId) ||
+        (typeof sizeRecord.id === "string" && sizeRecord.id) ||
+        (typeof sizeRecord._id === "string" && sizeRecord._id) ||
+        undefined;
+      if (!sizeId) return null;
+
+      const labelCandidate =
+        typeof sizeRecord.name === "string" && sizeRecord.name.trim().length
+          ? sizeRecord.name
+          : undefined;
+      const quantity =
+        typeof sizeRecord.size === "number"
+          ? `${sizeRecord.size}`
+          : typeof sizeRecord.size === "string"
+            ? sizeRecord.size
+            : undefined;
+      const unit =
+        typeof sizeRecord.unit === "string" && sizeRecord.unit.trim().length
+          ? sizeRecord.unit
+          : undefined;
+      const label =
+        labelCandidate ??
+        (quantity && unit
+          ? `${quantity} ${unit}`.trim()
+          : (quantity ?? undefined));
+
+      const price =
+        typeof sizeRecord.price === "number"
+          ? sizeRecord.price
+          : typeof sizeRecord.price === "string" &&
+              sizeRecord.price.trim().length &&
+              Number.isFinite(Number(sizeRecord.price))
+            ? Number(sizeRecord.price)
+            : undefined;
+      const currency =
+        typeof sizeRecord.currency === "string" &&
+        sizeRecord.currency.trim().length
+          ? sizeRecord.currency
+          : undefined;
+
+      const sanitizedSize: Record<string, unknown> = {
+        sizeId,
+      };
+      if (label) sanitizedSize.label = label;
+      if (price !== undefined) sanitizedSize.price = price;
+      if (currency) sanitizedSize.currency = currency;
+
+      return sanitizedSize;
+    })
+    .filter((entry): entry is Record<string, unknown> => entry !== null);
+
+  const sanitized: Record<string, unknown> = { productId };
+  if (name) sanitized.name = name;
+  if (brand) sanitized.brand = brand;
+  if (categories.length) sanitized.categories = categories;
+  if (ingredients.length) sanitized.keyIngredients = ingredients;
+  if (priceRange) sanitized.priceRange = priceRange;
+  if (normalizedSizes.length) sanitized.sizes = normalizedSizes;
+
+  return sanitized;
+};
+
+const sanitizeProductListForModel = (
+  products: unknown
+): Array<Record<string, unknown>> => {
+  if (!Array.isArray(products)) return [];
+  const seen = new Set<string>();
+  const sanitized: Array<Record<string, unknown>> = [];
+  for (const entry of products) {
+    const product = sanitizeProductForModel(entry);
+    if (!product) continue;
+    const productId = product.productId as string;
+    if (productId && seen.has(productId)) continue;
+    if (productId) seen.add(productId);
+    sanitized.push(product);
+  }
+  return sanitized;
+};
+
+const sanitizeProductsResultForModel = (rawResult: unknown): unknown => {
+  if (!rawResult || typeof rawResult !== "object") {
+    const single = sanitizeProductForModel(rawResult);
+    return single ? { products: [single] } : {};
+  }
+
+  const record = rawResult as UnknownRecord;
+  const aggregated: Array<Record<string, unknown>> = [];
+
+  const addProducts = (value: unknown) => {
+    const list = sanitizeProductListForModel(value);
+    for (const item of list) {
+      const id = item.productId as string | undefined;
+      if (id && aggregated.some((existing) => existing.productId === id))
+        continue;
+      aggregated.push(item);
+    }
+  };
+
+  if (Array.isArray(record.products)) addProducts(record.products);
+  if (Array.isArray(record.results)) addProducts(record.results);
+  if (Array.isArray(record.items)) addProducts(record.items);
+  if (Array.isArray(record.recommendations))
+    addProducts(record.recommendations);
+
+  if (!aggregated.length) {
+    const single =
+      sanitizeProductForModel(record.product) ??
+      sanitizeProductForModel(record);
+    if (single) aggregated.push(single);
+  }
+
+  const payload: Record<string, unknown> = {};
+  if (aggregated.length) payload.products = aggregated;
+
+  const filters =
+    record.filters && typeof record.filters === "object"
+      ? record.filters
+      : undefined;
+  if (filters) payload.filters = filters;
+
+  return Object.keys(payload).length ? payload : {};
+};
+
+const sanitizeRoutineStepForModel = (
+  step: unknown
+): {
+  step?: number;
+  category?: string;
+  productName?: string;
+  keyIngredients?: string[];
+} | null => {
+  if (!step || typeof step !== "object") return null;
+  const record = step as UnknownRecord;
+  const product =
+    record.product && typeof record.product === "object"
+      ? (record.product as UnknownRecord)
+      : undefined;
+
+  const stepNumber = typeof record.step === "number" ? record.step : undefined;
+  const categoryCandidates = [
+    typeof record.category === "string" ? record.category : undefined,
+    typeof record.categoryName === "string" ? record.categoryName : undefined,
+    typeof record.categoryLabel === "string" ? record.categoryLabel : undefined,
+    typeof record.title === "string" ? record.title : undefined,
+  ];
+  const category = toUniqueStrings(categoryCandidates)[0];
+
+  const productNameCandidates = [
+    typeof record.productName === "string" ? record.productName : undefined,
+    typeof record.title === "string" ? record.title : undefined,
+    product && typeof product.name === "string"
+      ? (product.name as string)
+      : undefined,
+  ];
+  const productName = toUniqueStrings(productNameCandidates)[0];
+
+  const keyIngredients = collectStringArray(
+    product?.ingredients ?? product?.keyIngredients ?? record.ingredients ?? [],
+    4
+  );
+
+  const sanitized: Record<string, unknown> = {};
+  if (stepNumber !== undefined) sanitized.step = stepNumber;
+  if (category) sanitized.category = category;
+  if (productName) sanitized.productName = productName;
+  if (keyIngredients.length) sanitized.keyIngredients = keyIngredients;
+
+  return Object.keys(sanitized).length ? (sanitized as any) : null;
+};
+
+const sanitizeRoutineResultForModel = (rawResult: unknown): unknown => {
+  if (!rawResult || typeof rawResult !== "object") return {};
+  const record = rawResult as UnknownRecord;
+
+  const routineId =
+    coerceId(record.routineId) ??
+    coerceId(record._id) ??
+    coerceId(record.id) ??
+    undefined;
+  const title = typeof record.title === "string" ? record.title : undefined;
+  const skinType =
+    typeof record.skinType === "string" ? record.skinType : undefined;
+
+  const rawConcerns = record.skinConcern ?? record.concerns;
+  const concerns = Array.isArray(rawConcerns)
+    ? collectStringArray(rawConcerns, 5)
+    : typeof rawConcerns === "string"
+      ? [rawConcerns]
+      : [];
+
+  const notes =
+    typeof record.notes === "string"
+      ? truncateString(record.notes, 320)
+      : undefined;
+
+  const stepsRaw = Array.isArray(record.steps) ? record.steps : [];
+  const stepHighlights = stepsRaw
+    .map((step) => sanitizeRoutineStepForModel(step))
+    .filter(
+      (
+        step
+      ): step is {
+        step?: number;
+        category?: string;
+        productName?: string;
+        keyIngredients?: string[];
+      } => step !== null
+    );
+
+  const stepCategories = toUniqueStrings(
+    stepHighlights.map((entry) => entry.category)
+  ).slice(0, 6);
+
+  const productHighlights = stepHighlights
+    .map((entry) => {
+      const highlight: Record<string, unknown> = {};
+      if (entry.category) highlight.category = entry.category;
+      if (entry.productName) highlight.productName = entry.productName;
+      if (entry.keyIngredients && entry.keyIngredients.length) {
+        highlight.keyIngredients = entry.keyIngredients;
+      }
+      return Object.keys(highlight).length ? highlight : null;
+    })
+    .filter(
+      (
+        entry
+      ): entry is {
+        category?: string;
+        productName?: string;
+        keyIngredients?: string[];
+      } => entry !== null
+    )
+    .slice(0, 6);
+
+  const recommendations = Array.isArray(record.recommendations)
+    ? sanitizeProductListForModel(record.recommendations)
+    : undefined;
+
+  const sanitized: Record<string, unknown> = {};
+  if (routineId) sanitized.routineId = routineId;
+  if (title) sanitized.title = title;
+  if (skinType) sanitized.skinType = skinType;
+  if (concerns.length) sanitized.concerns = concerns;
+  if (stepCategories.length) sanitized.stepCategories = stepCategories;
+  if (productHighlights.length) sanitized.productHighlights = productHighlights;
+  if (notes) sanitized.notes = notes;
+  if (recommendations && recommendations.length) {
+    sanitized.recommendations = recommendations;
+  }
+
+  return sanitized;
+};
+
+const sanitizeToolResultForModel = (
+  toolName: string,
+  rawResult: unknown
+): unknown => {
+  switch (toolName) {
+    case "searchProductsByQuery":
+    case "getAllProducts":
+    case "getProduct":
+      return sanitizeProductsResultForModel(rawResult);
+    case "recommendRoutine":
+      return sanitizeRoutineResultForModel(rawResult);
+    default:
+      return rawResult ?? {};
+  }
 };
 
 type ProductCandidate = Record<string, unknown>;
@@ -184,6 +594,170 @@ const formatList = (
   if (items.length === 1) return items[0];
   if (items.length === 2) return `${items[0]} ${conjunction} ${items[1]}`;
   return `${items.slice(0, -1).join(", ")}, ${conjunction} ${items.at(-1)}`;
+};
+
+const sentenceCase = (value: string): string => {
+  if (!value) return value;
+  const trimmed = value.trim();
+  if (!trimmed.length) return "";
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+};
+
+const describeSkinTypes = (skinTypes: string[]): string | undefined => {
+  if (!skinTypes.length) return undefined;
+  const items = skinTypes.map((type) => `${type.toLowerCase()} skin`);
+  return formatList(items);
+};
+
+const describeConcerns = (concerns: string[]): string | undefined => {
+  if (!concerns.length) return undefined;
+  const items = concerns.map((concern) => {
+    const lower = concern.toLowerCase();
+    if (lower.includes("concern")) return lower;
+    if (lower.endsWith("s")) return lower;
+    return `${lower} concerns`;
+  });
+  return formatList(items);
+};
+
+const describeIngredients = (ingredients: string[]): string | undefined => {
+  if (!ingredients.length) return undefined;
+  const normalized = ingredients.map((item) => item.toLowerCase());
+  return formatList(normalized);
+};
+
+const composeAudiencePhrase = (
+  skinTypes: string[],
+  concerns: string[]
+): string | undefined => {
+  const skin = describeSkinTypes(skinTypes);
+  const concernPhrase = describeConcerns(concerns);
+  if (skin && concernPhrase) return `${skin} with ${concernPhrase}`;
+  if (skin) return skin;
+  if (concernPhrase) return concernPhrase;
+  return undefined;
+};
+
+type ProductHeadlineInput = {
+  productCount: number;
+  category?: string;
+  audience?: string;
+  brand?: string;
+  nameQuery?: string;
+  ingredients?: string;
+};
+
+type ProductHeadlineResult = {
+  headline: string;
+  usedAudience: boolean;
+  usedBrand: boolean;
+  usedIngredients: boolean;
+};
+
+const buildProductHeadline = ({
+  productCount,
+  category,
+  audience,
+  brand,
+  nameQuery,
+  ingredients,
+}: ProductHeadlineInput): ProductHeadlineResult => {
+  const descriptor =
+    productCount >= 5 ? "Top" : productCount >= 3 ? "Curated" : "Featured";
+  let headline = "";
+  let usedAudience = false;
+  let usedBrand = false;
+  let usedIngredients = false;
+
+  if (category) {
+    const categoryLabel =
+      category.endsWith("s") || category.endsWith("S")
+        ? category
+        : `${category}s`;
+    if (audience) {
+      headline = `${descriptor} ${categoryLabel} for ${audience}`;
+      usedAudience = true;
+    } else if (brand) {
+      headline = `${descriptor} ${categoryLabel} from ${brand}`;
+      usedBrand = true;
+    } else if (ingredients) {
+      headline = `${descriptor} ${categoryLabel} with ${ingredients}`;
+      usedIngredients = true;
+    } else {
+      headline = `${descriptor} ${categoryLabel}`;
+    }
+  } else if (brand) {
+    headline =
+      productCount > 1 ? `${brand} Favorites` : `Featured ${brand} Pick`;
+    usedBrand = true;
+    if (audience) {
+      headline = `${headline} for ${audience}`;
+      usedAudience = true;
+    }
+  } else if (nameQuery) {
+    headline = `Results for "${nameQuery}"`;
+  } else if (audience) {
+    headline =
+      productCount > 1
+        ? `Product Picks for ${audience}`
+        : `Featured Pick for ${audience}`;
+    usedAudience = true;
+  } else if (ingredients) {
+    headline = `Products with ${ingredients}`;
+    usedIngredients = true;
+  } else {
+    headline =
+      productCount > 1
+        ? "Product Recommendations for You"
+        : "Featured Product Pick";
+  }
+
+  return { headline, usedAudience, usedBrand, usedIngredients };
+};
+
+const buildProductSubheading = ({
+  audiencePhrase,
+  brand,
+  ingredients,
+  nameQuery,
+  note,
+  usedAudience,
+  usedBrand,
+  usedIngredients,
+}: {
+  audiencePhrase?: string;
+  brand?: string;
+  ingredients?: string;
+  nameQuery?: string;
+  note?: string;
+  usedAudience: boolean;
+  usedBrand: boolean;
+  usedIngredients: boolean;
+}): string | undefined => {
+  const descriptorParts: string[] = [];
+  if (audiencePhrase && !usedAudience) {
+    descriptorParts.push(`tailored for ${audiencePhrase}`);
+  }
+  if (ingredients && !usedIngredients) {
+    descriptorParts.push(`features ${ingredients}`);
+  }
+  if (brand && !usedBrand) {
+    descriptorParts.push(`from ${brand}`);
+  }
+  if (nameQuery) {
+    descriptorParts.push(`matches "${nameQuery}"`);
+  }
+
+  const descriptor =
+    descriptorParts.length > 0
+      ? sentenceCase(descriptorParts.join(" · "))
+      : undefined;
+
+  if (note) {
+    return descriptor ? `${descriptor} · ${note}` : note;
+  }
+
+  return descriptor;
 };
 
 const extractProductMetadataForSummary = (
@@ -293,22 +867,29 @@ async function generateReplySummaryWithLLM({
   const iconInstruction = `Set the "icon" field in your JSON to "${icon}". Do not place any emoji inside the headline or subheading. Provide exactly one headline and one subheading—no additional fields or sentences.`;
 
   try {
-    const completion = await openai.chat.completions.create({
+    const isGPT5 = /(^|\b)gpt-5(\b|\-)/i.test(model);
+    const resp = await openai.responses.create({
       model,
-      temperature: 0.4,
-      messages: [
+      store: false,
+      ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
+      ...(isGPT5 ? { include: ["reasoning.encrypted_content" as const] } : {}),
+      text: { format: { type: "json_object" } },
+      input: [
         {
           role: "system",
           content: `You are a succinct copywriter for SkinBuddy, a skincare assistant. Given the assistant's reply and the structured context, craft a heading and subheading that match the requested format. Keep the headline between 3–10 words (≤60 characters) and ensure it stays conversational and skincare-focused. The subheading must be exactly one supportive sentence (≤110 characters) that complements—but never repeats verbatim—the headline. ${iconInstruction} ${contextualInstructions} Output ONLY a JSON object with keys headline, subheading, and optional icon—no prose, no markdown, no code fences.`,
+          type: "message",
         },
         {
           role: "user",
           content: JSON.stringify(payload),
+          type: "message",
         },
       ],
+      ...(isGPT5 ? { temperature: 1 as const } : { temperature: 0.4 }),
     });
 
-    const content = completion.choices?.[0]?.message?.content?.trim() ?? "";
+    const content = (resp as any).output_text?.trim?.() ?? "";
     if (!content.length) return null;
 
     const sanitized = content.replace(/```(?:json)?|```/gi, "").trim();
@@ -521,14 +1102,16 @@ async function refineProductSelection({
   const limitedCandidates = candidates.slice(0, 12);
   const { summaries, keyMap } = summarizeCandidates(limitedCandidates);
 
-  const selectionMessages: OpenAI.ChatCompletionMessageParam[] = [
+  const selectionMessages = [
     {
-      role: "system",
+      role: "system" as const,
+      type: "message" as const,
       content:
         "You are a meticulous skincare merchandiser. You will select the best matches from the provided candidate list. Only choose from the candidates and never invent new products. Your response must call the selectProducts function.",
     },
     {
-      role: "user",
+      role: "user" as const,
+      type: "message" as const,
       content: `User request:\n${userRequest || "(not provided)"}\n\nCandidates (JSON):\n${JSON.stringify(
         summaries,
         null,
@@ -538,37 +1121,39 @@ async function refineProductSelection({
   ];
 
   try {
-    const selection = await openai.chat.completions.create({
+    const isGPT5 = /(^|\b)gpt-5(\b|\-)/i.test(model);
+    const selection = await openai.responses.create({
       model,
-      temperature: 0,
-      messages: selectionMessages,
+      store: false,
+      ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
+      ...(isGPT5 ? { include: ["reasoning.encrypted_content" as const] } : {}),
+      input: selectionMessages,
       tools: [
         {
           type: "function",
-          function: {
-            name: "selectProducts",
-            description:
-              "Select the best products for the user from the candidate list.",
-            parameters: selectProductsParameters,
-          },
+          name: "selectProducts",
+          description:
+            "Select the best products for the user from the candidate list.",
+          parameters: selectProductsParameters,
+          strict: false,
         },
       ],
-      tool_choice: {
-        type: "function",
-        function: { name: "selectProducts" },
-      },
+      tool_choice: { type: "function", name: "selectProducts" },
+      ...(isGPT5 ? { temperature: 1 as const } : { temperature: 0 }),
     });
 
-    const toolCall = selection.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall || toolCall.type !== "function" || !toolCall.function) {
+    const toolCall = (selection.output || []).find(
+      (item: any) => item?.type === "function_call"
+    );
+    if (!toolCall || toolCall.type !== "function_call") {
       return { products: limitedCandidates };
     }
 
-    if (toolCall.function.name !== "selectProducts") {
+    if (toolCall.name !== "selectProducts") {
       return { products: limitedCandidates };
     }
 
-    const rawArguments = toolCall.function.arguments ?? "{}";
+    const rawArguments = toolCall.arguments ?? "{}";
     const parsed = selectProductsResponseSchema.safeParse(
       JSON.parse(rawArguments)
     );
@@ -624,6 +1209,9 @@ export async function callOpenAI({
   useTools = true,
   maxToolRounds = 5, // prevent runaway loops
   onToken,
+  onProducts,
+  onRoutine,
+  onSummary,
 }: {
   messages: ChatMessage[];
   systemPrompt: string;
@@ -632,6 +1220,9 @@ export async function callOpenAI({
   useTools?: boolean;
   maxToolRounds?: number;
   onToken?: (chunk: string) => Promise<void> | void;
+  onProducts?: (products: ProductCandidate[]) => Promise<void> | void;
+  onRoutine?: (routine: RoutineSelection) => Promise<void> | void;
+  onSummary?: (summary: ReplySummary) => Promise<void> | void;
 }): Promise<{
   reply: string;
   toolOutputs?: ToolOutput[];
@@ -641,15 +1232,21 @@ export async function callOpenAI({
   summary?: ReplySummary;
   updatedContext?: object;
 }> {
-  const tools = toolSpecs;
+  const tools = toolSpecs.map((tool) => ({
+    type: "function" as const,
+    name: tool.function.name,
+    description: tool.function.description ?? undefined,
+    parameters: tool.function.parameters ?? null,
+    strict: false as const,
+  }));
 
-  const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
+  // Build a local message history we can augment
+  const chatMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
   ];
 
   for (const msg of messages) {
-    const mappedRole = msg.role === "tool" ? "assistant" : msg.role;
-    chatMessages.push({ role: mappedRole, content: msg.content });
+    chatMessages.push({ role: msg.role, content: msg.content });
   }
 
   chatMessages.push({
@@ -663,88 +1260,150 @@ export async function callOpenAI({
     .find((msg) => msg.role === "user")?.content;
 
   let lastProductSelection: ProductCandidate[] = [];
+  let lastStreamedProductsSignature: string | null = null;
+  let lastStreamedRoutineSignature: string | null = null;
+  let lastStreamedSummarySignature: string | null = null;
+
+  let routineSummaryParts: ReplySummary | null = null;
+  let productSummaryParts: ReplySummary | null = null;
+  let combinedSummary: ReplySummary | null = null;
 
   // console.log(chatMessages, "This is conversation history");
 
   // messages.push({ role: "user", content: userMessage });
 
   const streamCompletion = async (
-    forceFinal: boolean
+    forceFinal: boolean,
+    extraInputItems: any[] = []
   ): Promise<{
     content: string;
     toolCalls: Array<{
-      id: string;
-      type: "function";
-      function: { name: string; arguments: string };
+      id: string; // internal item id
+      call_id: string;
+      name: string;
+      arguments: string;
     }>;
   }> => {
-    const toolCallMap = new Map<
-      number,
-      {
-        id: string;
-        type: "function";
-        function: { name: string; arguments: string };
-      }
+    const toolCallsByItemId = new Map<
+      string,
+      { id: string; call_id: string; name: string; arguments: string }
     >();
 
-    let content = "";
-
-    const stream = await openai.chat.completions.create({
-      model,
-      temperature,
-      messages: chatMessages,
-      tools,
-      tool_choice: useTools ? (forceFinal ? "none" : "auto") : "none",
-      stream: true,
-    });
-
-    for await (const part of stream) {
-      const choice = part.choices?.[0];
-      if (!choice) continue;
-
-      const delta = choice.delta ?? {};
-
-      if (delta.content) {
-        content += delta.content;
-        if (onToken) {
-          await onToken(delta.content);
+    const toInputFromChat = (): any[] => {
+      const items: any[] = [];
+      let historicalToolCounter = 0;
+      for (const msg of chatMessages) {
+        if (msg.role === "tool") {
+          const callId =
+            msg.tool_call_id && typeof msg.tool_call_id === "string"
+              ? msg.tool_call_id
+              : `hist_tool_${historicalToolCounter++}`;
+          const toolName =
+            msg.tool_name && typeof msg.tool_name === "string"
+              ? msg.tool_name
+              : "historical_tool";
+          const toolArgumentsString =
+            msg.tool_arguments && typeof msg.tool_arguments === "string"
+              ? msg.tool_arguments
+              : "{}";
+          items.push({
+            type: "function_call",
+            call_id: callId,
+            name: toolName,
+            arguments: toolArgumentsString,
+          });
+          items.push({
+            type: "function_call_output",
+            call_id: callId,
+            output:
+              typeof msg.content === "string" && msg.content.length
+                ? msg.content
+                : "{}",
+          });
+          continue;
         }
+
+        const roleForMessage =
+          msg.role === "developer" ||
+          msg.role === "system" ||
+          msg.role === "user" ||
+          msg.role === "assistant"
+            ? msg.role
+            : "user";
+
+        items.push({
+          type: "message",
+          role: roleForMessage,
+          content: msg.content,
+        });
       }
 
-      if (Array.isArray(delta.tool_calls)) {
-        for (const toolDelta of delta.tool_calls) {
-          const index = toolDelta.index ?? 0;
-          const existing = toolCallMap.get(index) ?? {
-            id: toolDelta.id ?? `call_${index}`,
-            type: "function" as const,
-            function: { name: "", arguments: "" },
-          };
-          if (toolDelta.id) existing.id = toolDelta.id;
-          if (toolDelta.function?.name) {
-            existing.function.name = toolDelta.function.name;
-          }
-          if (toolDelta.function?.arguments) {
-            existing.function.arguments += toolDelta.function.arguments;
-          }
-          toolCallMap.set(index, existing);
+      return items.concat(extraInputItems);
+    };
+
+    const isGPT5 = /(^|\b)gpt-5(\b|\-)/i.test(model);
+    let content = "";
+
+    const stream = await openai.responses.create({
+      model,
+      store: false,
+      // include: ["reasoning.encrypted_content"],
+      ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
+      input: toInputFromChat(),
+      tools: useTools ? (tools as any) : undefined,
+      tool_choice: useTools ? (forceFinal ? "none" : "auto") : "none",
+      stream: true,
+      ...(isGPT5 ? { temperature: 1 as const } : { temperature }),
+    });
+
+    for await (const event of stream as any) {
+      const type = event?.type as string | undefined;
+      if (!type) continue;
+
+      if (type === "response.output_text.delta") {
+        const delta = event.delta ?? "";
+        if (delta) {
+          content += delta;
+          if (onToken) await onToken(delta);
         }
+        continue;
+      }
+
+      if (type === "response.output_item.added") {
+        const item = event.item;
+        if (item?.type === "function_call") {
+          const id =
+            item.id ||
+            event.item_id ||
+            item.call_id ||
+            `call_${event.output_index ?? 0}`;
+          toolCallsByItemId.set(id, {
+            id,
+            call_id: item.call_id,
+            name: item.name,
+            arguments: "",
+          });
+        }
+        continue;
+      }
+
+      if (type === "response.function_call_arguments.delta") {
+        const itemId = event.item_id as string;
+        const existing = toolCallsByItemId.get(itemId);
+        if (existing) {
+          existing.arguments += event.delta ?? "";
+        }
+        continue;
       }
     }
 
-    const toolCalls = Array.from(toolCallMap.values());
+    const toolCalls = Array.from(toolCallsByItemId.values());
 
-    // if toolCall is present, dont send out final message (content)
     if (toolCalls.length) {
-      chatMessages.push({
-        role: "assistant",
-        content: "",
-        tool_calls: toolCalls,
-      });
+      // Record that the assistant produced tool calls (no direct content)
+      chatMessages.push({ role: "assistant", content: "" });
     } else {
-      chatMessages.push({
-        role: "assistant",
-        content,
-      });
+      chatMessages.push({ role: "assistant", content });
     }
 
     return { content, toolCalls };
@@ -758,72 +1417,215 @@ export async function callOpenAI({
   let lastResultType: "routine" | null = null;
   let summaryContext: SummaryContext | null = null;
 
+  const recomputeCombinedSummary = (): ReplySummary | null => {
+    if (routineSummaryParts && productSummaryParts) {
+      const mergedHeadline = `${routineSummaryParts.headline} + ${productSummaryParts.headline}`;
+      const subheadingParts = [
+        routineSummaryParts.subheading,
+        productSummaryParts.subheading,
+      ].filter(
+        (entry): entry is string =>
+          typeof entry === "string" && entry.length > 0
+      );
+      combinedSummary = {
+        headline:
+          mergedHeadline.length > 160
+            ? `${mergedHeadline.slice(0, 157)}...`
+            : mergedHeadline,
+        subheading: subheadingParts.length
+          ? subheadingParts.join(" · ")
+          : undefined,
+        icon: routineSummaryParts.icon ?? productSummaryParts.icon ?? undefined,
+      };
+    } else {
+      combinedSummary = routineSummaryParts ?? productSummaryParts ?? null;
+    }
+    return combinedSummary;
+  };
+
+  const streamSummaryIfNeeded = async (): Promise<void> => {
+    const summary = recomputeCombinedSummary();
+    if (!summary || !onSummary) return;
+    const signature = JSON.stringify(summary);
+    if (signature === lastStreamedSummarySignature) return;
+    lastStreamedSummarySignature = signature;
+    try {
+      await onSummary(summary);
+    } catch (error) {
+      console.error("Summary streaming callback failed:", error);
+    }
+  };
+
+  const streamProductsIfNeeded = async (
+    products: ProductCandidate[]
+  ): Promise<void> => {
+    if (!onProducts || !products.length) return;
+    const signature = JSON.stringify(
+      products.map((product, index) => {
+        const id = coerceId(product);
+        if (id) return id;
+        const record =
+          product && typeof product === "object"
+            ? (product as UnknownRecord)
+            : null;
+        if (record) {
+          if (typeof record.slug === "string") return record.slug;
+          if (typeof record.name === "string")
+            return `name:${record.name.toLowerCase()}`;
+        }
+        return `idx:${index}`;
+      })
+    );
+    if (signature === lastStreamedProductsSignature) return;
+    lastStreamedProductsSignature = signature;
+    try {
+      await onProducts(products);
+    } catch (error) {
+      console.error("Product streaming callback failed:", error);
+    }
+  };
+
+  const streamRoutineIfNeeded = async (
+    routine: RoutineSelection | null
+  ): Promise<void> => {
+    if (!onRoutine || !routine || !routine.steps.length) return;
+    const signature = JSON.stringify(
+      routine.steps.map((step, index) => {
+        if (!step) return `idx:${index}`;
+        if (typeof step.productId === "string") return step.productId;
+        const productRecord =
+          step.product && typeof step.product === "object"
+            ? (step.product as UnknownRecord)
+            : null;
+        const productId = productRecord ? coerceId(productRecord) : undefined;
+        if (productId) return productId;
+        if (productRecord && typeof productRecord.slug === "string") {
+          return productRecord.slug;
+        }
+        return `step:${step.step ?? index}`;
+      })
+    );
+    if (signature === lastStreamedRoutineSignature) return;
+    lastStreamedRoutineSignature = signature;
+    try {
+      await onRoutine(routine);
+    } catch (error) {
+      console.error("Routine streaming callback failed:", error);
+    }
+  };
+
   console.log("calling openAi");
 
   // main
+  let pendingExtraInputItems: any[] = [];
   while (true) {
-    const { content, toolCalls } = await streamCompletion(
-      rounds >= maxToolRounds
+    console.log(
+      rounds,
+      "This is how many times we have called openAi " + rounds
     );
+    const { content, toolCalls } = await streamCompletion(
+      rounds >= maxToolRounds,
+      pendingExtraInputItems
+    );
+    // clear after consumption
+    pendingExtraInputItems = [];
 
     if (useTools && toolCalls.length > 0 && rounds < maxToolRounds) {
       rounds++;
 
+      toolCalls.forEach((toolCall, index) => {
+        const existing =
+          toolCall.call_id && toolCall.call_id.startsWith("fc_")
+            ? toolCall.call_id
+            : toolCall.id && toolCall.id.startsWith("fc_")
+              ? toolCall.id
+              : `fc_${rounds}_${index}_${Date.now()}`;
+        toolCall.call_id = existing;
+        toolCall.id = existing;
+      });
+
+      // Execute tool calls and log outputs into the transcript for the next round
+      let toolExecutionIndex = 0;
       for (const toolCall of toolCalls) {
-        if (toolCall.type !== "function") {
+        const callId =
+          toolCall.call_id ||
+          toolCall.id ||
+          `fc_${rounds}_${toolExecutionIndex++}_${Date.now()}`;
+
+        const toolDef = getToolByName(toolCall.name);
+        if (!toolDef) {
+          console.error(`Unknown tool: ${toolCall.name}`);
           chatMessages.push({
             role: "tool",
-            tool_call_id: toolCall.id,
+            tool_call_id: callId,
+            tool_name: toolCall.name,
+            tool_arguments: "{}",
             content: JSON.stringify({
               error: true,
-              message: `Unsupported tool type: ${toolCall.type}`,
+              message: `Unknown tool: ${toolCall.name}`,
             }),
           });
           continue;
         }
 
+        let serializedArgsForHistory = "{}";
+        let originalArgsObject: unknown = {};
+
         try {
-          const rawArgs =
-            typeof toolCall.function.arguments === "string"
-              ? JSON.parse(toolCall.function.arguments || "{}")
-              : (toolCall.function.arguments ?? {});
-
-          console.log(`Executing tool: ${toolCall.function.name}`, rawArgs);
-
-          const toolDef = getToolByName(toolCall.function.name);
-          if (!toolDef) {
-            throw new Error(`Unknown tool: ${toolCall.function.name}`);
-          }
-
+          const rawArgs: unknown =
+            typeof toolCall.arguments === "string"
+              ? JSON.parse(toolCall.arguments || "{}")
+              : (toolCall.arguments ?? {});
+          originalArgsObject = rawArgs;
           const validatedArgs = toolDef.schema.parse(rawArgs);
+          serializedArgsForHistory = JSON.stringify(validatedArgs ?? {});
+
+          console.log(`Executing tool: ${toolCall.name}`, validatedArgs);
 
           const result = await toolDef.handler(validatedArgs);
 
-          // console.log(result, "This is the result of the tool call");
-
-          // we are building tool outputs from multiple tool calling iteration
           toolOutputs.push({
-            name: toolCall.function.name,
+            name: toolCall.name,
             arguments: validatedArgs,
             result: result ?? null,
           });
 
-          // result: {recommendations: []}
+          const sanitizedResult = sanitizeToolResultForModel(
+            toolCall.name,
+            result ?? {}
+          );
+          const normalizedSanitized =
+            sanitizedResult && typeof sanitizedResult === "object"
+              ? sanitizedResult
+              : sanitizedResult === undefined
+                ? {}
+                : { value: sanitizedResult };
 
-          // pushing the tool reslult here
           chatMessages.push({
             role: "tool",
-            tool_call_id: toolCall.id,
-            content: JSON.stringify(result ?? {}),
+            tool_call_id: callId,
+            tool_name: toolCall.name,
+            tool_arguments: serializedArgsForHistory,
+            content: JSON.stringify(normalizedSanitized),
           });
         } catch (err) {
           console.error(
-            `Tool execution error (${toolCall.function?.name ?? "unknown"}):`,
+            `Tool execution error (${toolCall.name ?? "unknown"}):`,
             err
           );
+
+          const fallbackArgsString =
+            serializedArgsForHistory !== "{}"
+              ? serializedArgsForHistory
+              : typeof toolCall.arguments === "string"
+                ? toolCall.arguments
+                : JSON.stringify(originalArgsObject ?? {});
+
           chatMessages.push({
             role: "tool",
-            tool_call_id: toolCall.id,
+            tool_call_id: callId,
+            tool_name: toolCall.name,
+            tool_arguments: fallbackArgsString,
             content: JSON.stringify({
               error: true,
               message: (err as Error)?.message || "Tool execution failed",
@@ -850,7 +1652,14 @@ export async function callOpenAI({
             Array.isArray((output.result as Record<string, unknown>).steps)
         );
 
+      // out of foor loop, no more tool calls
       if (latestRoutineOutput) {
+        // lets append devleloper message to get the final reply for the routine tool call
+        chatMessages.push({
+          role: "developer",
+          content:
+            "You have the routine returned in the previous tool call. Write a friendly response (2-3 sentences) that: 1) Confirms you've found a routine tailored to their skin type/concerns, 2) Briefly mentions the key categories or types of products included (e.g., cleansers, moisturizers, sunscreens), highlighting how they address the user's needs, and 3) Offers helpful next steps like getting more details on specific products, adjusting preferences, or taking action like adding to cart or comparing options. You may include one relevant emoji at the start if appropriate.",
+        });
         const routineResult = latestRoutineOutput.result as Record<
           string,
           unknown
@@ -964,19 +1773,24 @@ export async function callOpenAI({
           const concernsPretty = concernsRaw
             .map((concern) => toTitleCase(concern))
             .filter(Boolean);
-          const concernPhrase = concernsPretty.length
-            ? concernsPretty.join(", ")
+          const concernsPhrase = describeConcerns(concernsPretty);
+          const routineSkinPhrase = skinTypePretty
+            ? describeSkinTypes([skinTypePretty])
             : undefined;
-          const routineHeadlineParts = [
-            skinTypePretty ? `${skinTypePretty} Skin` : null,
-            concernPhrase ? `+ ${concernPhrase}` : null,
-          ].filter(Boolean);
-          const routineHeadline =
-            routineHeadlineParts.length > 0
-              ? `Routine for ${routineHeadlineParts.join(" ")}`
-              : skinTypePretty
-                ? `Routine for ${skinTypePretty} Skin`
-                : "Personalized Routine";
+          const routineHeadline = (() => {
+            if (skinTypePretty && concernsPhrase) {
+              return `Routine for ${skinTypePretty} Skin, tailored to ${sentenceCase(
+                concernsPhrase
+              )}`;
+            }
+            if (skinTypePretty) {
+              return `Routine for ${skinTypePretty} Skin`;
+            }
+            if (concernsPhrase) {
+              return `Routine targeting ${sentenceCase(concernsPhrase)}`;
+            }
+            return "Personalized Routine";
+          })();
           const stepCount = normalizedSteps.length;
           const stepHighlights = normalizedSteps
             .slice(0, 5)
@@ -1008,15 +1822,24 @@ export async function callOpenAI({
             })
             .filter((entry): entry is string => Boolean(entry));
 
-          const routineAudience = skinTypePretty?.toLowerCase() ?? "your skin";
-          const routineConcernFocus = concernsPretty.length
-            ? `focused on ${formatList(
-                concernsPretty.map((item) => item.toLowerCase())
-              )}`
+          const routineAudience = routineSkinPhrase ?? "your skin";
+          const routineConcernFocus = concernsPhrase
+            ? `focused on ${concernsPhrase}`
             : undefined;
           const routineDescription = [routineAudience, routineConcernFocus]
             .filter(Boolean)
             .join(" and ");
+
+          const routineIcon = "🧖";
+          routineSummaryParts = {
+            headline: routineHeadline,
+            subheading: routineDescription.length
+              ? sentenceCase(routineDescription)
+              : undefined,
+            icon: routineIcon,
+          };
+          await streamSummaryIfNeeded();
+          await streamRoutineIfNeeded(lastRoutine);
 
           summaryContext = {
             type: "routine",
@@ -1024,54 +1847,54 @@ export async function callOpenAI({
             skinType: skinTypePretty,
             concerns: concernsPretty.length ? concernsPretty : undefined,
             stepHighlights,
-            iconSuggestion: "🧪",
+            iconSuggestion: routineIcon,
             headlineHint: routineHeadline,
             routineDescription,
           };
 
-          const routineSummary = normalizedSteps
-            .map((step) => {
-              if (step === null || step === undefined) return null; // Added explicit null check for step
-              const label =
-                (typeof step.title === "string" && step.title.length
-                  ? step.title
-                  : step.category) ??
-                (step?.step !== undefined && step?.step !== null
-                  ? `Step ${step.step}`
-                  : "");
-              const productName =
-                typeof step.product?.name === "string"
-                  ? step.product.name
-                  : typeof step.product?.slug === "string"
-                    ? step.product.slug
-                    : undefined;
-              return `${
-                step?.step !== undefined && step?.step !== null
-                  ? `Step ${step.step}`
-                  : ""
-              }: ${label}${productName ? ` · ${productName}` : ""}`;
-            })
-            .filter((entry): entry is string => entry !== null) // Filter out nulls after mapping
-            .slice(0, 5)
-            .join(" | ");
+          // const routineSummary = normalizedSteps
+          //   .map((step) => {
+          //     if (step === null || step === undefined) return null; // Added explicit null check for step
+          //     const label =
+          //       (typeof step.title === "string" && step.title.length
+          //         ? step.title
+          //         : step.category) ??
+          //       (step?.step !== undefined && step?.step !== null
+          //         ? `Step ${step.step}`
+          //         : "");
+          //     const productName =
+          //       typeof step.product?.name === "string"
+          //         ? step.product.name
+          //         : typeof step.product?.slug === "string"
+          //           ? step.product.slug
+          //           : undefined;
+          //     return `${
+          //       step?.step !== undefined && step?.step !== null
+          //         ? `Step ${step.step}`
+          //         : ""
+          //     }: ${label}${productName ? ` · ${productName}` : ""}`;
+          //   })
+          //   .filter((entry): entry is string => entry !== null) // Filter out nulls after mapping
+          //   .slice(0, 5)
+          //   .join(" | ");
 
-          if (routineSummary.length) {
-            chatMessages.push({
-              role: "developer",
-              content:
-                "Routine outline (do not enumerate verbatim): " +
-                routineSummary,
-            });
-          }
+          // if (routineSummary.length) {
+          //   chatMessages.push({
+          //     role: "developer",
+          //     content:
+          //       "Routine outline (do not enumerate verbatim): " +
+          //       routineSummary,
+          //   });
+          // }
 
-          if (lastRoutine?.notes) {
-            chatMessages.push({
-              role: "developer",
-              content:
-                "Routine notes (context only, paraphrase if helpful): " +
-                lastRoutine.notes,
-            });
-          }
+          // if (lastRoutine?.notes) {
+          //   chatMessages.push({
+          //     role: "developer",
+          //     content:
+          //       "Routine notes (context only, paraphrase if helpful): " +
+          //       lastRoutine.notes,
+          //   });
+          // }
 
           // chatMessages.push({
           //   role: "developer",
@@ -1085,22 +1908,25 @@ export async function callOpenAI({
           //     "If the last tool call how this full routine supports the user's skin goals. Reference the routine collectively (Step 1 cleanser, Step 2 serum, etc.) in a concise paragraph, and invite follow-up like swapping a step or learning usage tips.",
           // });
 
-          chatMessages.push({
-            role: "developer",
-            content:
-              "You have the routines passed in previous tool call. Dont generate any final content, text or routine description.",
-          });
+          // chatMessages.push({
+          //   role: "developer",
+          //   content:
+          //     "You have the routines passed in previous tool call. Dont generate any final content, text or routine description.",
+          // });
+
+          pendingExtraInputItems = [];
 
           continue;
         }
       }
 
+      // Make sure next round includes function_call and function_call_output items
+      pendingExtraInputItems = [];
+
       const productsArray =
         toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
 
-      // console.log(productsArray, "This is the product array");
-
-      // routine object {category: "", description: "", product: ""}
+      // for products array in tool call
       if (productsArray.length) {
         let refinedProductsResult: {
           products: ProductCandidate[];
@@ -1121,166 +1947,144 @@ export async function callOpenAI({
         const selectedProducts = refinedProductsResult?.products?.length
           ? refinedProductsResult.products
           : (productsArray as ProductCandidate[]);
+        const streamingProducts = selectedProducts.length
+          ? selectedProducts
+          : (productsArray as ProductCandidate[]);
 
-        lastProductSelection = selectedProducts;
-        if (selectedProducts.length) {
-          const latestSearchOutput = [...toolOutputs]
-            .slice()
-            .reverse()
-            .find((output) => output.name === "searchProductsByQuery");
-          const searchArgs =
-            (latestSearchOutput?.arguments as {
-              categoryQuery?: string;
-              nameQuery?: string;
-              brandQuery?: string;
-              skinTypes?: string[];
-              skinConcerns?: string[];
-              ingredientQueries?: string[];
-              hasAlcohol?: boolean;
-              hasFragrance?: boolean;
-            }) ?? {};
-          const category =
-            typeof searchArgs.categoryQuery === "string"
-              ? searchArgs.categoryQuery
-              : undefined;
-          const nameQuery =
-            typeof searchArgs.nameQuery === "string"
-              ? searchArgs.nameQuery
-              : undefined;
-          const brandQuery =
-            typeof searchArgs.brandQuery === "string"
-              ? searchArgs.brandQuery
-              : undefined;
-          const skinTypes = Array.isArray(searchArgs.skinTypes)
-            ? searchArgs.skinTypes
-            : [];
-          const skinConcerns = Array.isArray(searchArgs.skinConcerns)
-            ? searchArgs.skinConcerns
-            : [];
-          const ingredientQueries = Array.isArray(searchArgs.ingredientQueries)
-            ? searchArgs.ingredientQueries
-            : [];
-
-          const hasMeaningfulFilters =
-            Boolean(category) ||
-            Boolean(nameQuery) ||
-            Boolean(brandQuery) ||
-            skinTypes.length > 0 ||
-            skinConcerns.length > 0 ||
-            ingredientQueries.length > 0;
-
-          const normalizedSkinTypes = skinTypes
-            .map((type) => toTitleCase(type))
-            .filter(Boolean);
-          const normalizedConcerns = skinConcerns
-            .map((concern) => toTitleCase(concern))
-            .filter(Boolean);
-          const normalizedCategory = category
-            ? toTitleCase(category)
+        const latestSearchOutput = [...toolOutputs]
+          .slice()
+          .reverse()
+          .find((output) => output.name === "searchProductsByQuery");
+        const searchArgs =
+          (latestSearchOutput?.arguments as {
+            categoryQuery?: string;
+            nameQuery?: string;
+            brandQuery?: string;
+            skinTypes?: string[];
+            skinConcerns?: string[];
+            ingredientQueries?: string[];
+            hasAlcohol?: boolean;
+            hasFragrance?: boolean;
+          }) ?? {};
+        const category =
+          typeof searchArgs.categoryQuery === "string"
+            ? searchArgs.categoryQuery
             : undefined;
-          const normalizedBrand = brandQuery
-            ? toTitleCase(brandQuery)
+        const nameQuery =
+          typeof searchArgs.nameQuery === "string"
+            ? searchArgs.nameQuery.trim()
             : undefined;
-          const topProducts =
-            extractProductMetadataForSummary(selectedProducts);
+        const brandQuery =
+          typeof searchArgs.brandQuery === "string"
+            ? searchArgs.brandQuery
+            : undefined;
+        const rawSkinTypes = Array.isArray(searchArgs.skinTypes)
+          ? searchArgs.skinTypes.filter(
+              (entry): entry is string => typeof entry === "string"
+            )
+          : [];
+        const rawSkinConcerns = Array.isArray(searchArgs.skinConcerns)
+          ? searchArgs.skinConcerns.filter(
+              (entry): entry is string => typeof entry === "string"
+            )
+          : [];
+        const rawIngredientQueries = Array.isArray(searchArgs.ingredientQueries)
+          ? searchArgs.ingredientQueries.filter(
+              (entry): entry is string => typeof entry === "string"
+            )
+          : [];
 
-          let headlineHint: string | undefined;
-          if (hasMeaningfulFilters) {
-            const skinPhrase = normalizedSkinTypes
-              .map((type) => `${type} skin`)
-              .join(" & ");
-            const concernPhrase = normalizedConcerns.join(" & ");
-            const nameOrBrand = nameQuery ?? brandQuery;
+        const normalizedSkinTypes = rawSkinTypes
+          .map((type) => toTitleCase(type))
+          .filter(Boolean);
+        const normalizedConcerns = rawSkinConcerns
+          .map((concern) => toTitleCase(concern))
+          .filter(Boolean);
+        const normalizedCategory = category ? toTitleCase(category) : undefined;
+        const normalizedBrand = brandQuery
+          ? toTitleCase(brandQuery)
+          : undefined;
 
-            const headlineFragments: string[] = [];
-            if (normalizedCategory && skinPhrase) {
-              headlineFragments.push(
-                `${skinPhrase.toLowerCase()} ${normalizedCategory.toLowerCase()}`
-              );
-            } else if (normalizedCategory) {
-              headlineFragments.push(normalizedCategory.toLowerCase());
-            }
-            if (skinPhrase && !headlineFragments.length) {
-              headlineFragments.push(skinPhrase.toLowerCase());
-            }
-            if (concernPhrase) {
-              headlineFragments.push(concernPhrase.toLowerCase());
-            }
-            if (!headlineFragments.length && nameOrBrand) {
-              headlineFragments.push(nameOrBrand);
-            }
+        const audiencePhrase = composeAudiencePhrase(
+          normalizedSkinTypes,
+          normalizedConcerns
+        );
+        const audienceHeadline = audiencePhrase
+          ? toTitleCase(audiencePhrase)
+          : undefined;
+        const ingredientPhraseRaw = describeIngredients(rawIngredientQueries);
+        const ingredientHeadline = ingredientPhraseRaw
+          ? sentenceCase(ingredientPhraseRaw)
+          : undefined;
+        const nameQueryHeadline = nameQuery
+          ? toTitleCase(nameQuery)
+          : undefined;
 
-            const headlineDescription = headlineFragments.length
-              ? headlineFragments.join(" with ")
-              : "your skincare request";
-            headlineHint = `Product suggestions for ${headlineDescription}`;
-          }
-
-          const filterDetails: string[] = [];
-          if (normalizedCategory) {
-            filterDetails.push(`category ${normalizedCategory.toLowerCase()}`);
-          }
-          if (normalizedSkinTypes.length) {
-            filterDetails.push(
-              `suitable for ${formatList(
-                normalizedSkinTypes.map((type) => type.toLowerCase())
-              )} skin`
-            );
-          }
-          if (normalizedConcerns.length) {
-            filterDetails.push(
-              `targeting ${formatList(
-                normalizedConcerns.map((concern) => concern.toLowerCase())
-              )} concerns`
-            );
-          }
-          if (ingredientQueries.length) {
-            filterDetails.push(
-              `featuring ${formatList(
-                ingredientQueries.map((item) => item.toLowerCase())
-              )} actives`
-            );
-          }
-          if (normalizedBrand) {
-            filterDetails.push(`from ${normalizedBrand}`);
-          }
-          if (!normalizedBrand && typeof nameQuery === "string" && nameQuery) {
-            filterDetails.push(`matching "${nameQuery.toLowerCase()}"`);
-          }
-
-          const filterDescription = filterDetails.length
-            ? `including ${formatList(filterDetails)}`
+        const selectionNote =
+          typeof refinedProductsResult?.notes === "string"
+            ? refinedProductsResult.notes
             : undefined;
 
-          summaryContext = {
-            type: "products",
-            productCount: selectedProducts.length,
-            filters: {
-              category: normalizedCategory,
-              skinTypes: normalizedSkinTypes.length
-                ? normalizedSkinTypes
-                : undefined,
-              skinConcerns: normalizedConcerns.length
-                ? normalizedConcerns
-                : undefined,
-              ingredientQueries: ingredientQueries.length
-                ? ingredientQueries.map((item) => item.toLowerCase())
-                : undefined,
-              brand: normalizedBrand,
-              nameQuery: nameQuery ?? undefined,
-            },
-            topProducts,
-            notes:
-              typeof refinedProductsResult?.notes === "string"
-                ? refinedProductsResult.notes
-                : undefined,
-            iconSuggestion: "🧪",
-            headlineHint,
-            filterDescription,
-          };
-        }
+        const productIcon = "🛍️";
+        const {
+          headline: summaryHeadline,
+          usedAudience,
+          usedBrand,
+          usedIngredients,
+        } = buildProductHeadline({
+          productCount: streamingProducts.length,
+          category: normalizedCategory,
+          audience: audienceHeadline,
+          brand: normalizedBrand,
+          nameQuery: nameQueryHeadline,
+          ingredients: ingredientHeadline,
+        });
 
-        const reasonContext = selectedProducts
+        const summarySubheading = buildProductSubheading({
+          audiencePhrase,
+          brand: normalizedBrand,
+          ingredients: ingredientPhraseRaw,
+          nameQuery,
+          note: selectionNote,
+          usedAudience,
+          usedBrand,
+          usedIngredients,
+        });
+
+        summaryContext = {
+          type: "products",
+          productCount: streamingProducts.length,
+          filters: {
+            category: normalizedCategory,
+            skinTypes: normalizedSkinTypes.length
+              ? normalizedSkinTypes
+              : undefined,
+            skinConcerns: normalizedConcerns.length
+              ? normalizedConcerns
+              : undefined,
+            ingredientQueries: rawIngredientQueries.length
+              ? rawIngredientQueries.map((item) => item.toLowerCase())
+              : undefined,
+            brand: normalizedBrand,
+            nameQuery: nameQuery ?? undefined,
+          },
+          topProducts: extractProductMetadataForSummary(streamingProducts),
+          notes: selectionNote,
+          iconSuggestion: productIcon,
+          headlineHint: summaryHeadline,
+          filterDescription: summarySubheading ?? selectionNote,
+        };
+
+        productSummaryParts = {
+          headline: summaryHeadline,
+          subheading: summarySubheading ?? selectionNote,
+          icon: productIcon,
+        };
+        await streamSummaryIfNeeded();
+        await streamProductsIfNeeded(streamingProducts);
+        lastProductSelection = streamingProducts;
+
+        const reasonContext = streamingProducts
           .slice(0, 4)
           .map((product, index) => {
             if (typeof product.selectionReason !== "string") return null;
@@ -1312,6 +2116,8 @@ export async function callOpenAI({
           });
         }
 
+        // instead of passing the products to the llm to generate final products, we tell it to give us a summary instead
+        // we leave the heavy lifting of the product selection to another model, that follows the user prompts
         chatMessages.push({
           role: "developer",
           content:
@@ -1345,8 +2151,8 @@ export async function callOpenAI({
       : "💧 I rounded up a few options that should fit nicely—happy to break any of them down further or pop one into your bag!"
     : finalContent;
 
-  let generatedSummary: ReplySummary | null = null;
-  if (replyText.trim().length) {
+  let generatedSummary: ReplySummary | null = combinedSummary;
+  if (!generatedSummary && replyText.trim().length) {
     generatedSummary = await generateReplySummaryWithLLM({
       reply: replyText,
       userMessage: latestUserMessageContent,
@@ -1361,6 +2167,19 @@ export async function callOpenAI({
         icon: resolvedIcon,
       };
     }
+  } else if (generatedSummary) {
+    const safeGeneratedSummary: ReplySummary = generatedSummary;
+    const summaryForIcon = recomputeCombinedSummary();
+    const resolvedIcon =
+      (summaryForIcon && typeof summaryForIcon.icon === "string"
+        ? summaryForIcon.icon
+        : undefined) ??
+      summaryContext?.iconSuggestion ??
+      safeGeneratedSummary.icon;
+    generatedSummary = {
+      ...safeGeneratedSummary!,
+      icon: resolvedIcon,
+    };
   }
 
   // it is the reply that is being saved in conversation history

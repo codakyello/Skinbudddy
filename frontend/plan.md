@@ -1,30 +1,3 @@
-## Routine/Product Separation
+Currently; We use a loop to run the modal, loop through toolOutputs, append the result to a list of toolOutputs, then run it back into the model in the next loop turn and then when there are no more toolOutputs, we wait for the modal final reply by calling the model yet again.
 
-- [x] **Normalization Guard**
-  - Exclude routine `recommendations` from the shared product-normalization path.
-- [x] **Payload Cleanup**
-  - Suppress generic `products` when a routine is present so frontend sees only one rendering path.
-- [x] **Validation**
-  - Run lint/type-check to confirm the adjustment. (Lint passes; Modal hook warning persists.)
-
-## Assistant Reply Headlines
-
-- [x] **Summary Metadata**
-  - Add optional `summary` object (headline, subheading, icon) to model responses, populated only when structured data is available.
-- [x] **Streaming Payload**
-  - Include `summary` in `/api/chat` SSE payloads.
-- [x] **Frontend Rendering**
-  - Render the summary block when present; otherwise fall back to current layout.
-- [x] **Validation**
-  - Run lint/type-check after the update.
-
-## Routine Alternatives
-
-- [x] **Server Options**
-  - Return primary + alternate product options per step directly from the LLM-driven `convex/products.recommend` response.
-- [x] **Tool Sanitization**
-  - Preserve alternatives through `recommendRoutine` handler and API sanitization.
-- [x] **UI Hookup**
-  - Surface alternates alongside the main product card in routine replies.
-- [x] **Validation**
-  - Type-check end-to-end after schema/type updates.
+What should happen; Everything should be done in one model call/lifecycle, when a tool is needed, an event should be emitted, and we should call the relevant methods to handle the event. So every toolcall, and generating final response or reply should happen within one model call. The model should only send out a final reply. After the tool calls, the same way we are extracting products from the tool calls, calling another model to refine products should not change, what should change is how the model returns the refined product, today we are calling a initiate a call for a tool but not actually calling it we are just using the args of the tool call provided by the model as the result to the refined products, this can be done in a better way by using specifying a return type in the modal call (not sure how this works yet), for routine how we are calling another llm api in the recommend function also should not change the only thing that should change is that we should pass in the userPrompt to recommenend function so the llm can see what the user is asking for and provide a response tailored to the users prompt.

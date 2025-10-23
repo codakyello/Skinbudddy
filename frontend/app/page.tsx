@@ -611,6 +611,45 @@ export default function ChatPage() {
           return;
         }
 
+        if (payload.type === "summary" && payload.summary) {
+          const normalizedSummary = normalizeSummary(payload.summary);
+          if (normalizedSummary) {
+            finalSummary = normalizedSummary;
+            updateAssistant({ summary: normalizedSummary });
+          }
+          return;
+        }
+
+        if (payload.type === "products" && Array.isArray(payload.products)) {
+          const normalizedProducts = normalizeProductArray(payload.products);
+          if (normalizedProducts.length) {
+            finalProducts = normalizedProducts;
+            finalRoutine = null;
+            finalResultType = null;
+            updateAssistant({
+              products: normalizedProducts,
+              routine: undefined,
+              resultType: undefined,
+            });
+          }
+          return;
+        }
+
+        if (payload.type === "routine" && payload.routine) {
+          const normalizedRoutine = normalizeRoutinePayload(payload.routine);
+          if (normalizedRoutine) {
+            finalRoutine = normalizedRoutine;
+            finalResultType = "routine";
+            finalProducts = [];
+            updateAssistant({
+              routine: normalizedRoutine,
+              resultType: "routine",
+              products: undefined,
+            });
+          }
+          return;
+        }
+
         if (payload.type === "final") {
           if (typeof payload.reply === "string") {
             finalReply = payload.reply.trim();
@@ -777,7 +816,7 @@ export default function ChatPage() {
                           {message.summary?.headline ? (
                             <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
                               <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
-                                {message.summary.icon ? (
+                                {message.summary?.icon ? (
                                   <span>{message.summary.icon}</span>
                                 ) : null}
                                 {message.summary.headline}
@@ -802,7 +841,7 @@ export default function ChatPage() {
                           {message.summary?.headline ? (
                             <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
                               <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
-                                {message.summary.icon ? (
+                                {message.summary?.icon ? (
                                   <span>{message.summary.icon}</span>
                                 ) : null}
                                 {message.summary.headline}
