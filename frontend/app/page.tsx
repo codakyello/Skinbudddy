@@ -74,6 +74,50 @@ const SUGGESTIONS = [
   "Can stress or diet make acne worse?",
 ];
 
+const SKIN_QUIZ = [
+  {
+    role: "quiz",
+    index: 0,
+    questions: [
+      {
+        header:
+          "Great! To find out your skin type, I'll ask you a few quick questions. Let's begin with some basic info about you.",
+        question: "What is your age range?",
+        options: ["18-24", "25-34", "35-44", "45-54", "55+"],
+      },
+      {
+        header:
+          "Great! Let's find out your skin type with a few simple questions.",
+        question:
+          "After washing your face with water, how does your skin usually feel?",
+        options: [
+          "Tight and uncomfortable, like it needs immediate moisture",
+          "Comfortable, neither tight nor oily",
+          "Noticeably oily or shiny within an hour",
+          "Tight in some areas like cheeks but oily in others",
+        ],
+      },
+      {
+        header:
+          "Great! To find out your skin type, I'll ask you a few quick questions. Let's begin with some basic info about you.",
+        question: "What is your age range?",
+        options: ["18-24", "25-34", "35-44", "45-54", "55+"],
+      },
+      {
+        header:
+          "To better understand your skin type, let's assess how sensitive your skin is.",
+        question:
+          "When you try new skincare products, how does your skin usually react?",
+        options: [
+          "It rarely has any negative reaction",
+          "It sometimes gets slightly red or irritated",
+          "It often becomes red, itchy or breaks out",
+        ],
+      },
+    ],
+  },
+];
+
 const getRandomSuggestions = (count: number) => {
   const shuffled = [...SUGGESTIONS].sort(() => 0.5 - Math.random());
   return shuffled.slice(0, count);
@@ -370,9 +414,29 @@ const normalizeSummary = (input: unknown): MessageSummary | null => {
     icon: rawIcon.length ? rawIcon : undefined,
   };
 };
+type QuizMessage = {
+  id: string;
+  role: string;
+  index: number;
+  questions: {
+    header: string;
+    question: string;
+    options: string[];
+  }[];
+};
+
+type Message = ChatMessage | QuizMessage;
+
+const isChatMessage = (message: Message): message is ChatMessage => {
+  return message.role === "user" || message.role === "assistant";
+};
+
+const isQuizMessage = (message: Message): message is QuizMessage => {
+  return message.role === "quiz";
+};
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -396,7 +460,9 @@ export default function ChatPage() {
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const [showScrollDownButton, setShowScrollDownButton] = useState(false);
   const [product, setProductToPreview] = useState<Product | null>();
+  const [pendingSkinTypeQuiz, setPendingSkinTypeQuiz] = useState(false);
   // const { products } = useProducts({ filters: {} });
+  const [skinQuiz, setSkinQuiz] = useState(SKIN_QUIZ);
 
   const updateScrollButtonVisibility = useCallback(() => {
     const container = conversationRef.current;
@@ -525,6 +591,7 @@ export default function ChatPage() {
     }
 
     setError(null);
+    setPendingSkinTypeQuiz(false);
     setIsSending(true);
     setInputValue("");
 
@@ -568,7 +635,7 @@ export default function ChatPage() {
           prev.map((msg) =>
             msg.id === newAssistantId
               ? {
-                  ...msg,
+                  ...(msg as ChatMessage),
                   ...patch,
                 }
               : msg
@@ -646,6 +713,18 @@ export default function ChatPage() {
               resultType: "routine",
               products: undefined,
             });
+          }
+          return;
+        }
+
+        if (payload.type === "skin_survey.start") {
+          setPendingSkinTypeQuiz(true);
+          if (typeof payload.sessionId === "string") {
+            finalSessionId = payload.sessionId;
+          }
+          if (assistantId) {
+            setMessages((prev) => prev.filter((msg) => msg.id !== assistantId));
+            assistantId = null;
           }
           return;
         }
@@ -750,9 +829,13 @@ export default function ChatPage() {
 
   const lastAssistantMessageId = useMemo(() => {
     const reversed = [...messages].reverse();
-    const found = reversed.find((msg) => msg.role === "assistant");
+    const found = reversed.find(
+      (msg) => isChatMessage(msg) && msg.role === "assistant"
+    );
     return found?.id;
   }, [messages]);
+
+  // console.log(pendingSkinTypeQuiz, "This is pending skin type quiz");
 
   return (
     <Modal>
@@ -766,11 +849,43 @@ export default function ChatPage() {
             className="w-full relative max-w-[67rem] flex-1 overflow-y-auto min-h-0 scroll-smooth no-scrollbar"
             // style={{ maxHeight: "calc(100vh - 220px)" }}
           >
+            {pendingSkinTypeQuiz && (
+              <Box className="mb-6 rounded-3xl border border-[#d6c7ff] bg-[#f4edff] p-5 text-left text-[#2f1f53] shadow-sm">
+                <h2 className="text-[1.6rem] font-semibold flex items-center gap-2">
+                  <span role="img" aria-label="idea">
+                    💡
+                  </span>
+                  Ready for a quick skin type quiz?
+                </h2>
+                <p className="mt-2 text-[1.4rem] leading-relaxed">
+                  SkinBuddy can guide you through a short survey to understand
+                  your skin type. (Photo-based analysis is coming soon!)
+                </p>
+                <div className="mt-4 flex gap-3">
+                  <button
+                    className="rounded-full bg-[#4b2fbf] px-4 py-2 text-[1.4rem] font-semibold text-white shadow-sm hover:bg-[#3f27a7] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#cbb6ff]"
+                    onClick={() => {
+                      // TODO: trigger quiz flow
+                      setPendingSkinTypeQuiz(false);
+                    }}
+                  >
+                    Start survey (coming soon)
+                  </button>
+                  <button
+                    className="rounded-full border border-[#cbb6ff] px-4 py-2 text-[1.4rem] font-semibold text-[#4b2fbf] hover:bg-[#ede5ff] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#cbb6ff]"
+                    onClick={() => setPendingSkinTypeQuiz(false)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </Box>
+            )}
+
             {!hasMessages && (
               <Box className="absolute top-[50%] w-full translate-y-[-50%]">
                 {/* {products && products.length > 0 && (
-                  <ProductCard
-                    onProductToPreview={handleProductToPreview}
+                <ProductCard
+                  onProductToPreview={handleProductToPreview}
                     inChat={true}
                     product={products[1]}
                   />
@@ -802,18 +917,24 @@ export default function ChatPage() {
             <section className="mt-8 space-y-10 pb-36">
               {messages.map((message, index) => (
                 <Box
-                  id={`message-${message.id}`}
-                  key={message.id}
+                  id={`message-${isChatMessage(message) ? message.id : `quiz-${message.index}`}`}
+                  key={
+                    isChatMessage(message)
+                      ? message.id
+                      : `quiz-${message.index}`
+                  }
                   className={`flex ${
                     message.role === "user" ? "justify-end" : "justify-start"
                   }`}
                 >
-                  {message.role === "assistant" ? (
+                  {isChatMessage(message) ? (
                     <Box className="w-full ">
-                      {message.resultType === "routine" &&
+                      {isChatMessage(message) &&
+                      message.resultType === "routine" &&
                       message.routine?.steps?.length ? (
                         <Box className="mt-6 flex flex-col mb-[24px]">
-                          {message.summary?.headline ? (
+                          {isChatMessage(message) &&
+                          message.summary?.headline ? (
                             <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
                               <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
                                 {message.summary?.icon ? (
@@ -824,21 +945,24 @@ export default function ChatPage() {
                             </Box>
                           ) : null}
                           <Box className="flex flex-col gap-[16px]">
-                            {message.routine.steps.map((routine) => {
-                              const productKey = `${message.id}-routine-${routine.productId ?? routine.step}`;
-                              return (
-                                <RoutineCard
-                                  key={productKey}
-                                  routine={routine}
-                                  onProductToPreview={handleProductToPreview}
-                                />
-                              );
-                            })}
+                            {message.routine.steps.map(
+                              (routine: RoutineStep) => {
+                                const productKey = `${message.id}-routine-${routine.productId ?? routine.step}`;
+                                return (
+                                  <RoutineCard
+                                    key={productKey}
+                                    routine={routine}
+                                    onProductToPreview={handleProductToPreview}
+                                  />
+                                );
+                              }
+                            )}
                           </Box>
                         </Box>
-                      ) : message.products?.length ? (
+                      ) : isChatMessage(message) && message.products?.length ? (
                         <Box>
-                          {message.summary?.headline ? (
+                          {isChatMessage(message) &&
+                          message.summary?.headline ? (
                             <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
                               <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
                                 {message.summary?.icon ? (
@@ -855,30 +979,34 @@ export default function ChatPage() {
                           ) : null}
 
                           <Box className="mt-6 flex items-stretch gap-[1rem] overflow-auto mb-[20px]">
-                            {message.products.map((product, index) => {
-                              const productKey = `${message.id}-${String(
-                                product._id ?? product.slug ?? index
-                              )}`;
-                              return (
-                                <Box
-                                  key={productKey}
-                                  className="min-w-[90%] md:min-w-[75%] flex"
-                                >
-                                  <ProductCard
-                                    onProductToPreview={handleProductToPreview}
-                                    inChat={true}
-                                    product={product}
-                                  />
-                                </Box>
-                              );
-                            })}
+                            {message.products.map(
+                              (product: Product, index: number) => {
+                                const productKey = `${message.id}-${String(
+                                  product._id ?? product.slug ?? index
+                                )}`;
+                                return (
+                                  <Box
+                                    key={productKey}
+                                    className="min-w-[90%] md:min-w-[75%] flex"
+                                  >
+                                    <ProductCard
+                                      onProductToPreview={
+                                        handleProductToPreview
+                                      }
+                                      inChat={true}
+                                      product={product}
+                                    />
+                                  </Box>
+                                );
+                              }
+                            )}
                           </Box>
                         </Box>
                       ) : null}
 
                       {(() => {
                         const { body, suggestions } = extractSuggestedActions(
-                          message.content
+                          isChatMessage(message) ? message.content : ""
                         );
                         const markdownSource = body;
                         return (
@@ -925,20 +1053,53 @@ export default function ChatPage() {
                         );
                       })()}
                     </Box>
-                  ) : (
+                  ) : isChatMessage(message) && message.role === "user" ? (
                     (() => {
+                      const msgAtIndex = messages.at(index);
                       const isSending =
                         index + 1 === messages.length &&
-                        messages.at(index)?.role === "user" &&
+                        msgAtIndex !== undefined &&
+                        isChatMessage(msgAtIndex) &&
+                        msgAtIndex.role === "user" &&
                         !hasSent;
                       return (
                         <Box
                           className={`max-w-[72%] rounded-[18px] ${isSending ? "bg-[#494c51]" : "bg-[#1b1f26]"} py-[8px] px-[16px] text-[1.4rem] leading-[1.5] text-white `}
                         >
-                          {message.content}
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={markdownComponents}
+                            className="markdown space-y-4 text-[1.4rem] leading-relaxed tracking-[-0.008em] text-white"
+                          >
+                            {message.content}
+                          </ReactMarkdown>
                         </Box>
                       );
                     })()
+                  ) : isQuizMessage(message) ? (
+                    <Box>
+                      <h2 className="text-[1.6rem] font-semibold flex items-center gap-2">
+                        {message.questions[message.index].header}
+                      </h2>
+                      <p className="mt-2 text-[1.4rem] leading-relaxed">
+                        {message.questions[message.index].question}
+                      </p>
+                      <div className="mt-4 flex gap-3">
+                        {message.questions[message.index].options.map(
+                          (option) => (
+                            <button
+                              key={option}
+                              className="rounded-full bg-[#4b2fbf] px-4 py-2 text-[1.4rem] font-semibold text-white shadow-sm hover:bg-[#3f27a7] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#cbb6ff]"
+                              onClick={() => console.log(option)}
+                            >
+                              {option}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </Box>
+                  ) : (
+                    <Box>Unknown Message Type</Box>
                   )}
                 </Box>
               ))}
