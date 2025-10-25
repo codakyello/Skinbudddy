@@ -486,7 +486,8 @@ export async function POST(req: NextRequest) {
               await send({ type: "summary", summary: summaryChunk });
             },
             onProducts: async (productsChunk) => {
-              if (!Array.isArray(productsChunk) || !productsChunk.length) return;
+              if (!Array.isArray(productsChunk) || !productsChunk.length)
+                return;
               const sanitized = sanitizeProducts(productsChunk);
               const signature = JSON.stringify(
                 (sanitized.length ? sanitized : productsChunk).map(
@@ -530,6 +531,7 @@ export async function POST(req: NextRequest) {
           });
 
           const assistantMessage = completion.reply;
+          const startSkinTypeQuiz = completion.startSkinTypeQuiz ?? false;
           // many tool outputs in one api iteration or loop
           const toolOutputs = completion.toolOutputs ?? [];
           // latest product to frontend
@@ -587,30 +589,37 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          schedule(
-            fetchMutation(api.conversation.appendMessage, {
-              sessionId,
-              role: "assistant",
-              content: assistantMessage,
-            }).then((result) => {
-              if (result?.needsSummary) {
-                return fetchAction(api.conversation.recomputeSummaries, {
-                  sessionId,
-                });
-              }
-            })
-          );
+          if (!startSkinTypeQuiz && assistantMessage.trim().length) {
+            schedule(
+              fetchMutation(api.conversation.appendMessage, {
+                sessionId,
+                role: "assistant",
+                content: assistantMessage,
+              }).then((result) => {
+                if (result?.needsSummary) {
+                  return fetchAction(api.conversation.recomputeSummaries, {
+                    sessionId,
+                  });
+                }
+              })
+            );
+          }
 
-          await send({
-            type: "final",
-            reply: assistantMessage,
-            sessionId,
-            toolOutputs,
-            products,
-            resultType,
-            routine,
-            summary,
-          });
+          if (startSkinTypeQuiz) {
+            console.log("sending start skin quiz to frontend");
+            await send({ type: "skin_survey.start", sessionId });
+          } else {
+            await send({
+              type: "final",
+              reply: assistantMessage,
+              sessionId,
+              toolOutputs,
+              products,
+              resultType,
+              routine,
+              summary,
+            });
+          }
         } catch (error: unknown) {
           console.error("Error calling openAI", error);
 

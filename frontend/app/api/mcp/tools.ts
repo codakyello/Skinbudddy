@@ -3,16 +3,14 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 // import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { fetchMutation, fetchQuery } from "convex/nextjs";
-import type { Id } from "../../convex/_generated/dataModel";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-
 import {
   resolveSkinConcern,
   resolveSkinType,
-  type SkinConcernCanonical,
-  type SkinTypeCanonical,
-} from "../../shared/skinMappings.js";
-type ApiModule = typeof import("../../convex/_generated/api");
+  SkinConcernCanonical,
+  SkinTypeCanonical,
+} from "@/shared/skinMappings";
+import { Id } from "@/convex/_generated/dataModel";
 
 type SearchProduct = {
   id: string;
@@ -23,6 +21,8 @@ type SearchProduct = {
   sizes?: Array<Record<string, unknown>>;
   score?: number;
 };
+
+type ApiModule = typeof import("@/convex/_generated/api");
 
 let apiPromise: Promise<ApiModule["api"]> | null = null;
 

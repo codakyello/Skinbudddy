@@ -166,6 +166,7 @@ export default defineSchema({
     concerns: v.array(SkinConcern),
     ingredients: v.array(v.string()),
     isPrescription: v.optional(v.boolean()),
+    benefitIds: v.optional(v.array(v.id("benefits"))),
 
     sizes: v.array(
       v.object({
@@ -179,6 +180,11 @@ export default defineSchema({
       })
     ),
   }),
+
+  benefits: defineTable({
+    label: v.string(),
+    slug: v.string(),
+  }).index("by_slug", ["slug"]),
 
   brands: defineTable({
     name: v.string(),

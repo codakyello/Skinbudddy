@@ -50,6 +50,12 @@ const searchProductsSchema = z
       .describe(
         "Canonical skin concerns to target (e.g. ['acne','hyperpigmentation'])."
       ),
+    benefits: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Product benefit tags to focus on (e.g. ['hydrating','brightening'])."
+      ),
     ingredientQueries: z
       .array(z.string())
       .optional()
@@ -105,6 +111,12 @@ const searchProductsParameters = {
       items: { type: "string" },
       description:
         "Canonical skin concerns to focus on (acne, hyperpigmentation, redness, etc.).",
+    },
+    benefits: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Benefit tags to emphasize (hydrating, brightening, barrier-support, etc.).",
     },
     ingredientQueries: {
       type: "array",
@@ -265,6 +277,14 @@ const recommendRoutineParameters = {
   required: ["skinType", "skinConcerns"],
   additionalProperties: false,
 };
+
+const startSkinTypeSurveySchema = z.object({}).strict();
+
+const startSkinTypeSurveyParameters = {
+  type: "object",
+  properties: {},
+  additionalProperties: false,
+} as const;
 
 const ensureApi = async () => api;
 
@@ -768,7 +788,7 @@ const localTools: ToolSpec[] = [
   {
     name: "searchProductsByQuery",
     description:
-      "List products using free-text queries for category, brand, or name. Resolves fuzzy text to exact DB slugs and returns matching products.",
+      "List products using free-text queries for category, brand, or name. Resolves fuzzy text to exact DB slugs and returns matching products. Examples: { \"categoryQuery\": \"serum\", \"benefits\": [\"hydrating\"] } · { \"ingredientQueries\": [\"niacinamide\"] }.",
     parameters: searchProductsParameters,
     schema: searchProductsSchema,
     handler: async (rawInput) => {
@@ -820,6 +840,16 @@ const localTools: ToolSpec[] = [
         ? input.ingredientQueries.map((value) => value.trim()).filter(Boolean)
         : undefined;
 
+      const cleanedBenefits = Array.isArray(input.benefits)
+        ? Array.from(
+            new Set(
+              input.benefits
+                .map((value) => value.trim().toLowerCase())
+                .filter((value) => value.length > 0)
+            )
+          )
+        : undefined;
+
       const expandedIngredientQueries = cleanedIngredientQueries
         ? cleanedIngredientQueries.map((query) => {
             const groupMatches = resolveIngredientGroup(query);
@@ -848,6 +878,7 @@ const localTools: ToolSpec[] = [
             ? unresolvedSkinConcernQueries
             : undefined,
           ingredientQueries: expandedIngredientQueries,
+          benefits: cleanedBenefits,
           limit: input.limit,
           hasAlcohol: input.hasAlcohol,
           hasFragrance: input.hasFragrance,
@@ -1156,6 +1187,16 @@ const localTools: ToolSpec[] = [
               )
           : [],
       };
+    },
+  },
+  {
+    name: "startSkinTypeSurvey",
+    description:
+      "Trigger the SkinBuddy skin-type survey experience for the current user (no arguments).",
+    parameters: startSkinTypeSurveyParameters,
+    schema: startSkinTypeSurveySchema,
+    handler: async () => {
+      return { acknowledged: true };
     },
   },
 ];

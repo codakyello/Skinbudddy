@@ -6,6 +6,7 @@ import {
   DEFAULT_SYSTEM_PROMPT,
   describeConcerns,
   describeIngredients,
+  describeBenefits,
   describeSkinTypes,
   extractProductMetadataForSummary,
   generateReplySummaryWithLLM,
@@ -16,6 +17,7 @@ import {
   sentenceCase,
   toTitleCase,
 } from "../utils";
+import { mapDescriptorsToBenefits } from "../../shared/skinMappings";
 import { toolSpecs, getToolByName } from "../tools/localTools";
 import {
   ChatMessage,
@@ -28,7 +30,6 @@ import {
   ToolOutput,
   UnknownRecord,
 } from "../types";
-import { SKIN_TYPE_QUIZ_SENTINEL } from "@/shared/constants";
 
 // gpt-4o-mini
 // gpt-4.1-nano
@@ -85,12 +86,121 @@ export async function callOpenAI({
 
   chatMessages.push({
     role: "developer",
-    content: `For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Each suggestion must be phrased as a natural, conversational message the user would actually send to SkinBuddy—written in first or second person, starting with natural words like 'What', 'Tell me', 'How', 'Can you', 'I', etc. (e.g., 'What serums would work best for my skin type?' or 'How should I layer these products?'). **All three suggestions must be skincare-related only**—never suggest follow-ups about non-skincare topics like haircare, makeup, oral care, deodorant, fitness, diet, sleep, mental health, or anything outside skincare. Keep suggestions contextual to the conversation and within SkinBuddy's scope. If the user explicitly wants help determining their skin type, conclude your message with the sentinel ${SKIN_TYPE_QUIZ_SENTINEL} (after the suggested actions). Otherwise, never emit the sentinel.`,
+    content: [
+      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Make each suggestion a concise, natural-language question or request the user could actually send to SkinBuddy, aimed at continuing the conversation (e.g., 'What serum pairs well with hyaluronic acid?' or 'Show me budget hydrating serums'). Keep all three skincare-only and tightly relevant to the user's latest request, vary the angle when possible (ingredients, usage tips, alternatives, price points, etc.), and avoid near-duplicates. Never imply an action already happened or command SkinBuddy to perform it (skip things like 'Add…' or 'Checkout my cart'). Only reference a specific product by name if the user or your latest reply mentioned it in this turn.",
+      "If the user asks for help determining their skin type (for example, 'What’s my skin type?', 'Do I have combination skin?') or types 'start skin quiz', acknowledge that intent warmly, mention that SkinBuddy can run a quick survey to identify their skin type, and make sure your suggested actions in that reply guide them toward next steps such as starting the survey ('Start the skin-type survey'), learning how it works ('Explain the survey steps'), or choosing another method ('Suggest a different approach'). If we already have their skin type stored (exposed via tools), reference it before offering the survey. **Never guess or infer a user's skin type from conversation context (including earlier requests such as 'build me an oily-skin routine')—only state what the tools return or that the survey is needed.** Whenever the user issues a direct imperative to begin the survey (examples: 'start the skin survey', 'start the skin-type quiz', 'let’s start skin survey', 'begin the skin quiz'), immediately call the `startSkinTypeSurvey` tool with empty arguments and do not send any assistant prose in that turn. Use confirmation phrasing only when the user is asking or hesitating, not when they are commanding.",
+      "When preparing tool arguments: put descriptive effects like 'hydrating', 'brightening', 'soothing' into the `benefits` array; keep actual ingredient names (niacinamide, hyaluronic acid, salicylic acid, etc.) in `ingredientQueries`; only use `nameQuery` for exact product titles or SKUs the user cited; and aim for canonical product nouns (cleanser, serum, sunscreen, toner, moisturizer) in `categoryQuery`. Avoid repeating the same value in multiple fields.",
+    ].join(" "),
   });
 
   const latestUserMessageContent = [...messages]
     .reverse()
     .find((msg) => msg.role === "user")?.content;
+
+  const CATEGORY_KEYWORD_MAP: Array<{ category: string; patterns: RegExp[] }> =
+    [
+      {
+        category: "serum",
+        patterns: buildKeywordPatterns(["serum", "serums"]),
+      },
+      {
+        category: "cleanser",
+        patterns: buildKeywordPatterns(["cleanser", "cleansers", "face wash"]),
+      },
+      {
+        category: "moisturizer",
+        patterns: buildKeywordPatterns([
+          "moisturizer",
+          "moisturiser",
+          "moisturisers",
+          "moisturizers",
+          "face cream",
+          "hydrating cream",
+        ]),
+      },
+      {
+        category: "toner",
+        patterns: buildKeywordPatterns(["toner", "toners"]),
+      },
+      {
+        category: "sunscreen",
+        patterns: buildKeywordPatterns([
+          "sunscreen",
+          "sun screen",
+          "sunblock",
+          "spf",
+        ]),
+      },
+      {
+        category: "mask",
+        patterns: buildKeywordPatterns(["mask", "masks", "sheet mask"]),
+      },
+      {
+        category: "exfoliant",
+        patterns: buildKeywordPatterns([
+          "exfoliant",
+          "exfoliator",
+          "chemical peel",
+        ]),
+      },
+    ];
+
+  function buildKeywordPatterns(keywords: string[]): RegExp[] {
+    return keywords
+      .map((keyword) => keyword.trim())
+      .filter((keyword) => keyword.length > 0)
+      .map((keyword) => {
+        const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const boundaryPattern = escaped.replace(/\s+/g, "\\s+");
+        return new RegExp(
+          `(?:^|[^a-z0-9])${boundaryPattern}(?:[^a-z0-9]|$)`,
+          "i"
+        );
+      });
+  }
+
+  const inferCategoryFromText = (
+    text: string | undefined
+  ): string | undefined => {
+    if (!text) return undefined;
+    for (const entry of CATEGORY_KEYWORD_MAP) {
+      if (entry.patterns.some((pattern) => pattern.test(text))) {
+        return entry.category;
+      }
+    }
+    return undefined;
+  };
+
+  const isCategoryMentionedInText = (
+    category: string | undefined,
+    text: string | undefined
+  ): boolean => {
+    if (!category || !text) return false;
+    const entry = CATEGORY_KEYWORD_MAP.find(
+      (candidate) => candidate.category === category
+    );
+    if (!entry) return false;
+    return entry.patterns.some((pattern) => pattern.test(text));
+  };
+
+  const normalizeBenefitSlug = (value: string): string | undefined => {
+    if (typeof value !== "string") return undefined;
+    const normalized = value
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\w\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    return normalized.length ? normalized : undefined;
+  };
+
+  const tokenizeDescriptor = (value: string): string[] =>
+    value
+      .split(/[^a-z0-9]+/i)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
 
   let lastProductSelection: ProductCandidate[] = [];
   let lastStreamedProductsSignature: string | null = null;
@@ -100,6 +210,8 @@ export async function callOpenAI({
   let routineSummaryParts: ReplySummary | null = null;
   let productSummaryParts: ReplySummary | null = null;
   let combinedSummary: ReplySummary | null = null;
+  let startSkinTypeQuiz = false;
+  let terminateAfterTool = false;
 
   // console.log(chatMessages, "This is conversation history");
 
@@ -408,15 +520,289 @@ export async function callOpenAI({
               : (toolCall.arguments ?? {});
           originalArgsObject = rawArgs;
           const validatedArgs = toolDef.schema.parse(rawArgs);
-          serializedArgsForHistory = JSON.stringify(validatedArgs ?? {});
+          let adjustedArgs: unknown = validatedArgs;
+          let normalizationSummary: string | null = null;
 
-          console.log(`Executing tool: ${toolCall.name}`, validatedArgs);
+          if (toolCall.name === "searchProductsByQuery") {
+            const argsRecord =
+              adjustedArgs && typeof adjustedArgs === "object"
+                ? { ...(adjustedArgs as Record<string, unknown>) }
+                : {};
 
-          const result = await toolDef.handler(validatedArgs);
+            const prefilledCategory =
+              typeof argsRecord.categoryQuery === "string"
+                ? argsRecord.categoryQuery.trim()
+                : "";
+
+            if (!prefilledCategory) {
+              const inferredCategory = inferCategoryFromText(
+                latestUserMessageContent
+              );
+              if (inferredCategory) {
+                argsRecord.categoryQuery = inferredCategory;
+                adjustedArgs = toolDef.schema.parse(argsRecord);
+              }
+            }
+
+            const resolveCategoryFromInput = (
+              input: unknown
+            ): string | undefined => {
+              if (typeof input !== "string" || !input.trim().length) {
+                return undefined;
+              }
+              return inferCategoryFromText(input);
+            };
+
+            const originalCategoryQuery =
+              typeof argsRecord.categoryQuery === "string"
+                ? argsRecord.categoryQuery
+                : undefined;
+
+            const normalizedCategoryFromInput = resolveCategoryFromInput(
+              originalCategoryQuery
+            );
+            if (normalizedCategoryFromInput) {
+              argsRecord.categoryQuery = normalizedCategoryFromInput;
+            }
+
+            const benefitAccumulator = new Set<string>();
+
+            const existingBenefitsRaw = Array.isArray(argsRecord.benefits)
+              ? argsRecord.benefits.filter(
+                  (entry): entry is string => typeof entry === "string"
+                )
+              : [];
+
+            existingBenefitsRaw.forEach((entry) => {
+              const normalized = normalizeBenefitSlug(entry);
+              if (normalized) benefitAccumulator.add(normalized);
+            });
+
+            const {
+              benefits: normalizedExistingBenefits,
+              residual: unmatchedExistingBenefits,
+            } = mapDescriptorsToBenefits(existingBenefitsRaw);
+
+            normalizedExistingBenefits.forEach((benefit) =>
+              benefitAccumulator.add(benefit)
+            );
+
+            const addBenefitsFromDescriptors = (descriptors: readonly string[]) => {
+              descriptors.forEach((descriptor) => {
+                const tokens = tokenizeDescriptor(descriptor);
+                if (!tokens.length) return;
+                const { benefits: tokenBenefits } =
+                  mapDescriptorsToBenefits(tokens);
+                tokenBenefits.forEach((benefit) =>
+                  benefitAccumulator.add(benefit)
+                );
+              });
+            };
+
+            if (typeof originalCategoryQuery === "string") {
+              addBenefitsFromDescriptors([originalCategoryQuery]);
+            }
+
+            const originalNameQuery =
+              typeof argsRecord.nameQuery === "string"
+                ? argsRecord.nameQuery.trim()
+                : "";
+
+            if (originalNameQuery.length) {
+              const nameTokens = tokenizeDescriptor(originalNameQuery);
+              if (nameTokens.length) {
+                const {
+                  benefits: nameBenefits,
+                  residual: nameResidual,
+                } = mapDescriptorsToBenefits(nameTokens);
+
+                nameBenefits.forEach((benefit) =>
+                  benefitAccumulator.add(benefit)
+                );
+
+                addBenefitsFromDescriptors([originalNameQuery]);
+
+                if (nameResidual.length === 0) {
+                  delete argsRecord.nameQuery;
+                } else if (nameResidual.length !== nameTokens.length) {
+                  argsRecord.nameQuery = nameResidual.join(" ");
+                }
+              }
+            }
+
+            addBenefitsFromDescriptors(unmatchedExistingBenefits);
+
+            let ingredientResidual = Array.isArray(argsRecord.ingredientQueries)
+              ? argsRecord.ingredientQueries.filter(
+                  (entry): entry is string =>
+                    typeof entry === "string" && entry.trim().length > 0
+                )
+              : [];
+
+            if (ingredientResidual.length) {
+              const { benefits: ingredientBenefits, residual } =
+                mapDescriptorsToBenefits(ingredientResidual);
+
+              ingredientBenefits.forEach((benefit) =>
+                benefitAccumulator.add(benefit)
+              );
+
+              ingredientResidual = residual;
+
+              addBenefitsFromDescriptors(ingredientResidual);
+            }
+
+            let mergedBenefits = Array.from(benefitAccumulator);
+            if (
+              mergedBenefits.length === 0 &&
+              typeof latestUserMessageContent === "string"
+            ) {
+              const userTokens = tokenizeDescriptor(latestUserMessageContent);
+              const { benefits: userBenefits } = mapDescriptorsToBenefits([
+                latestUserMessageContent,
+                ...userTokens,
+              ]);
+              userBenefits.forEach((benefit) => benefitAccumulator.add(benefit));
+              mergedBenefits = Array.from(benefitAccumulator);
+            }
+
+            if (mergedBenefits.length) {
+              argsRecord.benefits = mergedBenefits;
+            } else {
+              delete argsRecord.benefits;
+            }
+
+            let finalCategoryCandidate =
+              typeof argsRecord.categoryQuery === "string"
+                ? argsRecord.categoryQuery.trim()
+                : undefined;
+
+            const categoryMentionedByUser = isCategoryMentionedInText(
+              finalCategoryCandidate,
+              latestUserMessageContent
+            );
+            const categoryMentionedInName = isCategoryMentionedInText(
+              finalCategoryCandidate,
+              originalNameQuery
+            );
+
+            if (
+              finalCategoryCandidate &&
+              !categoryMentionedByUser &&
+              !categoryMentionedInName
+            ) {
+              delete argsRecord.categoryQuery;
+              finalCategoryCandidate = undefined;
+            }
+
+            argsRecord.ingredientQueries = ingredientResidual.length
+              ? Array.from(new Set(ingredientResidual))
+              : undefined;
+
+            adjustedArgs = toolDef.schema.parse(argsRecord);
+
+            const originalSnapshot =
+              validatedArgs && typeof validatedArgs === "object"
+                ? (validatedArgs as Record<string, unknown>)
+                : {};
+            const adjustedSnapshot =
+              adjustedArgs && typeof adjustedArgs === "object"
+                ? (adjustedArgs as Record<string, unknown>)
+                : {};
+
+            const extractString = (value: unknown): string | undefined => {
+              if (typeof value !== "string") return undefined;
+              const trimmed = value.trim();
+              return trimmed.length ? trimmed : undefined;
+            };
+
+            const normalizeStringArray = (value: unknown): string[] =>
+              Array.isArray(value)
+                ? value
+                    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+                    .filter((entry) => entry.length > 0)
+                    .sort()
+                : [];
+
+            const normalizeBenefitArray = (value: unknown): string[] =>
+              Array.isArray(value)
+                ? value
+                    .map((entry) => normalizeBenefitSlug(String(entry)) ?? "")
+                    .filter((entry) => entry.length > 0)
+                    .sort()
+                : [];
+
+            const originalCategory = extractString(originalSnapshot.categoryQuery);
+            const finalCategory = extractString(adjustedSnapshot.categoryQuery);
+            const originalName = extractString(originalSnapshot.nameQuery);
+            const finalName = extractString(adjustedSnapshot.nameQuery);
+            const originalBenefitsArray = normalizeBenefitArray(
+              originalSnapshot.benefits
+            );
+            const finalBenefitsArray = normalizeBenefitArray(
+              adjustedSnapshot.benefits
+            );
+            const originalIngredientsArray = normalizeStringArray(
+              originalSnapshot.ingredientQueries
+            );
+            const finalIngredientsArray = normalizeStringArray(
+              adjustedSnapshot.ingredientQueries
+            );
+
+            const changes: string[] = [];
+
+            if (finalCategory !== originalCategory) {
+              changes.push(
+                `categoryQuery → ${finalCategory ? `"${finalCategory}"` : "(removed)"}`
+              );
+            }
+
+            if (
+              JSON.stringify(finalBenefitsArray) !==
+              JSON.stringify(originalBenefitsArray)
+            ) {
+              changes.push(
+                finalBenefitsArray.length
+                  ? `benefits → [${finalBenefitsArray.join(", ")}]`
+                  : "benefits cleared"
+              );
+            }
+
+            if (
+              JSON.stringify(finalIngredientsArray) !==
+              JSON.stringify(originalIngredientsArray)
+            ) {
+              changes.push(
+                finalIngredientsArray.length
+                  ? `ingredientQueries → [${finalIngredientsArray.join(", ")}]`
+                  : "ingredientQueries cleared"
+              );
+            }
+
+            if (finalName !== originalName) {
+              changes.push(
+                finalName ? `nameQuery → "${finalName}"` : "nameQuery removed"
+              );
+            }
+
+            if (changes.length) {
+              normalizationSummary =
+                "Normalization note: searchProductsByQuery arguments " +
+                changes.join("; ");
+            }
+          }
+
+          serializedArgsForHistory = JSON.stringify(adjustedArgs ?? {});
+
+          console.log(`Executing tool: ${toolCall.name}`, adjustedArgs);
+
+          const result = await toolDef.handler(adjustedArgs);
+
+          console.log(result, "This is the result of the tool call");
 
           toolOutputs.push({
             name: toolCall.name,
-            arguments: validatedArgs,
+            arguments: adjustedArgs,
             result: result ?? null,
           });
 
@@ -438,6 +824,18 @@ export async function callOpenAI({
             tool_arguments: serializedArgsForHistory,
             content: JSON.stringify(normalizedSanitized),
           });
+
+          if (normalizationSummary) {
+            chatMessages.push({
+              role: "developer",
+              content: normalizationSummary,
+            });
+          }
+
+          if (toolCall.name === "startSkinTypeSurvey") {
+            startSkinTypeQuiz = true;
+            terminateAfterTool = true;
+          }
         } catch (err) {
           console.error(
             `Tool execution error (${toolCall.name ?? "unknown"}):`,
@@ -481,6 +879,11 @@ export async function callOpenAI({
             typeof output.result === "object" &&
             Array.isArray((output.result as Record<string, unknown>).steps)
         );
+
+      if (terminateAfterTool) {
+        finalContent = "";
+        break;
+      }
 
       // out of foor loop, no more tool calls
       if (latestRoutineOutput) {
@@ -734,6 +1137,7 @@ export async function callOpenAI({
             ingredientQueries?: string[];
             hasAlcohol?: boolean;
             hasFragrance?: boolean;
+            benefits?: string[];
           }) ?? {};
         const category =
           typeof searchArgs.categoryQuery === "string"
@@ -762,6 +1166,11 @@ export async function callOpenAI({
               (entry): entry is string => typeof entry === "string"
             )
           : [];
+        const rawBenefits = Array.isArray(searchArgs.benefits)
+          ? searchArgs.benefits.filter(
+              (entry): entry is string => typeof entry === "string"
+            )
+          : [];
 
         const normalizedSkinTypes = rawSkinTypes
           .map((type) => toTitleCase(type))
@@ -785,6 +1194,10 @@ export async function callOpenAI({
         const ingredientHeadline = ingredientPhraseRaw
           ? sentenceCase(ingredientPhraseRaw)
           : undefined;
+        const benefitPhraseRaw = describeBenefits(rawBenefits);
+        const benefitHeadline = benefitPhraseRaw
+          ? sentenceCase(benefitPhraseRaw)
+          : undefined;
         const nameQueryHeadline = nameQuery
           ? toTitleCase(nameQuery)
           : undefined;
@@ -800,6 +1213,7 @@ export async function callOpenAI({
           usedAudience,
           usedBrand,
           usedIngredients,
+          usedBenefits,
         } = buildProductHeadline({
           productCount: streamingProducts.length,
           category: normalizedCategory,
@@ -807,17 +1221,20 @@ export async function callOpenAI({
           brand: normalizedBrand,
           nameQuery: nameQueryHeadline,
           ingredients: ingredientHeadline,
+          benefits: benefitHeadline,
         });
 
         const summarySubheading = buildProductSubheading({
           audiencePhrase,
           brand: normalizedBrand,
           ingredients: ingredientPhraseRaw,
+          benefits: benefitPhraseRaw,
           nameQuery,
           note: selectionNote,
           usedAudience,
           usedBrand,
           usedIngredients,
+          usedBenefits,
         });
 
         summaryContext = {
@@ -833,6 +1250,9 @@ export async function callOpenAI({
               : undefined,
             ingredientQueries: rawIngredientQueries.length
               ? rawIngredientQueries.map((item) => item.toLowerCase())
+              : undefined,
+            benefits: rawBenefits.length
+              ? rawBenefits.map((item) => item.toLowerCase())
               : undefined,
             brand: normalizedBrand,
             nameQuery: nameQuery ?? undefined,
@@ -914,16 +1334,10 @@ export async function callOpenAI({
 
   finalContent = finalContent.trim();
 
-  let startSkinTypeQuiz = false;
-  if (finalContent.includes(SKIN_TYPE_QUIZ_SENTINEL)) {
-    startSkinTypeQuiz = true;
-    finalContent = finalContent.replaceAll(SKIN_TYPE_QUIZ_SENTINEL, "").trim();
-  }
-
   const replyText = productsPayload.length
     ? finalContent.length
       ? finalContent
-      : "💧 I rounded up a few options that should fit nicely—happy to break any of them down further or pop one into your bag!"
+      : ""
     : finalContent;
 
   let generatedSummary: ReplySummary | null = combinedSummary;

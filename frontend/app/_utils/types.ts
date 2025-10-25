@@ -176,3 +176,16 @@ export type ChatMessage = {
   routine?: Routine;
   summary?: MessageSummary;
 };
+
+export type QuizMessage = {
+  id: string;
+  role: string;
+  index: number;
+  questions: {
+    header: string;
+    question: string;
+    options: string[];
+  }[];
+};
+
+export type Message = ChatMessage | QuizMessage;

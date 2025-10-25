@@ -14,8 +14,10 @@ import { runChatCompletion } from "./_utils/internalUtils";
 import {
   resolveSkinConcern,
   resolveSkinType,
+  resolveBenefit,
   type SkinConcernCanonical,
   type SkinTypeCanonical,
+  type BenefitCanonical,
 } from "../shared/skinMappings.js";
 
 export const IngredientSensitivity = v.union(
@@ -54,6 +56,12 @@ const toTokenSet = (input: string) =>
       .split(" ")
       .filter((token) => token.length > 0)
   );
+
+const normalizeBenefitKey = (value: string): string | null => {
+  const normalized = normalizeText(value);
+  if (!normalized) return null;
+  return normalized.split(" ").join("-");
+};
 
 const jaccardSimilarity = (a: Set<string>, b: Set<string>) => {
   const intersection = [...a].filter((token) => b.has(token)).length;
@@ -441,9 +449,7 @@ export const recommend = action({
           const match = data.match(/\{[\s\S]*\}/);
           parsed = match ? JSON.parse(match[0]) : null;
         }
-        const stepsOutput = Array.isArray(parsed?.steps)
-          ? parsed.steps
-          : [];
+        const stepsOutput = Array.isArray(parsed?.steps) ? parsed.steps : [];
 
         notes = typeof parsed?.notes === "string" ? parsed.notes : "";
         lastParsedSteps = stepsOutput;
@@ -576,10 +582,7 @@ export const recommend = action({
             aiOrder: index,
           } as ResolvedStep;
         })
-        .filter(
-          (step): step is ResolvedStep =>
-            step !== null
-        );
+        .filter((step): step is ResolvedStep => step !== null);
 
       if (!resolvedSteps.length) {
         throw new Error("Failed to resolve recommended routine steps.");
@@ -1097,6 +1100,7 @@ type SearchProductsByQueryArgs = {
   skinTypeQueries?: string[];
   skinConcerns?: (typeof SkinConcern.type)[];
   skinConcernQueries?: string[];
+  benefits?: string[];
   ingredientQueries?: string[];
   limit?: number;
   skip?: number;
@@ -1122,6 +1126,7 @@ type SearchProductsByQueryResult =
         skinTypes?: (typeof SkinType.type)[];
         skinConcerns?: (typeof SkinConcern.type)[];
         ingredientQueries?: string[];
+        benefits?: string[];
       };
       products: ProductCardSummary[];
     };
@@ -1140,6 +1145,7 @@ async function searchProductsByQueryImpl(
     skinTypeQueries,
     skinConcerns,
     skinConcernQueries,
+    benefits,
     ingredientQueries,
     limit = 5, // hard 5 limit default to avoid bloating llm
     skip, // lets implement this later
@@ -1159,6 +1165,54 @@ async function searchProductsByQueryImpl(
   const ingredientLookup = new Map<string, string>();
 
   const allProducts = await ctx.db.query("products").collect();
+
+  const benefitSlugCache = new Map<Id<"benefits">, string | null>();
+  const benefitIdsToFetch = new Set<Id<"benefits">>();
+
+  allProducts.forEach((item) => {
+    if (!Array.isArray(item.benefitIds)) return;
+    item.benefitIds.forEach((benefitId: Id<"benefits">) => {
+      if (benefitId) {
+        benefitIdsToFetch.add(benefitId);
+      }
+    });
+  });
+
+  if (benefitIdsToFetch.size) {
+    await Promise.all(
+      Array.from(benefitIdsToFetch).map(async (benefitId) => {
+        if (benefitSlugCache.has(benefitId)) return;
+        const benefitDoc = await ctx.db.get(benefitId);
+        if (!benefitDoc) {
+          benefitSlugCache.set(benefitId, null);
+          return;
+        }
+        const rawSlug =
+          typeof benefitDoc.slug === "string" && benefitDoc.slug.trim().length
+            ? benefitDoc.slug
+            : typeof benefitDoc.label === "string"
+              ? benefitDoc.label
+              : "";
+        const normalizedSlug = rawSlug ? normalizeBenefitKey(rawSlug) : null;
+        benefitSlugCache.set(benefitId, normalizedSlug);
+      })
+    );
+  }
+
+  const getBenefitSlugsForProduct = (product: Doc<"products">): string[] => {
+    if (!Array.isArray(product.benefitIds) || !product.benefitIds.length) {
+      return [];
+    }
+    return product.benefitIds
+      .map((benefitId) => {
+        const cached = benefitSlugCache.get(benefitId as Id<"benefits">);
+        return cached ?? null;
+      })
+      .filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0
+      );
+  };
   for (const item of allProducts) {
     if (!Array.isArray(item.ingredients)) continue;
     for (const rawIngredient of item.ingredients) {
@@ -1251,6 +1305,28 @@ async function searchProductsByQueryImpl(
   }
   const requestedSkinConcerns = Array.from(requestedSkinConcernSet);
 
+  const requestedBenefitSet = new Set<string>();
+  const pushBenefit = (value: unknown) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (!trimmed.length) return;
+    const resolved = resolveBenefit(trimmed);
+    if (resolved) {
+      requestedBenefitSet.add(resolved);
+      return;
+    }
+    const normalized = normalizeBenefitKey(trimmed);
+    if (normalized) {
+      requestedBenefitSet.add(normalized);
+    }
+  };
+
+  if (Array.isArray(benefits)) {
+    benefits.forEach(pushBenefit);
+  }
+
+  const requestedBenefits = Array.from(requestedBenefitSet);
+
   const implicitIngredients = new Set<string>([
     ...resolveImplicitIngredients(nameQuery),
     ...resolveImplicitIngredients(categoryQuery),
@@ -1303,7 +1379,8 @@ async function searchProductsByQueryImpl(
     !hasNameQuery &&
     !requestedSkinTypes.length &&
     !requestedSkinConcerns.length &&
-    !normalizedIngredientQueries.length
+    !normalizedIngredientQueries.length &&
+    !requestedBenefits.length
   ) {
     return {
       success: false,
@@ -1408,6 +1485,22 @@ async function searchProductsByQueryImpl(
     });
   }
 
+  if (requestedBenefits.length) {
+    const benefitSet = new Set<string>(requestedBenefits);
+    products = products.filter((product) => {
+      const productBenefits = getBenefitSlugsForProduct(product);
+
+      if (!productBenefits.length) return false;
+
+      for (const benefit of benefitSet) {
+        if (!productBenefits.includes(benefit)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
   if (normalizedIngredientGroups.length) {
     const scoredProducts = products
       .map((product, index) => {
@@ -1475,6 +1568,7 @@ async function searchProductsByQueryImpl(
         ...(normalizedIngredientQueries.length
           ? { ingredientQueries: normalizedIngredientQueries }
           : {}),
+        ...(requestedBenefits.length ? { benefits: requestedBenefits } : {}),
       },
       products: [],
     };
@@ -1820,6 +1914,9 @@ async function searchProductsByQueryImpl(
             ...(normalizedIngredientQueries.length
               ? { ingredientQueries: normalizedIngredientQueries }
               : {}),
+            ...(requestedBenefits.length
+              ? { benefits: requestedBenefits }
+              : {}),
           },
           products: [{ ...primary }],
         };
@@ -1867,6 +1964,7 @@ async function searchProductsByQueryImpl(
       ...(normalizedIngredientQueries.length
         ? { ingredientQueries: normalizedIngredientQueries }
         : {}),
+      ...(requestedBenefits.length ? { benefits: requestedBenefits } : {}),
     },
     products: finalProducts,
   };
@@ -1924,6 +2022,7 @@ export const searchProductsByQuery = query({
     skinTypeQueries: v.optional(v.array(v.string())),
     skinConcerns: v.optional(v.array(SkinConcern)),
     skinConcernQueries: v.optional(v.array(v.string())),
+    benefits: v.optional(v.array(v.string())),
     ingredientQueries: v.optional(v.array(v.string())),
     limit: v.optional(v.number()),
     hasAlcohol: v.optional(v.boolean()),

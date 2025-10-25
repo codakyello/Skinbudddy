@@ -21,11 +21,23 @@ import type {
   RoutineStep,
   MessageSummary,
   ChatMessage,
+  Message,
 } from "@/app/_utils/types";
 import { Box } from "@chakra-ui/react";
 import Modal, { ModalWindow } from "./_components/Modal";
 import Image from "next/image";
-import { formatPrice } from "./_utils/utils";
+import {
+  extractSuggestedActions,
+  formatPrice,
+  getRandomSuggestions,
+  isChatMessage,
+  isQuizMessage,
+  MAX_INPUT_LENGTH,
+  normalizeProductArray,
+  normalizeRoutinePayload,
+  normalizeSummary,
+  SCROLL_THRESHOLD,
+} from "./_utils/utils";
 import { IoChevronDownOutline } from "react-icons/io5";
 import RoutineCard from "./_components/RoutineCard";
 // import useProducts from "./_hooks/useProducts";
@@ -118,323 +130,6 @@ const SKIN_QUIZ = [
   },
 ];
 
-const getRandomSuggestions = (count: number) => {
-  const shuffled = [...SUGGESTIONS].sort(() => 0.5 - Math.random());
-  return shuffled.slice(0, count);
-};
-
-const normalizeHeader = (line: string) =>
-  line
-    .toLowerCase()
-    .replace(/[\*`_~>#:\-]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const extractSuggestedActions = (
-  content: string
-): { body: string; suggestions: string[] } => {
-  if (!content) return { body: "", suggestions: [] };
-  const lines = content.split(/\r?\n/);
-  const headerIndex = lines.findIndex((line) => {
-    const normalized = normalizeHeader(line);
-    return normalized === "suggested actions";
-  });
-
-  if (headerIndex === -1) {
-    return { body: content, suggestions: [] };
-  }
-
-  const body = lines.slice(0, headerIndex).join("\n").trimEnd();
-  const sanitizeSuggestion = (line: string) => {
-    let sanitized = line.trim();
-    sanitized = sanitized.replace(/^[-*•●◦▪]+\s*/, "");
-    sanitized = sanitized.replace(/^(\d+)[\).:\-]?\s*/, "");
-    sanitized = sanitized.replace(/^[-*•●◦▪]+\s*/, "");
-    return sanitized.trim();
-  };
-
-  const suggestionLines = lines.slice(headerIndex + 1);
-  const suggestions = suggestionLines
-    .map(sanitizeSuggestion)
-    .filter(
-      (line) => line.length > 0 && normalizeHeader(line) !== "suggested actions"
-    )
-    .slice(0, 3);
-
-  return {
-    body: body.trim().length ? body : "",
-    suggestions,
-  };
-};
-
-const MAX_INPUT_LENGTH = 600;
-const SCROLL_THRESHOLD = 80;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const coerceId = (value: unknown): string | undefined => {
-  if (typeof value === "string") return value;
-  if (isRecord(value)) {
-    if (typeof value.id === "string") return value.id;
-    if (typeof value._id === "string") return value._id;
-  }
-  return value != null ? String(value) : undefined;
-};
-
-const normalizeNumber = (value: unknown): number | undefined => {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
-};
-
-const normalizeSize = (input: unknown): Size | null => {
-  if (!isRecord(input)) return null;
-  const id = coerceId(input.id ?? input._id ?? input.value);
-  if (!id || id === "[object Object]") return null;
-  const price = normalizeNumber(input.price) ?? 0;
-  const sizeValue = normalizeNumber(input.size) ?? 0;
-  const unit = typeof input.unit === "string" ? input.unit : "";
-  const stock = normalizeNumber(input.stock);
-  const discount = normalizeNumber(input.discount);
-  const currency =
-    typeof input.currency === "string" ? input.currency : undefined;
-  const name =
-    typeof input.name === "string"
-      ? input.name
-      : typeof input.label === "string"
-        ? input.label
-        : undefined;
-
-  return {
-    id,
-    price,
-    size: sizeValue,
-    unit,
-    stock,
-    discount,
-    currency,
-    name,
-  };
-};
-
-const mapToolProductToProduct = (input: unknown): Product | null => {
-  if (!isRecord(input)) return null;
-  const source = isRecord(input.product) ? input.product : input;
-
-  if (!isRecord(source)) return null;
-
-  const _id = coerceId(source.id ?? source._id);
-  if (!_id || _id === "[object Object]") return null;
-  const slug = typeof source.slug === "string" ? source.slug : undefined;
-  const name = typeof source.name === "string" ? source.name : undefined;
-  const description =
-    typeof source.description === "string" ? source.description : undefined;
-
-  const images = Array.isArray(source.images)
-    ? source.images.filter((img): img is string => typeof img === "string")
-    : undefined;
-
-  const sizes = Array.isArray(source.sizes)
-    ? source.sizes
-        .map((sizeItem) => normalizeSize(sizeItem))
-        .filter((size): size is Size => Boolean(size))
-    : undefined;
-
-  const ingredients = Array.isArray(source.ingredients)
-    ? source.ingredients.filter(
-        (ingredient): ingredient is string => typeof ingredient === "string"
-      )
-    : undefined;
-
-  const concerns = Array.isArray(source.concerns)
-    ? source.concerns
-        .map((concern) =>
-          typeof concern === "string" ? concern : String(concern ?? "")
-        )
-        .filter((concern) => concern.length > 0)
-    : undefined;
-
-  const categories = Array.isArray(source.categories)
-    ? source.categories
-        .map((category) => {
-          if (!category) return null;
-          if (typeof category === "string") {
-            return { name: category } as Category;
-          }
-          if (isRecord(category)) {
-            if (typeof category.name === "string") {
-              const payload: Category = {
-                name: category.name,
-              };
-              if (typeof category.slug === "string") {
-                payload.slug = category.slug;
-              }
-              return payload;
-            }
-            return null;
-          }
-          return null;
-        })
-        .filter((category): category is Category => Boolean(category))
-    : undefined;
-
-  const skinType = Array.isArray(source.skinType)
-    ? source.skinType
-        .map((type) => (typeof type === "string" ? type : String(type ?? "")))
-        .filter((type) => type.length > 0)
-    : undefined;
-
-  return {
-    _id,
-    slug,
-    name,
-    description,
-    images,
-    sizes,
-    ingredients,
-    categories,
-    concerns,
-    skinType,
-  };
-};
-
-const normalizeProductArray = (items: unknown[]): Product[] => {
-  const byId = new Map<string, Product>();
-  items.forEach((raw, index) => {
-    const product = mapToolProductToProduct(raw);
-    if (!product) return;
-    const key = String(product._id ?? product.slug ?? index);
-    if (!key || key === "[object Object]" || byId.has(key)) return;
-    byId.set(key, product);
-  });
-  return Array.from(byId.values());
-};
-
-const normalizeRoutinePayload = (input: unknown): Routine | null => {
-  if (!isRecord(input)) return null;
-  const rawSteps = Array.isArray(input.steps) ? input.steps : [];
-  const steps: RoutineStep[] = [];
-
-  rawSteps.forEach((entry, index) => {
-    if (!isRecord(entry)) return;
-    const productSourceRaw = (entry as Record<string, unknown>)["product"];
-    const productSource = isRecord(productSourceRaw)
-      ? productSourceRaw
-      : (productSourceRaw ?? entry);
-    const productCandidate = mapToolProductToProduct(productSource);
-    if (!productCandidate) return;
-    const stepNumber = typeof entry.step === "number" ? entry.step : index + 1;
-    const category =
-      typeof entry.category === "string" ? entry.category : undefined;
-    const title = typeof entry.title === "string" ? entry.title : undefined;
-    const description =
-      typeof entry.description === "string" ? entry.description : undefined;
-    const productId =
-      typeof entry.productId === "string"
-        ? entry.productId
-        : typeof productCandidate._id === "string"
-          ? productCandidate._id
-          : undefined;
-
-    const alternatives: Array<{
-      productId?: string;
-      description?: string;
-      product: Product;
-    }> = [];
-
-    if (Array.isArray(entry.alternatives)) {
-      entry.alternatives.forEach((alternative) => {
-        if (!isRecord(alternative)) return;
-        const altProductSourceRaw = alternative["product"];
-        const altProductSource = isRecord(altProductSourceRaw)
-          ? altProductSourceRaw
-          : (altProductSourceRaw ?? alternative);
-        const altProductCandidate = mapToolProductToProduct(altProductSource);
-        if (!altProductCandidate) return;
-        const altProductId =
-          typeof alternative.productId === "string"
-            ? alternative.productId
-            : typeof altProductCandidate._id === "string"
-              ? altProductCandidate._id
-              : undefined;
-        const altDescription =
-          typeof alternative.description === "string"
-            ? alternative.description
-            : undefined;
-        alternatives.push({
-          productId: altProductId,
-          description: altDescription,
-          product: altProductCandidate,
-        });
-      });
-    }
-
-    const normalizedAlternatives = alternatives.length
-      ? alternatives
-      : undefined;
-
-    steps.push({
-      step: stepNumber,
-      category,
-      title,
-      description,
-      productId,
-      product: productCandidate,
-      alternatives: normalizedAlternatives,
-    });
-  });
-
-  if (!steps.length) return null;
-
-  steps.sort((a, b) => a.step - b.step);
-
-  const notes = typeof input.notes === "string" ? input.notes : undefined;
-
-  return { steps, notes };
-};
-
-const normalizeSummary = (input: unknown): MessageSummary | null => {
-  if (!isRecord(input)) return null;
-  const rawHeadline =
-    typeof input.headline === "string" ? input.headline.trim() : "";
-  if (!rawHeadline.length) return null;
-  const rawSubheading =
-    typeof input.subheading === "string" ? input.subheading.trim() : "";
-  const rawIcon = typeof input.icon === "string" ? input.icon.trim() : "";
-
-  return {
-    headline: rawHeadline,
-    subheading: rawSubheading.length ? rawSubheading : undefined,
-    icon: rawIcon.length ? rawIcon : undefined,
-  };
-};
-type QuizMessage = {
-  id: string;
-  role: string;
-  index: number;
-  questions: {
-    header: string;
-    question: string;
-    options: string[];
-  }[];
-};
-
-type Message = ChatMessage | QuizMessage;
-
-const isChatMessage = (message: Message): message is ChatMessage => {
-  return message.role === "user" || message.role === "assistant";
-};
-
-const isQuizMessage = (message: Message): message is QuizMessage => {
-  return message.role === "quiz";
-};
-
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -445,7 +140,9 @@ export default function ChatPage() {
   const [isTyping, setShowTyping] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const { user } = useUser();
-  const [displayedSuggestions] = useState(() => getRandomSuggestions(3));
+  const [displayedSuggestions] = useState(() =>
+    getRandomSuggestions(3, SUGGESTIONS)
+  );
   const usedSuggestionKeysRef = useRef(new Set<string>());
   const adjustTextareaHeight = useCallback(() => {
     const textarea = textareaRef.current;
@@ -476,6 +173,8 @@ export default function ChatPage() {
     setShowScrollDownButton(distanceFromBottom > SCROLL_THRESHOLD);
     return distanceFromBottom;
   }, []);
+
+  console.log(messages, "This are messages");
 
   useEffect(() => {
     adjustTextareaHeight();
@@ -790,7 +489,7 @@ export default function ChatPage() {
           ? resolvedContent
           : finalResultType === "routine"
             ? "I pulled together a full routine—let me know if you want to tweak any step!"
-            : "I rounded up a few options—let me know if anything catches your eye!",
+            : "",
         products: hasProducts ? finalProducts : undefined,
         resultType: routineResult ? "routine" : undefined,
         routine: routineResult ?? undefined,
@@ -927,7 +626,7 @@ export default function ChatPage() {
                     message.role === "user" ? "justify-end" : "justify-start"
                   }`}
                 >
-                  {isChatMessage(message) ? (
+                  {isChatMessage(message) && message.role === "assistant" ? (
                     <Box className="w-full ">
                       {isChatMessage(message) &&
                       message.resultType === "routine" &&
@@ -964,7 +663,7 @@ export default function ChatPage() {
                           {isChatMessage(message) &&
                           message.summary?.headline ? (
                             <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
-                              <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
+                              <h3 className="text-[2rem] font-medium text-[#1b1f26] flex gap-[0.6rem]">
                                 {message.summary?.icon ? (
                                   <span>{message.summary.icon}</span>
                                 ) : null}
@@ -1005,8 +704,21 @@ export default function ChatPage() {
                       ) : null}
 
                       {(() => {
+                        const previousUserMessage = (() => {
+                          for (let i = index - 1; i >= 0; i -= 1) {
+                            const candidate = messages[i];
+                            if (
+                              isChatMessage(candidate) &&
+                              candidate.role === "user"
+                            ) {
+                              return candidate.content;
+                            }
+                          }
+                          return undefined;
+                        })();
                         const { body, suggestions } = extractSuggestedActions(
-                          isChatMessage(message) ? message.content : ""
+                          isChatMessage(message) ? message.content : "",
+                          { context: previousUserMessage }
                         );
                         const markdownSource = body;
                         return (
@@ -1055,6 +767,7 @@ export default function ChatPage() {
                     </Box>
                   ) : isChatMessage(message) && message.role === "user" ? (
                     (() => {
+                      console.log("this is what we rendered");
                       const msgAtIndex = messages.at(index);
                       const isSending =
                         index + 1 === messages.length &&
@@ -1066,13 +779,7 @@ export default function ChatPage() {
                         <Box
                           className={`max-w-[72%] rounded-[18px] ${isSending ? "bg-[#494c51]" : "bg-[#1b1f26]"} py-[8px] px-[16px] text-[1.4rem] leading-[1.5] text-white `}
                         >
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={markdownComponents}
-                            className="markdown space-y-4 text-[1.4rem] leading-relaxed tracking-[-0.008em] text-white"
-                          >
-                            {message.content}
-                          </ReactMarkdown>
+                          {message.content}
                         </Box>
                       );
                     })()

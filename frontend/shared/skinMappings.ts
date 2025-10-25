@@ -127,13 +127,7 @@ const SKIN_CONCERN_ALIAS_MAP: Record<SkinConcernCanonical, readonly string[]> =
       "greasy skin",
       "shine",
     ],
-    redness: [
-      "redness",
-      "red skin",
-      "flushed skin",
-      "rosacea",
-      "irritation",
-    ],
+    redness: ["redness", "red skin", "flushed skin", "rosacea", "irritation"],
     sensitivity: [
       "sensitivity",
       "sensitive skin",
@@ -142,12 +136,7 @@ const SKIN_CONCERN_ALIAS_MAP: Record<SkinConcernCanonical, readonly string[]> =
       "reactive",
       "sensitized skin",
     ],
-    "fine-lines": [
-      "fine lines",
-      "fine line",
-      "lines",
-      "expression lines",
-    ],
+    "fine-lines": ["fine lines", "fine line", "lines", "expression lines"],
     wrinkles: ["wrinkles", "wrinkle", "deep lines"],
     "loss-of-firmness": [
       "loss of firmness",
@@ -200,6 +189,276 @@ const lookupByAlias = <T extends string>(
 export const resolveSkinType = (input: string): SkinTypeCanonical | null =>
   lookupByAlias(SKIN_TYPE_CANONICALS, SKIN_TYPE_ALIAS_MAP, input);
 
+export const BENEFIT_CANONICALS = [
+  "hydrating",
+  "brightening",
+  "soothing",
+  "barrier-support",
+  "repairing",
+  "anti-aging",
+  "firming",
+  "plumping",
+  "acne-fighting",
+  "oil-control",
+  "pore-refining",
+  "exfoliating",
+  "tone-evening",
+  "balancing",
+  "protecting",
+  "anti-inflammatory",
+  "sun-protection",
+  "anti-pollution",
+  "healing",
+  "nourishing",
+  "detoxifying",
+] as const;
+
+export type BenefitCanonical = (typeof BENEFIT_CANONICALS)[number];
+
+const BENEFIT_ALIAS_MAP: Record<BenefitCanonical, readonly string[]> = {
+  hydrating: [
+    "hydrating",
+    "hydration",
+    "moisturizing",
+    "moisturising",
+    "moisture-boosting",
+    "moisture boost",
+    "moisture",
+    "quenching",
+    "dewy",
+    "water-boosting",
+  ],
+  "anti-inflammatory": [
+    "anti-inflammatory",
+    "anti inflammation",
+    "calming inflammation",
+    "reduce redness",
+    "soothing inflammation",
+    "irritation relief",
+  ],
+  "sun-protection": [
+    "sun protection",
+    "uv protection",
+    "spf",
+    "sunscreen",
+    "uv shield",
+    "photo-protection",
+    "sunblock",
+    "sun-safe",
+  ],
+  brightening: [
+    "brightening",
+    "radiance",
+    "radiant",
+    "glow",
+    "glowing",
+    "luminosity",
+    "luminous",
+    "brightness",
+    "radiance-boosting",
+    "illuminating",
+    "lightening",
+    "skin clarity",
+  ],
+  soothing: [
+    "soothing",
+    "calming",
+    "comforting",
+    "anti-redness",
+    "anti redness",
+    "relieving",
+    "relief",
+    "sensitive skin",
+    "comforting sensitive skin",
+  ],
+  "barrier-support": [
+    "barrier-support",
+    "barrier support",
+    "barrier-repair",
+    "barrier repair",
+    "barrier-strengthening",
+    "barrier strengthening",
+    "skin barrier",
+    "barrier",
+  ],
+
+  // not found
+  repairing: [
+    "repairing",
+    "repair",
+    "restoring",
+    "restorative",
+    "healing",
+    "recovery",
+    "regenerating",
+  ],
+  "anti-aging": [
+    "anti-aging",
+    "anti ageing",
+    "antiageing",
+    "age-defying",
+    "age defying",
+    "anti-wrinkle",
+    "wrinkle care",
+    "youthful",
+    "aging",
+  ],
+  firming: [
+    "firming",
+    "firm",
+    "lifting",
+    "lift",
+    "tightening",
+    "tighten",
+    "toning",
+    "tone",
+  ],
+  plumping: [
+    "plumping",
+    "plump",
+    "volumizing",
+    "volumising",
+    "bouncy",
+    "bounce",
+    "cushioning",
+  ],
+
+  "acne-fighting": [
+    "acne-fighting",
+    "acne fighting",
+    "blemish-fighting",
+    "blemish fighting",
+    "blemish-control",
+    "blemish control",
+    "breakout control",
+    "clarifying",
+    "clear skin",
+  ],
+
+  "oil-control": [
+    "oil-control",
+    "oil control",
+    "oil-balancing",
+    "oil balancing",
+    "shine-control",
+    "shine control",
+    "mattifying",
+    "matte",
+    "sebum-control",
+    "sebum control",
+  ],
+
+  "pore-refining": [
+    "pore-refining",
+    "pore refining",
+    "pore minimizing",
+    "pore minimising",
+    "refine pores",
+    "tighten pores",
+  ],
+
+  exfoliating: [
+    "exfoliating",
+    "exfoliation",
+    "resurfacing",
+    "smoothing",
+    "smooth",
+    "renewing",
+    "skin renewal",
+    "polishing",
+  ],
+
+  "tone-evening": [
+    "tone-evening",
+    "tone evening",
+    "even tone",
+    "tone-correcting",
+    "tone correcting",
+    "tone-balancing",
+    "tone balancing",
+    "discoloration",
+    "dark spot",
+    "spot correcting",
+  ],
+  balancing: [
+    "balancing",
+    "balance",
+    "rebalancing",
+    "ph balancing",
+    "ph-balanced",
+    "ph balanced",
+  ],
+  protecting: [
+    "protecting",
+    "protection",
+    "defending",
+    "shielding",
+    "antioxidant",
+    "environmental protection",
+  ],
+  "anti-pollution": [
+    "anti-pollution",
+    "pollution defense",
+    "urban protection",
+    "environmental shield",
+    "blue light protection",
+  ],
+  healing: [
+    "healing",
+    "restoring skin",
+    "regenerative",
+    "post-sun repair",
+    "after-sun",
+    "wound-healing",
+  ],
+  nourishing: [
+    "nourishing",
+    "feeding",
+    "conditioning",
+    "rich hydration",
+    "revitalizing",
+  ],
+  detoxifying: [
+    "detoxifying",
+    "detox",
+    "purifying",
+    "clarifying",
+    "deep cleansing",
+    "pollution removal",
+  ],
+};
+
+export const resolveBenefit = (input: string): BenefitCanonical | null =>
+  lookupByAlias(BENEFIT_CANONICALS, BENEFIT_ALIAS_MAP, input);
+
+export const mapDescriptorsToBenefits = (
+  descriptors: readonly unknown[] | null | undefined
+): {
+  benefits: BenefitCanonical[];
+  residual: string[];
+} => {
+  if (!Array.isArray(descriptors)) {
+    return { benefits: [], residual: [] };
+  }
+
+  const benefitSet = new Set<BenefitCanonical>();
+  const residual: string[] = [];
+
+  descriptors.forEach((entry) => {
+    if (typeof entry !== "string") return;
+    const trimmed = entry.trim();
+    if (!trimmed.length) return;
+    const resolved = resolveBenefit(trimmed);
+    if (resolved) {
+      benefitSet.add(resolved);
+    } else {
+      residual.push(trimmed);
+    }
+  });
+
+  return { benefits: Array.from(benefitSet), residual };
+};
+
 const INGREDIENT_GROUPS: Record<string, string[]> = {
   aha: [
     "glycolic acid",
@@ -233,6 +492,53 @@ const INGREDIENT_GROUPS: Record<string, string[]> = {
   niacinamide: ["niacinamide", "vitamin b3"],
   peptides: ["palmitoyl pentapeptide", "peptide", "copper peptide"],
   ceramides: ["ceramide", "ceramide np", "ceramide ap", "ceramide eop"],
+  hydrating: [
+    "hyaluronic acid",
+    "sodium hyaluronate",
+    "glycerin",
+    "glycerine",
+    "panthenol",
+    "vitamin b5",
+    "provitamin b5",
+    "polyglutamic acid",
+    "beta glucan",
+    "aloe vera",
+    "trehalose",
+  ],
+  hydration: [
+    "hyaluronic acid",
+    "sodium hyaluronate",
+    "glycerin",
+    "panthenol",
+    "vitamin b5",
+    "polyglutamic acid",
+    "beta glucan",
+    "aloe vera",
+  ],
+  moisturizing: [
+    "hyaluronic acid",
+    "sodium hyaluronate",
+    "glycerin",
+    "panthenol",
+    "vitamin b5",
+    "ceramide",
+    "ceramide np",
+    "ceramide ap",
+    "ceramide eop",
+    "squalane",
+  ],
+  moisturising: [
+    "hyaluronic acid",
+    "sodium hyaluronate",
+    "glycerin",
+    "panthenol",
+    "vitamin b5",
+    "ceramide",
+    "ceramide np",
+    "ceramide ap",
+    "ceramide eop",
+    "squalane",
+  ],
 };
 
 export const resolveIngredientGroup = (input: string): string[] => {

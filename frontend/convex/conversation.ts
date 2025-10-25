@@ -128,7 +128,6 @@ async function generateSummaryText(
     const resp = await client.responses.create({
       model: SUMMARISER_MODEL,
       store: false,
-      include: ["reasoning.encrypted_content"],
       ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
       input: [
         { role: "system", type: "message", content: systemPrompt },

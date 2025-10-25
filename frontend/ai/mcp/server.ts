@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { registerTools } from "./tools.js";
+import { registerTools } from "./tools";
 
 function applyEnvFile(fileName: string) {
   const filePath = path.join(process.cwd(), fileName);
