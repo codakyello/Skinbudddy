@@ -195,14 +195,13 @@ type SuggestedActionOptions = {
   context?: string;
 };
 
-const toKeywords = (input: string): Set<string> => {
-  const matches = input.toLowerCase().match(/\b[a-z]{4,}\b/g);
-  return new Set(matches ?? []);
-};
+// const toKeywords = (input: string): Set<string> => {
+//   const matches = input.toLowerCase().match(/\b[a-z]{4,}\b/g);
+//   return new Set(matches ?? []);
+// };
 
 export const extractSuggestedActions = (
-  content: string,
-  options?: SuggestedActionOptions
+  content: string
 ): { body: string; suggestions: string[] } => {
   if (!content) return { body: "", suggestions: [] };
   const lines = content.split(/\r?\n/);
@@ -225,24 +224,11 @@ export const extractSuggestedActions = (
   };
 
   const suggestionLines = lines.slice(headerIndex + 1);
-  const contextKeywords = toKeywords(
-    [body, options?.context ?? ""].filter(Boolean).join(" ")
-  );
   const suggestions = suggestionLines
     .map(sanitizeSuggestion)
     .filter(
       (line) => line.length > 0 && normalizeHeader(line) !== "suggested actions"
     )
-    .filter((line) => {
-      if (!contextKeywords.size) return true;
-      const suggestionKeywords = toKeywords(line);
-      for (const keyword of suggestionKeywords) {
-        if (contextKeywords.has(keyword)) {
-          return true;
-        }
-      }
-      return false;
-    })
     .slice(0, 3);
 
   return {
@@ -251,7 +237,7 @@ export const extractSuggestedActions = (
   };
 };
 
-export const MAX_INPUT_LENGTH = 600;
+export const MAX_INPUT_LENGTH = 650;
 export const SCROLL_THRESHOLD = 80;
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>

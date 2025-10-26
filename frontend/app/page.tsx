@@ -15,8 +15,6 @@ import { useUser } from "@/app/_contexts/CreateConvexUser";
 import ProductCard from "@/app/_components/ProductCard";
 import type {
   Product,
-  Size,
-  Category,
   Routine,
   RoutineStep,
   MessageSummary,
@@ -86,49 +84,84 @@ const SUGGESTIONS = [
   "Can stress or diet make acne worse?",
 ];
 
-const SKIN_QUIZ = [
+type QuizQuestion = {
+  header: string;
+  question: string;
+  options: string[];
+  selected?: string;
+  index: number;
+};
+
+type SkinQuizState = {
+  role: "quiz";
+  currentIndex: number;
+  questions: QuizQuestion[];
+};
+
+const QUIZ_RESULTS_SENTINEL = "__QUIZ_RESULTS__";
+
+const SKIN_QUIZ_TEMPLATES: Array<Omit<QuizQuestion, "selected">> = [
   {
-    role: "quiz",
     index: 0,
-    questions: [
-      {
-        header:
-          "Great! To find out your skin type, I'll ask you a few quick questions. Let's begin with some basic info about you.",
-        question: "What is your age range?",
-        options: ["18-24", "25-34", "35-44", "45-54", "55+"],
-      },
-      {
-        header:
-          "Great! Let's find out your skin type with a few simple questions.",
-        question:
-          "After washing your face with water, how does your skin usually feel?",
-        options: [
-          "Tight and uncomfortable, like it needs immediate moisture",
-          "Comfortable, neither tight nor oily",
-          "Noticeably oily or shiny within an hour",
-          "Tight in some areas like cheeks but oily in others",
-        ],
-      },
-      {
-        header:
-          "Great! To find out your skin type, I'll ask you a few quick questions. Let's begin with some basic info about you.",
-        question: "What is your age range?",
-        options: ["18-24", "25-34", "35-44", "45-54", "55+"],
-      },
-      {
-        header:
-          "To better understand your skin type, let's assess how sensitive your skin is.",
-        question:
-          "When you try new skincare products, how does your skin usually react?",
-        options: [
-          "It rarely has any negative reaction",
-          "It sometimes gets slightly red or irritated",
-          "It often becomes red, itchy or breaks out",
-        ],
-      },
+    header:
+      "Let's get started! These quick questions will help me understand your skin type and top concerns.",
+    question:
+      "After washing your face with only water, how does your skin usually feel?",
+    options: [
+      "Tight and uncomfortable — needs moisture right away",
+      "Comfortable, neither dry nor oily",
+      "Shiny or oily within an hour",
+      "Tight in some areas (like cheeks) but oily in others",
+    ],
+  },
+  {
+    index: 1,
+    header:
+      "Got it. Now let's see how your skin reacts to different conditions.",
+    question:
+      "When you try new skincare or when the weather changes, what happens most often?",
+    options: [
+      "No major change — my skin stays calm",
+      "Slight redness or irritation sometimes",
+      "Gets red, itchy, or breaks out easily",
+    ],
+  },
+  {
+    index: 2,
+    header: "Let's talk about what you'd like to improve about your skin.",
+    question:
+      "Which of these describe your biggest skin concerns? (You may pick a few answers)",
+    options: [
+      "Breakouts or blackheads",
+      "Dark spots or uneven tone",
+      "Dryness or tight feeling",
+      "Fine lines, wrinkles, or loss of firmness",
+      "Redness, irritation, or sensitivity",
+      "Visible pores or rough texture",
+    ],
+  },
+  {
+    index: 3,
+    header: "Almost done!",
+    question: "How does your skin feel by the middle of the day?",
+    options: [
+      "Still dry or flaky",
+      "Balanced and normal",
+      "Oily or shiny all over",
+      "Oily only in the T-zone (forehead, nose, chin)",
     ],
   },
 ];
+
+const createInitialQuizState = (): SkinQuizState => ({
+  role: "quiz",
+  currentIndex: 0,
+  questions: SKIN_QUIZ_TEMPLATES.map((question) => ({
+    ...question,
+    options: [...question.options],
+    selected: undefined,
+  })),
+});
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -159,7 +192,9 @@ export default function ChatPage() {
   const [product, setProductToPreview] = useState<Product | null>();
   const [pendingSkinTypeQuiz, setPendingSkinTypeQuiz] = useState(false);
   // const { products } = useProducts({ filters: {} });
-  const [skinQuiz, setSkinQuiz] = useState(SKIN_QUIZ);
+  const [skinQuiz, setSkinQuiz] = useState<SkinQuizState>(() =>
+    createInitialQuizState()
+  );
 
   const updateScrollButtonVisibility = useCallback(() => {
     const container = conversationRef.current;
@@ -173,9 +208,6 @@ export default function ChatPage() {
     setShowScrollDownButton(distanceFromBottom > SCROLL_THRESHOLD);
     return distanceFromBottom;
   }, []);
-
-  console.log(messages, "This are messages");
-
   useEffect(() => {
     adjustTextareaHeight();
   }, [inputValue, adjustTextareaHeight]);
@@ -214,41 +246,39 @@ export default function ChatPage() {
   const markdownComponents: Components = useMemo(
     () => ({
       h1: ({ children }) => (
-        <h1 className="text-[1.8rem] font-semibold text-[#311d60]">
-          {children}
-        </h1>
+        <h1 className="text-[2rem] font-medium text-[#1B1F26]">{children}</h1>
       ),
       h2: ({ children }) => (
-        <h2 className="text-[1.6rem] font-semibold text-[#311d60]">
+        <h2 className="text-[1.6rem] tracking-[-0.64px] font-semibold text-[#1B1F26]">
           {children}
         </h2>
       ),
       h3: ({ children }) => (
-        <h3 className="text-[1.5rem] font-semibold text-[#311d60] leading-[1.25px]">
+        <h3 className="text-[1.5rem] font-semibold text-[#1B1F26] leading-[1.25px]">
           {children}
         </h3>
       ),
       p: ({ children }) => (
-        <p className="text-[1.4rem] leading-relaxed text-[#453174]">
+        <p className="text-[1.4rem] leading-relaxed text-[#1B1F26]">
           {children}
         </p>
       ),
       ul: ({ children }) => (
-        <ul className="ml-8 list-disc space-y-4 text-[1.4rem] text-[#453174]">
+        <ul className="ml-8 list-disc space-y-4 text-[1.4rem] text-[#1B1F26]">
           {children}
         </ul>
       ),
       ol: ({ children }) => (
-        <ol className="ml-8 list-decimal space-y-4 text-[1.4rem] text-[#453174]">
+        <ol className="ml-8 list-decimal space-y-4 text-[1.4rem] text-[#1B1F26]">
           {children}
         </ol>
       ),
       li: ({ children }) => <li>{children}</li>,
       strong: ({ children }) => (
-        <strong className="font-semibold text-[#2b1958]">{children}</strong>
+        <strong className="font-semibold text-[#1B1F26]]">{children}</strong>
       ),
       em: ({ children }) => (
-        <em className="font-medium text-[#311d60]">{children}</em>
+        <em className="font-medium text-[#1B1F26]">{children}</em>
       ),
       a: ({ children, href }) => (
         <a
@@ -278,8 +308,8 @@ export default function ChatPage() {
     );
   }, [inputValue, isSending]);
 
-  const sendMessage = async (rawMessage: string) => {
-    const trimmed = rawMessage.trim();
+  const sendMessage = async (rawMessage?: string, { silent = false } = {}) => {
+    const trimmed = (rawMessage ?? inputValue).trim();
     if (!trimmed || trimmed.length > MAX_INPUT_LENGTH) {
       setError(
         trimmed.length > MAX_INPUT_LENGTH
@@ -292,13 +322,18 @@ export default function ChatPage() {
     setError(null);
     setPendingSkinTypeQuiz(false);
     setIsSending(true);
-    setInputValue("");
+
+    if (rawMessage === undefined) {
+      setInputValue("");
+    }
 
     const optimisticId = `user-${Date.now()}`;
-    setMessages((prev) => [
-      ...prev,
-      { id: optimisticId, role: "user", content: trimmed },
-    ]);
+    if (!silent) {
+      setMessages((prev) => [
+        ...prev,
+        { id: optimisticId, role: "user", content: trimmed },
+      ]);
+    }
 
     let assistantId: string | null = null;
 
@@ -417,7 +452,23 @@ export default function ChatPage() {
         }
 
         if (payload.type === "skin_survey.start") {
+          const freshQuiz = createInitialQuizState();
+          setSkinQuiz(freshQuiz);
           setPendingSkinTypeQuiz(true);
+
+          const firstQuestion = freshQuiz.questions.at(0);
+          if (firstQuestion) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                ...firstQuestion,
+                id: `quiz-${Date.now()}`,
+                role: freshQuiz.role,
+              },
+            ]);
+          }
+          // push quiz message to chat
+
           if (typeof payload.sessionId === "string") {
             finalSessionId = payload.sessionId;
           }
@@ -515,7 +566,7 @@ export default function ChatPage() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    await sendMessage(inputValue);
+    await sendMessage();
   };
 
   const handleSuggestion = async (suggestion: string) => {
@@ -548,7 +599,7 @@ export default function ChatPage() {
             className="w-full relative max-w-[67rem] flex-1 overflow-y-auto min-h-0 scroll-smooth no-scrollbar"
             // style={{ maxHeight: "calc(100vh - 220px)" }}
           >
-            {pendingSkinTypeQuiz && (
+            {/* {pendingSkinTypeQuiz && (
               <Box className="mb-6 rounded-3xl border border-[#d6c7ff] bg-[#f4edff] p-5 text-left text-[#2f1f53] shadow-sm">
                 <h2 className="text-[1.6rem] font-semibold flex items-center gap-2">
                   <span role="img" aria-label="idea">
@@ -578,7 +629,7 @@ export default function ChatPage() {
                   </button>
                 </div>
               </Box>
-            )}
+            )} */}
 
             {!hasMessages && (
               <Box className="absolute top-[50%] w-full translate-y-[-50%]">
@@ -616,14 +667,13 @@ export default function ChatPage() {
             <section className="mt-8 space-y-10 pb-36">
               {messages.map((message, index) => (
                 <Box
-                  id={`message-${isChatMessage(message) ? message.id : `quiz-${message.index}`}`}
-                  key={
-                    isChatMessage(message)
-                      ? message.id
-                      : `quiz-${message.index}`
-                  }
-                  className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
+                  key={message.id}
+                  className={` ${
+                    message.role === "user"
+                      ? "flex justify-end"
+                      : message.role === "assistant"
+                        ? " flex justify-start"
+                        : ""
                   }`}
                 >
                   {isChatMessage(message) && message.role === "assistant" ? (
@@ -717,8 +767,7 @@ export default function ChatPage() {
                           return undefined;
                         })();
                         const { body, suggestions } = extractSuggestedActions(
-                          isChatMessage(message) ? message.content : "",
-                          { context: previousUserMessage }
+                          isChatMessage(message) ? message.content : ""
                         );
                         const markdownSource = body;
                         return (
@@ -767,7 +816,6 @@ export default function ChatPage() {
                     </Box>
                   ) : isChatMessage(message) && message.role === "user" ? (
                     (() => {
-                      console.log("this is what we rendered");
                       const msgAtIndex = messages.at(index);
                       const isSending =
                         index + 1 === messages.length &&
@@ -785,24 +833,63 @@ export default function ChatPage() {
                     })()
                   ) : isQuizMessage(message) ? (
                     <Box>
-                      <h2 className="text-[1.6rem] font-semibold flex items-center gap-2">
-                        {message.questions[message.index].header}
-                      </h2>
-                      <p className="mt-2 text-[1.4rem] leading-relaxed">
-                        {message.questions[message.index].question}
-                      </p>
-                      <div className="mt-4 flex gap-3">
-                        {message.questions[message.index].options.map(
-                          (option) => (
+                      <Box className="-tracking-[0.0175rem]">
+                        <h4 className="text-[1.4rem] font-semibold leading-[1.8rem] ">
+                          {/* {message.questions[message.index].header} */}
+                          {message.header}
+                        </h4>
+                        <p className="text-[1.4rem] leading-relaxed">
+                          {message.question}
+                        </p>
+                      </Box>
+
+                      <div className="mt-4 flex flex-col gap-3">
+                        {message.options.map((option) => {
+                          const isSelected = message.selected === option;
+                          const isLocked =
+                            message.index < skinQuiz.currentIndex ||
+                            !pendingSkinTypeQuiz;
+                          const baseClasses =
+                            "rounded-[8px] text-start px-[1.6rem] py-[2rem] text-[1.4rem]";
+                          const activeClasses = isSelected
+                            ? "bg-[#2159D9] text-white"
+                            : "bg-[#EFF3FF] text-black";
+                          const hoverClasses =
+                            !isLocked && !isSelected
+                              ? "hover:bg-[#4D78E1] hover:text-white"
+                              : "";
+                          return (
                             <button
                               key={option}
-                              className="rounded-full bg-[#4b2fbf] px-4 py-2 text-[1.4rem] font-semibold text-white shadow-sm hover:bg-[#3f27a7] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#cbb6ff]"
-                              onClick={() => console.log(option)}
+                              type="button"
+                              disabled={isLocked}
+                              className={`${baseClasses} ${activeClasses} ${hoverClasses} ${
+                                isLocked ? "cursor-not-allowed opacity-70" : ""
+                              }`}
+                              onClick={() => {
+                                if (isLocked) return;
+                                setSkinQuiz((quiz) => ({
+                                  ...quiz,
+                                  questions: quiz.questions.map((q) =>
+                                    q.index === message.index
+                                      ? { ...q, selected: option }
+                                      : q
+                                  ),
+                                }));
+
+                                setMessages((prev) =>
+                                  prev.map((msg) =>
+                                    isQuizMessage(msg) && msg.id === message.id
+                                      ? { ...msg, selected: option }
+                                      : msg
+                                  )
+                                );
+                              }}
                             >
                               {option}
                             </button>
-                          )
-                        )}
+                          );
+                        })}
                       </div>
                     </Box>
                   ) : (
@@ -830,32 +917,106 @@ export default function ChatPage() {
               <Box className="relative gap-4">
                 <Box className="flex-1 ">
                   <Box className="relative">
-                    <textarea
-                      rows={1}
-                      placeholder="Ask anything"
-                      value={inputValue}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        if (value.length <= MAX_INPUT_LENGTH) {
-                          setInputValue(value);
-                          if (error) setError(null);
-                          adjustTextareaHeight();
+                    {pendingSkinTypeQuiz ? (
+                      <button
+                        className="w-[58.33%] min-h-[40px] rounded-[20px] font-medium text-[14px] py-[10px] px-[24px] hover:bg-[#4876DE] bg-[#2958D9] disabled:bg-[#a5baef] text-white"
+                        disabled={
+                          !skinQuiz.questions[skinQuiz.currentIndex]?.selected
                         }
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          if (canSubmit) {
-                            event.preventDefault();
-                            void sendMessage(inputValue);
+                        onClick={async () => {
+                          const currentQuestion =
+                            skinQuiz.questions[skinQuiz.currentIndex];
+                          const answer = currentQuestion?.selected;
+                          if (!currentQuestion || !answer) return;
+
+                          setMessages((prev) => [
+                            ...prev,
+                            {
+                              role: "user",
+                              id: `quiz-answer-${currentQuestion.index}-${Date.now()}`,
+                              content: answer,
+                            },
+                          ]);
+
+                          if (
+                            skinQuiz.currentIndex <
+                            skinQuiz.questions.length - 1
+                          ) {
+                            const nextIndex = skinQuiz.currentIndex + 1;
+                            const nextQuestion = skinQuiz.questions[nextIndex];
+
+                            setSkinQuiz((prev) => ({
+                              ...prev,
+                              currentIndex: nextIndex,
+                            }));
+
+                            if (nextQuestion) {
+                              setMessages((prev) => [
+                                ...prev,
+                                {
+                                  ...nextQuestion,
+                                  selected: nextQuestion.selected ?? undefined,
+                                  id: `quiz-${Date.now()}`,
+                                  role: skinQuiz.role,
+                                },
+                              ]);
+                            }
+                          } else {
+                            const answers = skinQuiz.questions
+                              .filter((question) => question.selected)
+                              .map((question) => ({
+                                question: question.question,
+                                answer: question.selected as string,
+                              }));
+
+                            if (!answers.length) {
+                              setPendingSkinTypeQuiz(false);
+                              setSkinQuiz(createInitialQuizState());
+                              return;
+                            }
+
+                            const promptPayload = JSON.stringify({
+                              answers,
+                            });
+
+                            const prompt = `${QUIZ_RESULTS_SENTINEL}\n${promptPayload}`;
+
+                            setPendingSkinTypeQuiz(false);
+                            await sendMessage(prompt, { silent: true });
+                            setSkinQuiz(createInitialQuizState());
                           }
-                        }
-                      }}
-                      ref={textareaRef}
-                      className="resize-none rounded-[25px] py-[10px] pr-[40px] pl-[12px] bg-[#f2f2f2] leading-relaxed text-[#36255a] focus-visible:border-none"
-                      maxLength={MAX_INPUT_LENGTH}
-                      aria-label="Message input"
-                      style={{ minHeight: "48px", maxHeight: "240px" }}
-                    />
+                        }}
+                      >
+                        Send
+                      </button>
+                    ) : (
+                      <textarea
+                        rows={1}
+                        placeholder="Ask anything"
+                        value={inputValue}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          if (value.length <= MAX_INPUT_LENGTH) {
+                            setInputValue(value);
+                            if (error) setError(null);
+                            adjustTextareaHeight();
+                          }
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && !event.shiftKey) {
+                            if (canSubmit) {
+                              event.preventDefault();
+                              void sendMessage();
+                            }
+                          }
+                        }}
+                        ref={textareaRef}
+                        className="resize-none rounded-[25px] py-[10px] pr-[40px] pl-[12px] bg-[#f2f2f2] leading-relaxed text-[#36255a] focus-visible:border-none"
+                        maxLength={MAX_INPUT_LENGTH}
+                        aria-label="Message input"
+                        style={{ minHeight: "48px", maxHeight: "240px" }}
+                      />
+                    )}
 
                     <button
                       type="submit"
@@ -869,7 +1030,8 @@ export default function ChatPage() {
 
                   <Box className="mt-2 flex items-center justify-between text-[1.2rem] text-[#888]">
                     <span>
-                      {inputValue.trim().length} / {MAX_INPUT_LENGTH}
+                      {!pendingSkinTypeQuiz &&
+                        `${inputValue.trim().length} / ${MAX_INPUT_LENGTH}`}
                     </span>
                     {error && <span className="text-[#ff3e73]">{error}</span>}
                   </Box>

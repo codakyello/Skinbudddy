@@ -180,12 +180,11 @@ export type ChatMessage = {
 export type QuizMessage = {
   id: string;
   role: string;
+  header: string;
+  question: string;
+  options: string[];
+  selected?: string;
   index: number;
-  questions: {
-    header: string;
-    question: string;
-    options: string[];
-  }[];
 };
 
 export type Message = ChatMessage | QuizMessage;

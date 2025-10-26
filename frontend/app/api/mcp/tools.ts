@@ -65,11 +65,11 @@ const fail = (message: string, extra?: unknown) => ({
   ],
 });
 
-const bulkItemSchema = z.object({
-  productId: z.string().describe("Product ID"),
-  quantity: z.number().min(1).describe("Quantity (>=1)"),
-  sizeId: z.string().describe("Size/variant ID"),
-});
+// const bulkItemSchema = z.object({
+//   productId: z.string().describe("Product ID"),
+//   quantity: z.number().min(1).describe("Quantity (>=1)"),
+//   sizeId: z.string().describe("Size/variant ID"),
+// });
 
 const productFiltersSchema = z
   .object({
@@ -109,59 +109,59 @@ const brandProductsSchema = z
     message: "Provide either brandSlug or brandId.",
   });
 
-const searchProducts = async ({
-  query,
-  brandSlug,
-  limit,
-}: {
-  query: string;
-  brandSlug?: string;
-  limit?: number;
-}): Promise<{
-  success: boolean;
-  results: SearchProduct[];
-  message?: string;
-}> => {
-  try {
-    const api = await getApi();
-    const response = await fetchQuery(api.products.searchProducts, {
-      query,
-      brandSlug,
-      limit,
-    });
+// const searchProducts = async ({
+//   query,
+//   brandSlug,
+//   limit,
+// }: {
+//   query: string;
+//   brandSlug?: string;
+//   limit?: number;
+// }): Promise<{
+//   success: boolean;
+//   results: SearchProduct[];
+//   message?: string;
+// }> => {
+//   try {
+//     const api = await getApi();
+//     const response = await fetchQuery(api.products.searchProducts, {
+//       query,
+//       brandSlug,
+//       limit,
+//     });
 
-    if (!response?.success) {
-      return {
-        success: false,
-        results: [],
-        message:
-          (response as { message?: string })?.message ??
-          "Product search returned no results.",
-      };
-    }
+//     if (!response?.success) {
+//       return {
+//         success: false,
+//         results: [],
+//         message:
+//           (response as { message?: string })?.message ??
+//           "Product search returned no results.",
+//       };
+//     }
 
-    const resultList = Array.isArray(response.results)
-      ? (response.results as SearchProduct[])
-      : [];
+//     const resultList = Array.isArray(response.results)
+//       ? (response.results as SearchProduct[])
+//       : [];
 
-    return {
-      success: true,
-      results: resultList,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      results: [],
-      message:
-        (error as Error)?.message ?? "Unexpected error during product search",
-    };
-  }
-};
+//     return {
+//       success: true,
+//       results: resultList,
+//     };
+//   } catch (error) {
+//     return {
+//       success: false,
+//       results: [],
+//       message:
+//         (error as Error)?.message ?? "Unexpected error during product search",
+//     };
+//   }
+// };
 
 export function registerTools(server: McpServer) {
   server.tool(
     "searchProductsByQuery",
-    "List products using free‑text queries for category, brand, or name. The tool resolves fuzzy text (e.g., 'moisturiser', 'face crem', 'cerave') to exact DB slugs, then lists products. Examples: { \"categoryQuery\": \"serum\", \"benefits\": [\"hydrating\"] } · { \"ingredientQueries\": [\"niacinamide\"] }.",
+    'List products using free‑text queries for category, brand, or name. The tool resolves fuzzy text (e.g., \'moisturiser\', \'face crem\', \'cerave\') to exact DB slugs, then lists products. Examples: { "categoryQuery": "serum", "benefits": ["hydrating"] } · { "ingredientQueries": ["niacinamide"] }.',
     {
       nameQuery: z
         .string()

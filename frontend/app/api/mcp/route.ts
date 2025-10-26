@@ -91,89 +91,89 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       headersObject[key.toLowerCase()] = value;
     });
 
-  const responseState = {
-    status: 200,
-    headers: new Headers(),
-    bodyChunks: [] as string[],
-  };
+    const responseState = {
+      status: 200,
+      headers: new Headers(),
+      bodyChunks: [] as string[],
+    };
 
-  const nodeReq = {
-    method: req.method,
-    headers: headersObject,
-    url: req.url,
-  } as any;
+    const nodeReq = {
+      method: req.method,
+      headers: headersObject,
+      url: req.url,
+    } as any;
 
-  const accept = headersObject["accept"] ?? "";
-  const pieces = accept
-    .split(",")
-    .map((part) => part.trim().toLowerCase())
-    .filter(Boolean);
-  if (!pieces.includes("application/json")) {
-    pieces.push("application/json");
-  }
-  if (!pieces.includes("text/event-stream")) {
-    pieces.push("text/event-stream");
-  }
-  headersObject["accept"] = pieces.join(", ");
+    const accept = headersObject["accept"] ?? "";
+    const pieces = accept
+      .split(",")
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean);
+    if (!pieces.includes("application/json")) {
+      pieces.push("application/json");
+    }
+    if (!pieces.includes("text/event-stream")) {
+      pieces.push("text/event-stream");
+    }
+    headersObject["accept"] = pieces.join(", ");
 
-  const emitter = new EventEmitter();
-  emitter.on("error", () => {
-    /* swallow transport error events */
-  });
+    const emitter = new EventEmitter();
+    emitter.on("error", () => {
+      /* swallow transport error events */
+    });
 
-  const nodeRes = {
-    statusCode: responseState.status,
-    setHeader(name: string, value: string) {
-      responseState.headers.set(name, value);
-    },
-    writeHead(statusCode: number, headers?: Record<string, string>) {
-      responseState.status = statusCode;
-      if (headers) {
-        Object.entries(headers).forEach(([key, value]) => {
-          responseState.headers.set(key, value);
-        });
-      }
-      return nodeRes;
-    },
-    write(chunk: unknown) {
-      if (chunk === undefined || chunk === null) return true;
-      if (typeof chunk === "string") {
-        responseState.bodyChunks.push(chunk);
+    const nodeRes = {
+      statusCode: responseState.status,
+      setHeader(name: string, value: string) {
+        responseState.headers.set(name, value);
+      },
+      writeHead(statusCode: number, headers?: Record<string, string>) {
+        responseState.status = statusCode;
+        if (headers) {
+          Object.entries(headers).forEach(([key, value]) => {
+            responseState.headers.set(key, value);
+          });
+        }
+        return nodeRes;
+      },
+      write(chunk: unknown) {
+        if (chunk === undefined || chunk === null) return true;
+        if (typeof chunk === "string") {
+          responseState.bodyChunks.push(chunk);
+          return true;
+        }
+        if (chunk instanceof Uint8Array) {
+          responseState.bodyChunks.push(Buffer.from(chunk).toString("utf8"));
+          return true;
+        }
+        responseState.bodyChunks.push(JSON.stringify(chunk));
         return true;
-      }
-      if (chunk instanceof Uint8Array) {
-        responseState.bodyChunks.push(Buffer.from(chunk).toString("utf8"));
-        return true;
-      }
-      responseState.bodyChunks.push(JSON.stringify(chunk));
-      return true;
-    },
-    end(chunk?: unknown) {
-      if (chunk !== undefined && chunk !== null) {
-        nodeRes.write(chunk);
-      }
-      emitter.emit("close");
-      return nodeRes;
-    },
-    on(event: string, handler: (...args: any[]) => void) {
-      emitter.on(event, handler);
-    },
-  } as any;
+      },
+      end(chunk?: unknown) {
+        if (chunk !== undefined && chunk !== null) {
+          nodeRes.write(chunk);
+        }
+        emitter.emit("close");
+        return nodeRes;
+      },
+      on(event: string, handler: (...args: any[]) => void) {
+        emitter.on(event, handler);
+      },
+    } as any;
 
-  await transport.handleRequest(nodeReq, nodeRes, body);
+    await transport.handleRequest(nodeReq, nodeRes, body);
 
-  await transport.close();
-  await server.close();
+    await transport.close();
+    await server.close();
 
-  const headers = responseState.headers;
-  if (!headers.has("content-type")) {
-    headers.set("content-type", "application/json");
-  }
+    const headers = responseState.headers;
+    if (!headers.has("content-type")) {
+      headers.set("content-type", "application/json");
+    }
 
-  const responseBody =
-    responseState.bodyChunks.length > 0
-      ? responseState.bodyChunks.join("")
-      : "{}";
+    const responseBody =
+      responseState.bodyChunks.length > 0
+        ? responseState.bodyChunks.join("")
+        : "{}";
     return new NextResponse(responseBody, {
       status: responseState.status,
       headers,

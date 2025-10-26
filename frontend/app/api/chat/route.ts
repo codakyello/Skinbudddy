@@ -448,12 +448,62 @@ export async function POST(req: NextRequest) {
             sessionId = created.sessionId;
           }
 
+          const QUIZ_SENTINEL = "__QUIZ_RESULTS__";
+          const isQuizResults = message.startsWith(QUIZ_SENTINEL);
+          const sanitizedMessage = isQuizResults
+            ? message.slice(QUIZ_SENTINEL.length).trimStart()
+            : message;
+
+          let quizInstruction: string | null = null;
+
+          if (isQuizResults) {
+            try {
+              const parsed = JSON.parse(sanitizedMessage || "{}") as {
+                answers?: Array<{ question?: string; answer?: string }>;
+              };
+
+              const answers = Array.isArray(parsed.answers)
+                ? parsed.answers.filter(
+                    (entry) =>
+                      typeof entry?.question === "string" &&
+                      typeof entry?.answer === "string" &&
+                      entry.question.trim().length &&
+                      entry.answer.trim().length
+                  )
+                : [];
+
+              if (answers.length) {
+                const formattedAnswers = answers.map((entry, index) => {
+                  const question = (entry.question ?? "").trim();
+                  const answer = (entry.answer ?? "").trim();
+                  return `**Q${index + 1}:** ${question}\n**A:** ${answer}`;
+                });
+
+                quizInstruction = [
+                  "Skin-type survey completed. Use these answers only to infer the user's most likely skin type and primary skin concerns. Do not restart the survey or suggest routines or next steps unless explicitly requested.",
+                  "Craft a response using the following Markdown template. Replace the bracketed guidance with your conclusions and keep the structure:",
+                  "# 🧪 Skin Analysis Summary\n\n## Skin Type\nYour skin is classified as **{skin type in plain language with a brief explanation of what that means for the user}**.\n\n## Main Concern\nYou are primarily concerned with **{main concern in plain language with one short sentence elaborating on the implication}**.\n\n💡 You have a {skin type phrase} and your main concern is {main concern phrase}.\n\nWould you like me to provide personalized skincare recommendations based on this information?",
+                  formattedAnswers.length
+                    ? ["### Survey Answers", ...formattedAnswers].join("\n\n")
+                    : "",
+                ].join("\n\n");
+              }
+            } catch (error) {
+              console.warn("Failed to parse quiz results payload", error);
+            }
+          }
+
+          const appendRole = isQuizResults ? "system" : "user";
+          const contentToStore = isQuizResults
+            ? (quizInstruction ?? sanitizedMessage)
+            : sanitizedMessage + ` My userId: ${userId}`;
+
           const appendUser = await fetchMutation(
             api.conversation.appendMessage,
             {
               sessionId,
-              role: "user",
-              content: message + ` My userId: ${userId}`,
+              role: appendRole,
+              content: contentToStore,
             }
           );
 
