@@ -191,9 +191,9 @@ export const normalizeHeader = (line: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-type SuggestedActionOptions = {
-  context?: string;
-};
+// type SuggestedActionOptions = {
+//   context?: string;
+// };
 
 // const toKeywords = (input: string): Set<string> => {
 //   const matches = input.toLowerCase().match(/\b[a-z]{4,}\b/g);

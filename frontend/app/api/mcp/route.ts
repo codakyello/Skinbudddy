@@ -2,6 +2,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { readFileSync } from "node:fs";
 import { EventEmitter } from "node:events";
+import type {
+  IncomingHttpHeaders,
+  IncomingMessage,
+  OutgoingHttpHeaders,
+  ServerResponse,
+} from "node:http";
 import path from "node:path";
 import { registerTools } from "./tools"; // adjust to your file location
 import { NextRequest, NextResponse } from "next/server";
@@ -36,6 +42,117 @@ function applyEnvFile(fileName: string): void {
 
 applyEnvFile(".env");
 applyEnvFile(".env.local");
+
+type ResponseState = {
+  status: number;
+  headers: Headers;
+  bodyChunks: string[];
+};
+
+class IncomingMessageAdapter extends EventEmitter {
+  constructor(
+    public method: string,
+    public headers: IncomingHttpHeaders,
+    public url: string
+  ) {
+    super();
+  }
+
+  auth?: undefined;
+}
+
+class ServerResponseAdapter extends EventEmitter {
+  statusCode: number;
+
+  constructor(private readonly state: ResponseState) {
+    super();
+    this.statusCode = state.status;
+  }
+
+  setHeader(
+    name: string,
+    value: string | number | readonly string[]
+  ): this {
+    const normalizedValue = Array.isArray(value)
+      ? value.join(", ")
+      : value.toString();
+    this.state.headers.set(name, normalizedValue);
+    return this;
+  }
+
+  writeHead(statusCode: number, headers?: OutgoingHttpHeaders): this {
+    this.statusCode = statusCode;
+    this.state.status = statusCode;
+    if (headers) {
+      Object.entries(headers).forEach(([key, value]) => {
+        if (value !== undefined) {
+          this.setHeader(key, value);
+        }
+      });
+    }
+    return this;
+  }
+
+  write(
+    chunk: string | Uint8Array,
+    encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void),
+    callback?: (error?: Error | null) => void
+  ): boolean {
+    let encoding: BufferEncoding | undefined;
+    let cb: ((error?: Error | null) => void) | undefined;
+
+    if (typeof encodingOrCallback === "function") {
+      cb = encodingOrCallback;
+    } else {
+      encoding = encodingOrCallback;
+      cb = callback;
+    }
+
+    const normalized =
+      typeof chunk === "string"
+        ? chunk
+        : Buffer.from(chunk).toString(encoding ?? "utf8");
+
+    this.state.bodyChunks.push(normalized);
+    cb?.(null);
+    return true;
+  }
+
+  end(
+    chunk?: string | Uint8Array,
+    encodingOrCallback?: BufferEncoding | (() => void),
+    callback?: () => void
+  ): this {
+    let encoding: BufferEncoding | undefined;
+    let cb: (() => void) | undefined;
+
+    if (typeof encodingOrCallback === "function") {
+      cb = encodingOrCallback;
+    } else {
+      encoding = encodingOrCallback;
+      cb = callback;
+    }
+
+    if (chunk !== undefined) {
+      this.write(chunk, encoding);
+    }
+
+    cb?.();
+    this.emit("finish");
+    this.emit("close");
+    return this;
+  }
+
+  flushHeaders(): void {
+    // No-op: headers are committed when the NextResponse is constructed.
+  }
+
+  override on(event: string, listener: (...args: unknown[]) => void): this {
+    return super.on(event, listener);
+  }
+}
+
+type NodeServerResponse = ServerResponse<IncomingMessage>;
 
 const createServer = (): McpServer => {
   const server = new McpServer({
@@ -86,22 +203,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     await server.connect(transport);
 
-    const headersObject: Record<string, string> = {};
+    const headersObject: IncomingHttpHeaders = {};
     req.headers.forEach((value, key) => {
       headersObject[key.toLowerCase()] = value;
     });
 
-    const responseState = {
+    const responseState: ResponseState = {
       status: 200,
       headers: new Headers(),
-      bodyChunks: [] as string[],
+      bodyChunks: [],
     };
 
-    const nodeReq = {
-      method: req.method,
-      headers: headersObject,
-      url: req.url,
-    } as any;
+    const nodeReq = new IncomingMessageAdapter(
+      req.method,
+      headersObject,
+      req.url ?? ""
+    );
 
     const accept = headersObject["accept"] ?? "";
     const pieces = accept
@@ -116,51 +233,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
     headersObject["accept"] = pieces.join(", ");
 
-    const emitter = new EventEmitter();
-    emitter.on("error", () => {
+    const nodeRes = new ServerResponseAdapter(responseState);
+    nodeRes.on("error", () => {
       /* swallow transport error events */
     });
 
-    const nodeRes = {
-      statusCode: responseState.status,
-      setHeader(name: string, value: string) {
-        responseState.headers.set(name, value);
-      },
-      writeHead(statusCode: number, headers?: Record<string, string>) {
-        responseState.status = statusCode;
-        if (headers) {
-          Object.entries(headers).forEach(([key, value]) => {
-            responseState.headers.set(key, value);
-          });
-        }
-        return nodeRes;
-      },
-      write(chunk: unknown) {
-        if (chunk === undefined || chunk === null) return true;
-        if (typeof chunk === "string") {
-          responseState.bodyChunks.push(chunk);
-          return true;
-        }
-        if (chunk instanceof Uint8Array) {
-          responseState.bodyChunks.push(Buffer.from(chunk).toString("utf8"));
-          return true;
-        }
-        responseState.bodyChunks.push(JSON.stringify(chunk));
-        return true;
-      },
-      end(chunk?: unknown) {
-        if (chunk !== undefined && chunk !== null) {
-          nodeRes.write(chunk);
-        }
-        emitter.emit("close");
-        return nodeRes;
-      },
-      on(event: string, handler: (...args: any[]) => void) {
-        emitter.on(event, handler);
-      },
-    } as any;
-
-    await transport.handleRequest(nodeReq, nodeRes, body);
+    await transport.handleRequest(
+      nodeReq as unknown as IncomingMessage,
+      nodeRes as unknown as NodeServerResponse,
+      body
+    );
 
     await transport.close();
     await server.close();

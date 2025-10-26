@@ -12,15 +12,15 @@ import {
 } from "@/shared/skinMappings";
 import { Id } from "@/convex/_generated/dataModel";
 
-type SearchProduct = {
-  id: string;
-  slug?: string;
-  name?: string;
-  brand?: unknown;
-  categories?: unknown[];
-  sizes?: Array<Record<string, unknown>>;
-  score?: number;
-};
+// type SearchProduct = {
+//   id: string;
+//   slug?: string;
+//   name?: string;
+//   brand?: unknown;
+//   categories?: unknown[];
+//   sizes?: Array<Record<string, unknown>>;
+//   score?: number;
+// };
 
 type ApiModule = typeof import("@/convex/_generated/api");
 

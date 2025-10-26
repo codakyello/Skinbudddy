@@ -754,18 +754,6 @@ export default function ChatPage() {
                       ) : null}
 
                       {(() => {
-                        const previousUserMessage = (() => {
-                          for (let i = index - 1; i >= 0; i -= 1) {
-                            const candidate = messages[i];
-                            if (
-                              isChatMessage(candidate) &&
-                              candidate.role === "user"
-                            ) {
-                              return candidate.content;
-                            }
-                          }
-                          return undefined;
-                        })();
                         const { body, suggestions } = extractSuggestedActions(
                           isChatMessage(message) ? message.content : ""
                         );
