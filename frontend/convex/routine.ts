@@ -1,7 +1,19 @@
 import { v } from "convex/values";
 import { action, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { generateToken, runChatCompletion } from "./_utils/internalUtils";
+import {
+  generateToken,
+  runChatCompletion as runOpenAIChatCompletion,
+} from "./_utils/internalUtils";
+import { runChatCompletion as runGeminiChatCompletion } from "./_utils/internalGemini";
+
+const MODEL_PROVIDER =
+  (process.env.CHAT_MODEL_PROVIDER ?? "gemini").toLowerCase();
+
+const runChatCompletion =
+  MODEL_PROVIDER === "openai"
+    ? runOpenAIChatCompletion
+    : runGeminiChatCompletion;
 
 import {
   SkinConcern,

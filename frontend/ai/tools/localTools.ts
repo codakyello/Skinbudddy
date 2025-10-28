@@ -75,6 +75,50 @@ const searchProductsSchema = z
         "If true, only return products containing fragrance; if false, only return fragrance-free options."
       ),
     limit: z.number().int().min(1).max(10).optional(),
+    isBestseller: z
+      .boolean()
+      .optional()
+      .describe("Set true to only return products marked as bestsellers."),
+    isTrending: z
+      .boolean()
+      .optional()
+      .describe("Set true to only return products flagged as trending."),
+    isNew: z
+      .boolean()
+      .optional()
+      .describe("Set true to only return newly added products."),
+    minDiscount: z
+      .number()
+      .min(0)
+      .max(100)
+      .optional()
+      .describe("Minimum discount percentage (inclusive)."),
+    maxDiscount: z
+      .number()
+      .min(0)
+      .max(100)
+      .optional()
+      .describe("Maximum discount percentage (inclusive)."),
+    minPrice: z
+      .number()
+      .positive()
+      .optional()
+      .describe(
+        "Minimum price (inclusive) for qualifying product sizes, using the store currency."
+      ),
+    maxPrice: z
+      .number()
+      .positive()
+      .optional()
+      .describe(
+        "Maximum price (inclusive) for qualifying product sizes, using the store currency."
+      ),
+    ingredientsToAvoid: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Ingredient sensitivities the user wants to avoid (e.g. alcohol, retinoids, essential-oils)."
+      ),
     excludeProductIds: z
       .array(z.string())
       .optional()
@@ -138,6 +182,42 @@ const searchProductsParameters = {
       type: "integer",
       minimum: 1,
       maximum: 10,
+    },
+    isBestseller: {
+      type: "boolean",
+      description: "Only return products flagged as bestsellers when true.",
+    },
+    isTrending: {
+      type: "boolean",
+      description: "Only return products flagged as trending when true.",
+    },
+    isNew: {
+      type: "boolean",
+      description: "Only return products marked as newly added when true.",
+    },
+    minDiscount: {
+      type: "number",
+      description: "Minimum discount percentage (inclusive).",
+    },
+    maxDiscount: {
+      type: "number",
+      description: "Maximum discount percentage (inclusive).",
+    },
+    minPrice: {
+      type: "number",
+      description:
+        "Minimum price (inclusive) in the store currency for qualifying sizes.",
+    },
+    maxPrice: {
+      type: "number",
+      description:
+        "Maximum price (inclusive) in the store currency for qualifying sizes.",
+    },
+    ingredientsToAvoid: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "List of ingredient sensitivities to exclude (alcohol, retinoids, essential-oils, ahas-bhas, etc.).",
     },
     excludeProductIds: {
       type: "array",
@@ -450,7 +530,7 @@ const localTools: ToolSpec[] = [
   {
     name: "recommendRoutine",
     description:
-      "Generate a complete skincare routine (cleanser → sunscreen) tailored to the user's skin type, concerns, and preferences. Use this when the user asks for routine suggestions or wants to swap a step. Pass excludeProductIds to avoid previously suggested products.",
+      "Generate a complete multi-step skincare routine (cleanser → sunscreen) tailored to the user's skin type, concerns, and preferences. Call this ONLY when the user explicitly requests a full routine or wants to replace a specific step within an existing routine. Do not use it for single-product requests—those must go through searchProductsByQuery. Always pass excludeProductIds to avoid repeating previously suggested products.",
     parameters: recommendRoutineParameters,
     schema: recommendRoutineSchema,
     handler: async (rawInput) => {
@@ -502,9 +582,7 @@ const localTools: ToolSpec[] = [
         const resolved = resolveSkinConcern(value);
         if (resolved) return resolved;
         const normalized = value.toLowerCase().trim();
-        return allowedSkinConcerns.has(
-          normalized as SkinConcernCanonical
-        )
+        return allowedSkinConcerns.has(normalized as SkinConcernCanonical)
           ? (normalized as SkinConcernCanonical)
           : null;
       };
@@ -559,9 +637,8 @@ const localTools: ToolSpec[] = [
         if (normalized.length === 0) return null;
         const direct = ingredientSensitivityLookup[normalized];
         if (direct) return direct;
-        const hyphenated = ingredientSensitivityLookup[
-          normalized.replace(/\s+/g, "-")
-        ];
+        const hyphenated =
+          ingredientSensitivityLookup[normalized.replace(/\s+/g, "-")];
         return hyphenated ?? null;
       };
 
@@ -571,9 +648,8 @@ const localTools: ToolSpec[] = [
               input.ingredientsToAvoid
                 .map(resolveSensitivity)
                 .filter(
-                  (
-                    value
-                  ): value is IngredientSensitivityCanonical => value !== null
+                  (value): value is IngredientSensitivityCanonical =>
+                    value !== null
                 )
             )
           )
@@ -654,7 +730,9 @@ const localTools: ToolSpec[] = [
         }
 
         const resultRecord = result as Record<string, unknown>;
-        const rawRecommendations = Array.isArray(resultRecord["recommendations"])
+        const rawRecommendations = Array.isArray(
+          resultRecord["recommendations"]
+        )
           ? (resultRecord["recommendations"] as Array<Record<string, unknown>>)
           : [];
 
@@ -694,7 +772,8 @@ const localTools: ToolSpec[] = [
               entryRecord["alternatives"].length
                 ? entryRecord["alternatives"]
                     .map((altEntry) => {
-                      if (!altEntry || typeof altEntry !== "object") return null;
+                      if (!altEntry || typeof altEntry !== "object")
+                        return null;
                       const altRecord = altEntry as Record<string, unknown>;
                       const altProductInfo = extractRelevantProductInfo(
                         altRecord["product"] ?? altRecord
@@ -788,11 +867,18 @@ const localTools: ToolSpec[] = [
   {
     name: "searchProductsByQuery",
     description:
-      "List products using free-text queries for category, brand, or name. Resolves fuzzy text to exact DB slugs and returns matching products. Examples: { \"categoryQuery\": \"serum\", \"benefits\": [\"hydrating\"] } · { \"ingredientQueries\": [\"niacinamide\"] }.",
+      'List products using free-text queries for category, brand, or name. Resolves fuzzy text to exact DB slugs and returns matching products. Examples: { "categoryQuery": "serum", "benefits": ["hydrating"] } · { "ingredientQueries": ["niacinamide"] }.',
     parameters: searchProductsParameters,
     schema: searchProductsSchema,
     handler: async (rawInput) => {
-      const input = searchProductsSchema.parse(rawInput);
+      let input;
+      try {
+        input = searchProductsSchema.parse(rawInput);
+      } catch {
+        throw new Error(
+          "Invalid search filters supplied. Please adjust the request and try again."
+        );
+      }
       const apiModule = await ensureApi();
       const excludedIds = new Set(
         (input.excludeProductIds ?? []).map((value) =>
@@ -850,6 +936,50 @@ const localTools: ToolSpec[] = [
           )
         : undefined;
 
+      const cleanedIngredientsToAvoid = Array.isArray(input.ingredientsToAvoid)
+        ? Array.from(
+            new Set(
+              input.ingredientsToAvoid
+                .map((value) => value.trim().toLowerCase())
+                .filter((value) => value.length > 0)
+            )
+          )
+        : undefined;
+
+      const applyPositiveNumber = (value: unknown): number | undefined => {
+        if (typeof value !== "number") return undefined;
+        return Number.isFinite(value) && value > 0 ? value : undefined;
+      };
+
+      const minPrice =
+        typeof input.minPrice === "number" && input.minPrice > 0
+          ? input.minPrice
+          : undefined;
+      const maxPrice =
+        typeof input.maxPrice === "number" && input.maxPrice > 0
+          ? input.maxPrice
+          : undefined;
+
+      const minDiscount =
+        typeof input.minDiscount === "number" &&
+        input.minDiscount >= 0 &&
+        input.minDiscount <= 100
+          ? input.minDiscount
+          : undefined;
+      const maxDiscount =
+        typeof input.maxDiscount === "number" &&
+        input.maxDiscount >= 0 &&
+        input.maxDiscount <= 100
+          ? input.maxDiscount
+          : undefined;
+
+      const isBestseller =
+        typeof input.isBestseller === "boolean" ? input.isBestseller : undefined;
+      const isTrending =
+        typeof input.isTrending === "boolean" ? input.isTrending : undefined;
+      const isNew =
+        typeof input.isNew === "boolean" ? input.isNew : undefined;
+
       const expandedIngredientQueries = cleanedIngredientQueries
         ? cleanedIngredientQueries.map((query) => {
             const groupMatches = resolveIngredientGroup(query);
@@ -882,42 +1012,64 @@ const localTools: ToolSpec[] = [
           limit: input.limit,
           hasAlcohol: input.hasAlcohol,
           hasFragrance: input.hasFragrance,
+          minPrice,
+          maxPrice,
+          ingredientsToAvoid: cleanedIngredientsToAvoid,
+          isBestseller,
+          isTrending,
+          isNew,
+          minDiscount,
+          maxDiscount,
         }
       );
 
       if (!response?.success) {
-        throw new Error(
-          response?.reason ?? "searchProductsByQuery returned no results"
-        );
+        return {
+          success: false,
+          reason: response?.reason ?? "not_found",
+          categoryOptions: response?.categoryOptions ?? [],
+          brandOptions: response?.brandOptions ?? [],
+          products: [] as SanitizedProduct[],
+        };
+      }
+
+      const sanitizedProducts = Array.isArray(response.products)
+        ? response.products
+            .map((product) => {
+              const info = extractRelevantProductInfo(product);
+              if (!info) return null;
+              if (excludedIds.size > 0) {
+                const idMatch = info._id
+                  ? excludedIds.has(info._id.toLowerCase())
+                  : false;
+                const slugMatch =
+                  info.slug && excludedIds.has(info.slug.toLowerCase());
+                if (idMatch || slugMatch) {
+                  return null;
+                }
+              }
+              const score =
+                typeof (product as Record<string, unknown>).score === "number"
+                  ? ((product as Record<string, unknown>).score as number)
+                  : undefined;
+              return score != null ? { ...info, score } : info;
+            })
+            .filter((product): product is SanitizedProduct => Boolean(product))
+        : [];
+
+      if (!sanitizedProducts.length) {
+        return {
+          success: false,
+          reason: "not_found",
+          categoryOptions: [],
+          brandOptions: [],
+        };
       }
 
       return {
-        ...response,
-        products: Array.isArray(response.products)
-          ? response.products
-              .map((product) => {
-                const info = extractRelevantProductInfo(product);
-                if (!info) return null;
-                if (excludedIds.size > 0) {
-                  const idMatch = info._id
-                    ? excludedIds.has(info._id.toLowerCase())
-                    : false;
-                  const slugMatch =
-                    info.slug && excludedIds.has(info.slug.toLowerCase());
-                  if (idMatch || slugMatch) {
-                    return null;
-                  }
-                }
-                const score =
-                  typeof (product as Record<string, unknown>).score === "number"
-                    ? ((product as Record<string, unknown>).score as number)
-                    : undefined;
-                return score != null ? { ...info, score } : info;
-              })
-              .filter((product): product is SanitizedProduct =>
-                Boolean(product)
-              )
-          : [],
+        success: true,
+        filters: response.filters,
+        products: sanitizedProducts,
       };
     },
   },
@@ -1131,64 +1283,64 @@ const localTools: ToolSpec[] = [
       });
     },
   },
-  {
-    name: "getAllProducts",
-    description: "Retrieves all products with optional filtering and sorting.",
-    parameters: {
-      type: "object",
-      properties: {
-        filters: productFiltersParameters,
-        sort: {
-          type: "string",
-          enum: ["trending", "latest"],
-        },
-      },
-      additionalProperties: false,
-    },
-    schema: z
-      .object({
-        filters: productFiltersSchema,
-        sort: z.enum(["trending", "latest"]).optional(),
-      })
-      .strict(),
-    handler: async (rawInput) => {
-      const input = z
-        .object({
-          filters: productFiltersSchema,
-          sort: z.enum(["trending", "latest"]).optional(),
-        })
-        .parse(rawInput);
-      const apiModule = await ensureApi();
-      const filters =
-        input.filters && typeof input.filters === "object"
-          ? {
-              ...input.filters,
-              skinTypes: Array.isArray(input.filters.skinTypes)
-                ? input.filters.skinTypes
-                    .map((value) => resolveSkinType(String(value)))
-                    .filter((value): value is SkinTypeCanonical =>
-                      Boolean(value)
-                    )
-                : input.filters.skinTypes,
-            }
-          : undefined;
-      const response = await fetchQuery(apiModule.products.getAllProducts, {
-        filters,
-        sort: input.sort,
-      });
+  // {
+  //   name: "getAllProducts",
+  //   description: "Retrieves all products with optional filtering and sorting.",
+  //   parameters: {
+  //     type: "object",
+  //     properties: {
+  //       filters: productFiltersParameters,
+  //       sort: {
+  //         type: "string",
+  //         enum: ["trending", "latest"],
+  //       },
+  //     },
+  //     additionalProperties: false,
+  //   },
+  //   schema: z
+  //     .object({
+  //       filters: productFiltersSchema,
+  //       sort: z.enum(["trending", "latest"]).optional(),
+  //     })
+  //     .strict(),
+  //   handler: async (rawInput) => {
+  //     const input = z
+  //       .object({
+  //         filters: productFiltersSchema,
+  //         sort: z.enum(["trending", "latest"]).optional(),
+  //       })
+  //       .parse(rawInput);
+  //     const apiModule = await ensureApi();
+  //     const filters =
+  //       input.filters && typeof input.filters === "object"
+  //         ? {
+  //             ...input.filters,
+  //             skinTypes: Array.isArray(input.filters.skinTypes)
+  //               ? input.filters.skinTypes
+  //                   .map((value) => resolveSkinType(String(value)))
+  //                   .filter((value): value is SkinTypeCanonical =>
+  //                     Boolean(value)
+  //                   )
+  //               : input.filters.skinTypes,
+  //           }
+  //         : undefined;
+  //     const response = await fetchQuery(apiModule.products.getAllProducts, {
+  //       filters,
+  //       sort: input.sort,
+  //     });
 
-      return {
-        ...response,
-        products: Array.isArray(response?.products)
-          ? response.products
-              .map((product: unknown) => extractRelevantProductInfo(product))
-              .filter((product): product is SanitizedProduct =>
-                Boolean(product)
-              )
-          : [],
-      };
-    },
-  },
+  //     return {
+  //       ...response,
+  //       products: Array.isArray(response?.products)
+  //         ? response.products
+  //             .map((product: unknown) => extractRelevantProductInfo(product))
+  //             .filter((product): product is SanitizedProduct =>
+  //               Boolean(product)
+  //             )
+  //         : [],
+  //     };
+  //   },
+  // },
   {
     name: "startSkinTypeSurvey",
     description:

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchAction, fetchMutation, fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { callOpenAI } from "@/ai/models/openai";
+import { callGemini } from "@/ai/models/gemini";
 import { DEFAULT_SYSTEM_PROMPT } from "@/ai/utils";
 import type { Id } from "@/convex/_generated/dataModel";
 
@@ -479,14 +480,21 @@ export async function POST(req: NextRequest) {
                   return `**Q${index + 1}:** ${question}\n**A:** ${answer}`;
                 });
 
+                const hiddenAnswersBlock = formattedAnswers.length
+                  ? [
+                      "Raw survey answers for reasoning only (do NOT mention, paraphrase, or allude to these in your reply):",
+                      ...formattedAnswers,
+                    ].join("\n\n")
+                  : "";
+
                 quizInstruction = [
-                  "Skin-type survey completed. Use these answers only to infer the user's most likely skin type and primary skin concerns. Do not restart the survey or suggest routines or next steps unless explicitly requested.",
+                  "Skin-type survey completed. Use these answers only to infer the user's most likely skin type and primary skin concerns. Do not restart the survey or suggest routines or next steps unless explicitly requested. Never quote, summarize, or reference the individual survey questions or answers in your response.",
+                  hiddenAnswersBlock,
                   "Craft a response using the following Markdown template. Replace the bracketed guidance with your conclusions and keep the structure:",
                   "# 🧪 Skin Analysis Summary\n\n## Skin Type\nYour skin is classified as **{skin type in plain language with a brief explanation of what that means for the user}**.\n\n## Main Concern\nYou are primarily concerned with **{main concern in plain language with one short sentence elaborating on the implication}**.\n\n💡 You have a {skin type phrase} and your main concern is {main concern phrase}.\n\nWould you like me to provide personalized skincare recommendations based on this information?",
-                  formattedAnswers.length
-                    ? ["### Survey Answers", ...formattedAnswers].join("\n\n")
-                    : "",
-                ].join("\n\n");
+                ]
+                  .filter(Boolean)
+                  .join("\n\n");
               }
             } catch (error) {
               console.warn("Failed to parse quiz results payload", error);
@@ -521,9 +529,37 @@ export async function POST(req: NextRequest) {
 
           console.log(context, "This is conversation history");
 
-          const completion = await callOpenAI({
+          // set it to gemini by default
+          body.provider = "gemini";
+
+          const providerPreference =
+            typeof body?.provider === "string"
+              ? body.provider.toLowerCase()
+              : typeof process.env.CHAT_MODEL_PROVIDER === "string"
+                ? process.env.CHAT_MODEL_PROVIDER.toLowerCase()
+                : "gemini";
+          const useOpenAI = providerPreference === "openai";
+          const requestedModel =
+            typeof body?.model === "string" && body.model.trim().length
+              ? body.model.trim()
+              : useOpenAI
+                ? "gpt-4o-mini"
+                : "gemini-2.5-flash-lite";
+          const resolvedTemperature =
+            typeof body?.temperature === "number" ? body.temperature : 0.5;
+          const maxToolRounds =
+            typeof body?.maxToolRounds === "number" && body.maxToolRounds >= 0
+              ? body.maxToolRounds
+              : 4;
+          const useTools = body?.useTools === false ? false : true;
+
+          const completion = await (useOpenAI ? callOpenAI : callGemini)({
             messages: context.messages,
             systemPrompt: DEFAULT_SYSTEM_PROMPT,
+            model: requestedModel,
+            temperature: resolvedTemperature,
+            useTools,
+            maxToolRounds,
             onToken: async (token) => {
               if (!token) return;
               await send({ type: "delta", token });
@@ -607,13 +643,24 @@ export async function POST(req: NextRequest) {
 
           const sanitizedProducts = sanitizeProducts(products);
 
+          const latestProductTool = [...toolOutputs]
+            .slice()
+            .reverse()
+            .find((output) =>
+              [
+                "searchProductsByQuery",
+                "getProduct",
+                "getAllProducts",
+              ].includes(output.name)
+            );
+
           if (sanitizedProducts.length) {
             schedule(
               fetchMutation(api.conversation.appendMessage, {
                 sessionId,
                 role: "tool",
                 content: JSON.stringify({
-                  name: "searchProductsByQuery",
+                  name: latestProductTool?.name ?? "searchProductsByQuery",
                   products: sanitizedProducts,
                 }),
               })
@@ -671,7 +718,7 @@ export async function POST(req: NextRequest) {
             });
           }
         } catch (error: unknown) {
-          console.error("Error calling openAI", error);
+          console.error("Error calling llm model", error);
 
           await send({
             type: "error",

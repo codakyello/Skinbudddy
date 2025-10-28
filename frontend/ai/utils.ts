@@ -67,9 +67,9 @@ Extract: brandQuery, categoryQuery, nameQuery (drop filler like "please").
 **STEP 3 — HANDLE RESULTS**
 - **Routine tool:** Present the routine as ordered steps ("Step 1: Cleanser – <description>"). Surface the short description from each step, list the alternates (label them clearly), and recap \`notes\` in 1–2 sentences. If the user still wants something else, rerun \`recommendRoutine\` with that productId (or slug) added to \`excludeProductIds\`.
 - **Search tool:**
-  - Exactly 1 product + size resolved + quantity known → call addToCart immediately. Reply past-tense: "Added <n> (<size>) ×<qty> to your cart." ✅
+  - Exactly 1 product + size resolved + quantity known → call addToCart immediately. In your assistant reply explicitly confirm what you added (include product name and size), e.g., "Added EltaMD UV Clear (1.7 oz) ×1 to your cart." ✅
   - Multiple products (2–5) → show numbered options with brief descriptions. Ask which by number.
-  - Single product, size missing → list available size labels (numbered). Ask which by label.
+  - Single product, size missing → list every available size/variant with its price (numbered) before asking which one they want. Never ask for a size choice without showing the sizes and prices.
   - Single product, size available but out of stock → inform user and offer next-in-stock size or similar alternatives.
   - Nothing found after initial search → ask for friendly clarification (brand/name/size preference), then retry **once more only**. If still nothing, say we don't stock it and optionally provide general guidance without naming competitors or suggesting cart actions.
   - Nothing found after initial search → ask for friendly clarification (brand/name/size preference), then retry **once more only**. If still nothing, say we don't stock it and optionally provide general guidance without naming competitors or suggesting cart actions.
@@ -149,6 +149,31 @@ export const normalizeProductsFromOutputs = (
   const candidateKeys = ["products", "results", "items"];
   const byId = new Map<string, unknown>();
 
+  const addProductCandidate = (
+    entry: unknown,
+    key: string,
+    index: number
+  ): void => {
+    if (!entry) return;
+    const source =
+      entry &&
+      typeof entry === "object" &&
+      "product" in (entry as UnknownRecord)
+        ? ((entry as UnknownRecord).product as unknown)
+        : entry;
+
+    const id =
+      coerceId(
+        source && typeof source === "object"
+          ? ((source as UnknownRecord).id ?? (source as UnknownRecord)._id)
+          : source
+      ) ?? `${key}-${index}-${JSON.stringify(source)}`;
+
+    if (!byId.has(id)) {
+      byId.set(id, source ?? entry);
+    }
+  };
+
   outputs.forEach((output) => {
     const result = output?.result;
     if (!result || typeof result !== "object") return;
@@ -160,26 +185,18 @@ export const normalizeProductsFromOutputs = (
 
       if (!Array.isArray(value)) return;
 
-      value.forEach((entry, index) => {
-        const source =
-          entry &&
-          typeof entry === "object" &&
-          "product" in (entry as UnknownRecord)
-            ? ((entry as UnknownRecord).product as unknown)
-            : entry;
-
-        const id =
-          coerceId(
-            source && typeof source === "object"
-              ? ((source as UnknownRecord).id ?? (source as UnknownRecord)._id)
-              : source
-          ) ?? `${key}-${index}-${JSON.stringify(source)}`;
-
-        if (!byId.has(id)) {
-          byId.set(id, source ?? entry);
-        }
-      });
+      value.forEach((entry, index) => addProductCandidate(entry, key, index));
     });
+
+    const looksLikeSingleProduct =
+      coerceId(record) ||
+      typeof record.slug === "string" ||
+      typeof record.productId === "string" ||
+      typeof record.name === "string";
+
+    if (looksLikeSingleProduct) {
+      addProductCandidate(record, "product", 0);
+    }
   });
 
   return Array.from(byId.values());

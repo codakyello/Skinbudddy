@@ -9,10 +9,7 @@ import {
   describeBenefits,
   describeSkinTypes,
   extractProductMetadataForSummary,
-  generateReplySummaryWithLLM,
   normalizeProductsFromOutputs,
-  openai,
-  refineProductSelection,
   sanitizeToolResultForModel,
   sentenceCase,
   toTitleCase,
@@ -30,18 +27,19 @@ import {
   ToolOutput,
   UnknownRecord,
 } from "../types";
+import { getGeminiClient } from "../gemini/client";
+import {
+  generateReplySummaryWithGemini,
+  refineProductSelectionWithGemini,
+} from "../gemini/utils";
 
-// gpt-4o-mini
-// gpt-4.1-nano
-// gpt-5-nano
-
-export async function callOpenAI({
+export async function callGemini({
   messages,
   systemPrompt,
-  model = "gpt-4o-mini",
-  temperature = 1,
+  model = "gemini-2.0-flash-lite",
+  temperature = 0.5,
   useTools = true,
-  maxToolRounds = 5, // prevent runaway loops
+  maxToolRounds = 4, // prevent runaway loops
   onToken,
   onProducts,
   onRoutine,
@@ -67,13 +65,14 @@ export async function callOpenAI({
   updatedContext?: object;
   startSkinTypeQuiz?: boolean;
 }> {
-  const tools = toolSpecs.map((tool) => ({
-    type: "function" as const,
+  const geminiTools = toolSpecs.map((tool) => ({
     name: tool.function.name,
     description: tool.function.description ?? undefined,
-    parameters: tool.function.parameters ?? null,
-    strict: false as const,
+    parametersJsonSchema: tool.function.parameters ?? undefined,
   }));
+  const geminiClient = getGeminiClient();
+
+  console.log("testing if bun reload works");
 
   // Build a local message history we can augment
   const chatMessages: ChatMessage[] = [
@@ -87,21 +86,11 @@ export async function callOpenAI({
   chatMessages.push({
     role: "developer",
     content: [
-      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Make each suggestion a concise, natural-language question or request the user could actually send to SkinBuddy, aimed at continuing the conversation (e.g., 'What serum pairs well with hyaluronic acid?' or 'Show me budget hydrating serums'). Keep all three skincare-only and tightly relevant to the user's latest request, vary the angle when possible (ingredients, usage tips, alternatives, price points, etc.), and avoid near-duplicates. Never imply an action already happened or command SkinBuddy to perform it (skip things like 'Add…' or 'Checkout my cart'). Only reference a specific product by name if the user or your latest reply mentioned it in this turn.",
+      "Keep the main reply tight: at most three short sentences or ~80 words unless the user explicitly asks for detailed product information, sizes, pricing, or usage guidance—when they do, switch immediately to a structured breakdown covering the key facts they requested.",
+      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Phrase each suggestion as a first-person request the user could send to SkinBuddy—start with verbs like 'Recommend', 'Show me', 'Help me', or 'Explain'. Avoid asking the user questions such as 'What is your skin type?'; these suggestions should read like commands or requests directed at SkinBuddy (e.g., 'Recommend a brightening serum for uneven tone', 'Help me pick a gentle cleanser for sensitive skin'). Cap each suggestion at 12 words. Keep all three skincare-only and tightly relevant to the user's latest request, vary the angle when possible (ingredients, usage tips, alternatives, price points, etc.), and avoid near-duplicates. Never imply an action already happened or command SkinBuddy to perform it (skip things like 'Add…' or 'Checkout my cart'). Only reference a specific product by name if the user or your latest reply mentioned it in this turn.",
       "Each of the three suggestions must clearly build on the user's most recent request or the guidance you just provided—connect back to their specific skin type, concern, or product discussion. Do not repeat generic skincare advice, prompt them to rerun the survey, or raise unrelated topics.",
-      "If the user asks for help determining their skin type (for example, 'What’s my skin type?', 'Do I have combination skin?') or types 'start skin quiz', acknowledge that intent warmly, mention that SkinBuddy can run a quick survey to identify their skin type, and make sure your suggested actions in that reply guide them toward next steps such as starting the survey ('Start the skin-type survey'), learning how it works ('Explain the survey steps'), or choosing another method ('Suggest a different approach'). If we already have their skin type stored (exposed via tools), reference it before offering the survey. **Never guess or infer a user's skin type from conversation context (including earlier requests such as 'build me an oily-skin routine')—only state what the tools return or that the survey is needed.** Whenever the user issues a direct imperative to begin the survey (examples: 'start the skin survey', 'start the skin-type quiz', 'let’s start skin survey', 'begin the skin quiz'), immediately call the `startSkinTypeSurvey` tool with empty arguments and do not send any assistant prose in that turn. Use confirmation phrasing only when the user is asking or hesitating, not when they are commanding.",
+      "If the user asks for help determining their skin type (for example, 'What’s my skin type?', 'Do I have combination skin?') or types 'start skin quiz', acknowledge that intent warmly, mention that SkinBuddy can run a quick survey to identify their skin type, and make sure your suggested actions in that reply guide them toward next steps such as starting the survey ('Start the skin-type survey'), learning how it works ('Explain the survey steps'), or choosing another method ('Suggest a different approach'). If we already have their skin type stored (exposed via tools), reference it before offering the survey. **Never guess or infer a user's skin type from conversation context (including earlier requests such as 'build me an oily-skin routine')—only state what the tools return or that the survey is needed.** When the user is curious or tentative and has not issued a direct command (e.g., 'Should I take the skin quiz?', 'Can you help figure out my skin type?'), do not call the `startSkinTypeSurvey` tool; instead, reply in prose that SkinBuddy can help determine their skin type and concerns with a skin quiz and invite them to confirm if they want to start it. If the user asks for a skincare routine or product recommendations but hasn't provided their skin type or concerns, let them know SkinBuddy can help figure those out with the skin quiz before continuing, and ask whether they'd like to take it or share those details manually. Whenever the user issues a direct imperative to begin the survey (examples: 'start the skin survey', 'start the skin-type quiz', 'let’s start skin survey', 'begin the skin quiz'), immediately call the `startSkinTypeSurvey` tool with empty arguments and do not send any assistant prose in that turn. Use confirmation phrasing only when the user is asking or hesitating, not when they are commanding.",
       "When preparing tool arguments: put descriptive effects like 'hydrating', 'brightening', 'soothing' into the `benefits` array; keep actual ingredient names (niacinamide, hyaluronic acid, salicylic acid, etc.) in `ingredientQueries`; only use `nameQuery` for exact product titles or SKUs the user cited; and aim for canonical product nouns (cleanser, serum, sunscreen, toner, moisturizer) in `categoryQuery`. Avoid repeating the same value in multiple fields.",
-      "Whenever you call `addToCart`, explicitly confirm in your final reply exactly what you added (product name plus size/variant) so the user hears the cart update.",
-      "When a product has multiple sizes or variants, list each option with its size/variant label and price before asking the user to choose—never ask for a selection without those details.",
-      "Format size/price choices as a numbered list (1., 2., …) and include the currency symbol with thousands separators whenever a `currency` field is provided (e.g., '₦27,760.50'); if currency is missing, show the amount followed by the currency code (e.g., '27,760.50 NGN').",
-      "If the user asks for details, sizes, pricing, availability, or other specifics about a particular product, call `getProduct` for that item (even if you've already searched for it) before you answer. Use that data to ground your reply.",
-      "When responding with detailed information about a single product, follow this layout: start with a heading like '✨ {Product Name}', then list concise bullets with bold labels (Overview, Key Ingredients, Sizes, Skin Types, Usage, Highlights as relevant). Keep each bullet to one sentence for readability.",
-      "Only put actual ingredient names (specific actives like 'niacinamide', 'salicylic acid', 'avobenzone') in `ingredientQueries`. If the user mentions descriptors or product styles such as 'chemical sunscreen', 'hydrating cleanser', or 'gentle formula', treat those as categories or benefits instead and leave `ingredientQueries` empty unless a real ingredient is cited.",
-      "Before you call any product tool, sanity-check each argument: keep `categoryQuery` limited to canonical product nouns, `brandQuery` to real brand names, `benefits` to outcome descriptors, `skinTypes`/`skinConcerns` to mapped canonical values, and drop anything you can’t classify confidently. When in doubt, leave the field empty rather than guessing.",
-      "Never expose internal tooling, function calls, user IDs, or implementation details in user-facing replies—keep responses focused on the user experience.",
-      "Do not include user identifiers (userId, customerId, email, etc.) when calling product tools; they already have the context they need.",
-      "Do not infer skin concerns from skin tone, ethnicity, or general descriptors. Only pass `skinConcerns` when the user explicitly names a concern (acne, hyperpigmentation, redness, etc.).",
-      "When a product search turns up empty, state it plainly as 'I couldn't find any matching items in stock right now.' before offering next steps.",
     ].join(" "),
   });
 
@@ -293,141 +282,414 @@ export async function callOpenAI({
 
   // messages.push({ role: "user", content: userMessage });
 
+  const hasSurveyResults = messages.some(
+    (msg) =>
+      msg.role === "system" &&
+      typeof msg.content === "string" &&
+      msg.content.includes("Skin-type survey completed.")
+  );
+  const hasPostQuizSystemPrompt = messages.some(
+    (msg) =>
+      msg.role === "system" &&
+      typeof msg.content === "string" &&
+      msg.content.includes("Skin Analysis Summary")
+  );
+  const hasRecentQuizCall = messages.some(
+    (msg) => msg.role === "tool" && msg.tool_name === "startSkinTypeSurvey"
+  );
+
   const streamCompletion = async (
     forceFinal: boolean,
-    extraInputItems: any[] = []
+    _extraInputItems: any[] = []
   ): Promise<{
     content: string;
     toolCalls: Array<{
-      id: string; // internal item id
+      id: string;
       call_id: string;
       name: string;
       arguments: string;
     }>;
   }> => {
-    const toolCallsByItemId = new Map<
+    const toolCallsById = new Map<
       string,
       { id: string; call_id: string; name: string; arguments: string }
     >();
+    const seenFunctionSignatures = new Set<string>();
+    const emittedPartText = new Map<string, string>();
 
-    const toInputFromChat = (): any[] => {
-      const items: any[] = [];
-      let historicalToolCounter = 0;
-      for (const msg of chatMessages) {
-        if (msg.role === "tool") {
-          const callId =
-            msg.tool_call_id && typeof msg.tool_call_id === "string"
-              ? msg.tool_call_id
-              : `hist_tool_${historicalToolCounter++}`;
-          const toolName =
-            msg.tool_name && typeof msg.tool_name === "string"
-              ? msg.tool_name
-              : "historical_tool";
-          const toolArgumentsString =
-            msg.tool_arguments && typeof msg.tool_arguments === "string"
-              ? msg.tool_arguments
-              : "{}";
-          items.push({
-            type: "function_call",
-            call_id: callId,
-            name: toolName,
-            arguments: toolArgumentsString,
-          });
-          items.push({
-            type: "function_call_output",
-            call_id: callId,
-            output:
-              typeof msg.content === "string" && msg.content.length
-                ? msg.content
-                : "{}",
-          });
-          continue;
+    const systemInstructionParts: string[] = [];
+    const developerInstructionParts: string[] = [];
+    const hasQuizSummaryInstruction = hasSurveyResults;
+
+    if (hasSurveyResults) {
+      developerInstructionParts.push(
+        "You have the completed skin-type survey answers. Infer the user's most likely skin type and primary concerns directly from those answers, summarize them clearly, and do not restart the survey unless the user explicitly requests it."
+      );
+    }
+    developerInstructionParts.push(
+      "When the user references multiple distinct product names or SKUs in the same turn, issue separate `searchProductsByQuery` tool calls—one per product—rather than combining their names into a single query."
+    );
+    developerInstructionParts.push(
+      "If the user asks for details, sizes, pricing, availability, or other specifics about a particular product, call `getProduct` for that item (even if you've already searched for it) before you answer. Use that data to ground your reply."
+    );
+    developerInstructionParts.push(
+      "Never conclude that a product is unavailable until you've run a fresh tool call (`searchProductsByQuery` or `getProduct`) in this turn. Do not rely on memory or prior messages to assume stock status."
+    );
+    developerInstructionParts.push(
+      [
+        "When you have detailed data for a single product, present it in the following structure:",
+        "1) Start with a heading like '✨ {Product Name}'",
+        "2) Follow with short bullet points using bold labels (Overview, Key Ingredients, Sizes, Skin Types, Usage, Highlights as relevant)",
+        "3) Keep each bullet to one sentence so the layout stays scannable."
+      ].join(" ")
+    );
+    developerInstructionParts.push(
+      "When a user asks for detailed information about a product (phrases like 'more info', 'tell me about', 'show the sizes/price/ingredients'), respond with a structured breakdown that clearly lists the product name, key actives, sizes with prices, notable benefits, and any usage notes before moving on to suggestions."
+    );
+    developerInstructionParts.push(
+      "Whenever you call `addToCart`, explicitly confirm in your final reply exactly what you added (include product name and size/variant) so the user hears the confirmation."
+    );
+    developerInstructionParts.push(
+      "When a product has multiple sizes or variants, list every option with its size/variant label and price before asking the user to choose—never ask for a selection without showing those details."
+    );
+    developerInstructionParts.push(
+      "Format size/price choices as a numbered list (1., 2., …) and include the currency symbol with thousands separators whenever a `currency` field is provided (e.g., '₦27,760.50'). If the currency is missing, spell out the currency code (e.g., '27760.50 NGN')."
+    );
+    developerInstructionParts.push(
+      "Only place true ingredient names (individual compounds such as 'niacinamide', 'salicylic acid', 'avobenzone') inside `ingredientQueries`. If a descriptor sounds like a product type or outcome (e.g., 'chemical sunscreen', 'gentle cleanser', 'hydrating formula'), move it to `categoryQuery` or `benefits` instead and keep `ingredientQueries` empty."
+    );
+    developerInstructionParts.push(
+      "Before calling any product tool, sanity-check each argument: keep `categoryQuery` to canonical product nouns, `brandQuery` to real brand names, `benefits` to outcome descriptors, `skinTypes/skinConcerns` to mapped canon values, and drop any leftovers you can't classify. It's better to omit a field than pass a vague phrase to the wrong slot."
+    );
+    developerInstructionParts.push(
+      "Do not mention internal tooling, function calls, user IDs, or implementation details in user-facing replies—keep explanations strictly user-facing."
+    );
+    developerInstructionParts.push(
+      "Never include user identifiers (userId, customerId, email, etc.) in any product-tool call; tools already infer the user context."
+    );
+    developerInstructionParts.push(
+      "Do not infer skin concerns from skin tone, ethnicity, or broad descriptors. Only set `skinConcerns` when the user explicitly names a concern like acne, hyperpigmentation, redness, etc."
+    );
+    developerInstructionParts.push(
+      "Default to the following response structure: start with a concise confirmation sentence, then present the main points as a short bulleted or numbered list (each entry on its own line) before any closing guidance. Keep the list items focused and easy to scan."
+    );
+    developerInstructionParts.push(
+      "If you make a correction or adjust your answer, acknowledge it directly without apologising—avoid phrases like 'sorry' or 'I apologize'."
+    );
+    developerInstructionParts.push(
+      "Even for brief user messages (thanks, ok, nice, etc.), always include at least one short acknowledgment sentence before the Suggested actions block."
+    );
+    developerInstructionParts.push(
+      "End every reply with the heading 'Suggested actions' followed by exactly three numbered suggestions—never omit this section."
+    );
+    developerInstructionParts.push(
+      "When the user asks for a comparison (look for words like 'compare', 'versus', 'vs', or multiple products mentioned together), open with a short heading using an emoji (e.g., '✨ Here's a comparison of ...'). Then present the products as a numbered list where each item starts with the product name in bold followed by a concise summary, and underneath include indented sub-bullets for highlights like 'Best for', 'Texture', 'Key actives', and 'When to use'."
+    );
+    developerInstructionParts.push(
+      "If a product search returns no results, state it plainly as 'I couldn't find any matching items in stock right now.' before moving on to guidance or suggestions."
+    );
+    developerInstructionParts.push(
+      "When the user asks for more options (e.g., 'show me more', 'more serums', 'next page') after you've already surfaced products, call `searchProductsByQuery` again with the same filters and include an `excludeProductIds` array containing every productId (or slug) you've shown so far so the user only sees fresh results."
+    );
+    developerInstructionParts.push(
+      "If the user is asking for ingredient comparisons, mechanisms, pros/cons, or other informational guidance that doesn't explicitly request product recommendations or inventory, answer directly from your expertise without calling product tools. Only reach for tools when they ask you to find, show, compare, or act on specific products."
+    );
+    if (
+      !hasQuizSummaryInstruction &&
+      !hasPostQuizSystemPrompt &&
+      !hasRecentQuizCall
+    ) {
+      developerInstructionParts.push(
+        "If the user explicitly commands 'start the skin quiz' (phrased as an imperative), immediately call `startSkinTypeSurvey` with empty arguments and do not send any assistant prose in that turn. If the user is asking *whether* they should take the quiz or wants to understand their skin type, explain that SkinBuddy can run a quick survey and invite them to confirm before starting it."
+      );
+    }
+    const contents: Array<Record<string, unknown>> = [];
+    let capturedPersistentDeveloper = false;
+
+    for (const msg of chatMessages) {
+      if (msg.role === "system") {
+        if (typeof msg.content === "string" && msg.content.trim().length) {
+          systemInstructionParts.push(msg.content.trim());
         }
+        continue;
+      }
 
-        const roleForMessage =
-          msg.role === "developer" ||
-          msg.role === "system" ||
-          msg.role === "user" ||
-          msg.role === "assistant"
-            ? msg.role
-            : "user";
+      if (msg.role === "developer") {
+        if (typeof msg.content === "string" && msg.content.trim().length) {
+          if (!capturedPersistentDeveloper) {
+            developerInstructionParts.push(msg.content.trim());
+            capturedPersistentDeveloper = true;
+          } else {
+            contents.push({
+              role: "user",
+              parts: [{ text: msg.content }],
+            });
+          }
+        }
+        continue;
+      }
 
-        items.push({
-          type: "message",
-          role: roleForMessage,
-          content: msg.content,
+      if (msg.role === "user") {
+        contents.push({
+          role: "user",
+          parts: [{ text: msg.content }],
+        });
+        continue;
+      }
+
+      if (msg.role === "assistant") {
+        if (typeof msg.content === "string" && msg.content.trim().length) {
+          contents.push({
+            role: "model",
+            parts: [{ text: msg.content }],
+          });
+        }
+        continue;
+      }
+
+      if (msg.role === "tool") {
+        const toolName =
+          typeof msg.tool_name === "string" && msg.tool_name.length
+            ? msg.tool_name
+            : "tool";
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(msg.content ?? "{}");
+        } catch {
+          parsed = { raw: msg.content ?? "" };
+        }
+        const responsePayload =
+          parsed && typeof parsed === "object"
+            ? (parsed as Record<string, unknown>)
+            : { value: parsed };
+        const functionResponse: Record<string, unknown> = {
+          name: toolName,
+          response: responsePayload,
+        };
+        if (msg.tool_call_id && typeof msg.tool_call_id === "string") {
+          functionResponse.id = msg.tool_call_id;
+        }
+        contents.push({
+          role: "function",
+          parts: [{ functionResponse }],
         });
       }
+    }
 
-      return items.concat(extraInputItems);
+    const systemInstruction =
+      systemInstructionParts.length > 0 || developerInstructionParts.length > 0
+        ? {
+            role: "system",
+            parts: [
+              {
+                text: [
+                  ...systemInstructionParts,
+                  ...developerInstructionParts,
+                ].join("\n\n"),
+              },
+            ],
+          }
+        : undefined;
+
+    if (!contents.length) {
+      contents.push({
+        role: "user",
+        parts: [{ text: "" }],
+      });
+    }
+
+    const requestConfig: Record<string, unknown> = {
+      temperature,
+    };
+    if (systemInstruction) {
+      requestConfig.systemInstruction = systemInstruction;
+    }
+    if (useTools && geminiTools.length) {
+      requestConfig.tools = [
+        {
+          functionDeclarations: geminiTools,
+        },
+      ];
+      requestConfig.toolConfig = {
+        functionCallingConfig: {
+          mode: forceFinal ? "NONE" : "AUTO",
+        },
+      };
+    }
+
+    const requestPayload = {
+      model,
+      contents,
+      config: requestConfig,
+    } as Record<string, unknown>;
+
+    const extractText = (response: any): string => {
+      if (!response) return "";
+      if (typeof response.text === "string" && response.text.length) {
+        return response.text;
+      }
+      const candidate = response.candidates?.[0];
+      if (!candidate?.content?.parts) return "";
+      return candidate.content.parts
+        .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+        .join("");
     };
 
-    const isGPT5 = /(^|\b)gpt-5(\b|\-)/i.test(model);
-    let content = "";
-
-    const stream = await openai.responses.create({
-      model,
-      store: false,
-      // include: ["reasoning.encrypted_content"],
-      ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
-      input: toInputFromChat(),
-      tools: useTools ? (tools as any) : undefined,
-      tool_choice: useTools ? (forceFinal ? "none" : "auto") : "none",
-      stream: true,
-      ...(isGPT5 ? { temperature: 1 as const } : { temperature }),
-    });
-
-    for await (const event of stream as any) {
-      const type = event?.type as string | undefined;
-      if (!type) continue;
-
-      if (type === "response.output_text.delta") {
-        const delta = event.delta ?? "";
-        if (delta) {
-          content += delta;
-          if (onToken) await onToken(delta);
-        }
-        continue;
-      }
-
-      if (type === "response.output_item.added") {
-        const item = event.item;
-        if (item?.type === "function_call") {
-          const id =
-            item.id ||
-            event.item_id ||
-            item.call_id ||
-            `call_${event.output_index ?? 0}`;
-          toolCallsByItemId.set(id, {
-            id,
-            call_id: item.call_id,
-            name: item.name,
-            arguments: "",
+    const recordFunctionCalls = (response: any) => {
+      if (!response?.candidates) return;
+      for (const candidate of response.candidates) {
+        const parts = candidate?.content?.parts;
+        if (!Array.isArray(parts)) continue;
+        for (const part of parts) {
+          const call = part?.functionCall;
+          if (!call || typeof call !== "object") continue;
+          const callName =
+            typeof call.name === "string" && call.name.length
+              ? call.name
+              : "unknown_function";
+          const rawArgs = call.args ?? {};
+          const cleanedArgs = { ...rawArgs };
+          if (cleanedArgs && typeof cleanedArgs === "object") {
+            if ("SPF" in cleanedArgs && !("spf" in cleanedArgs)) {
+              cleanedArgs.spf = cleanedArgs["SPF"];
+            }
+            delete (cleanedArgs as Record<string, unknown>)["SPF"];
+          }
+          const serializedArgs = JSON.stringify(cleanedArgs ?? {});
+          const explicitId =
+            typeof call.id === "string" && call.id.length ? call.id : null;
+          if (explicitId && toolCallsById.has(explicitId)) continue;
+          const signature =
+            serializedArgs && serializedArgs.length
+              ? `${callName}:${serializedArgs}`
+              : callName;
+          if (!explicitId && seenFunctionSignatures.has(signature)) continue;
+          const callId =
+            explicitId ?? `fc_${toolCallsById.size + 1}_${Date.now()}`;
+          if (!explicitId) {
+            seenFunctionSignatures.add(signature);
+          }
+          toolCallsById.set(callId, {
+            id: callId,
+            call_id: callId,
+            name: callName,
+            arguments: serializedArgs,
           });
         }
-        continue;
       }
+    };
 
-      if (type === "response.function_call_arguments.delta") {
-        const itemId = event.item_id as string;
-        const existing = toolCallsByItemId.get(itemId);
-        if (existing) {
-          existing.arguments += event.delta ?? "";
+    const streamResult = await geminiClient.models.generateContentStream(
+      requestPayload as any
+    );
+    const streamIterable = (() => {
+      const candidate = streamResult as any;
+      if (candidate && typeof candidate[Symbol.asyncIterator] === "function") {
+        return candidate as AsyncGenerator<any>;
+      }
+      if (
+        candidate &&
+        candidate.stream &&
+        typeof candidate.stream[Symbol.asyncIterator] === "function"
+      ) {
+        return candidate.stream as AsyncGenerator<any>;
+      }
+      return undefined;
+    })();
+    let contentBuffer = "";
+    let finalResponse: any = null;
+
+    const processChunk = async (chunk: any) => {
+      if (!chunk) return;
+      try {
+        const candidates = Array.isArray(chunk.candidates)
+          ? chunk.candidates
+          : [];
+        for (
+          let candidateIndex = 0;
+          candidateIndex < candidates.length;
+          candidateIndex++
+        ) {
+          const candidate = candidates[candidateIndex];
+          const parts = Array.isArray(candidate?.content?.parts)
+            ? candidate.content.parts
+            : [];
+          for (let partIndex = 0; partIndex < parts.length; partIndex++) {
+            const part = parts[partIndex];
+            if (typeof part?.text === "string" && part.text.length) {
+              const key = `${candidateIndex}:${partIndex}`;
+              const previous = emittedPartText.get(key) ?? "";
+              if (part.text.startsWith(previous)) {
+                const delta = part.text.slice(previous.length);
+                if (delta.length) {
+                  contentBuffer += delta;
+                  emittedPartText.set(key, part.text);
+                  if (onToken) await onToken(delta);
+                }
+              } else {
+                emittedPartText.set(key, part.text);
+                contentBuffer += part.text;
+                if (onToken) await onToken(part.text);
+              }
+            }
+          }
         }
-        continue;
+        recordFunctionCalls(chunk);
+      } catch (error) {
+        console.error("Gemini stream chunk processing failed:", error);
+      }
+    };
+
+    if (streamIterable) {
+      for await (const chunk of streamIterable) {
+        finalResponse = chunk;
+        await processChunk(chunk);
       }
     }
 
-    const toolCalls = Array.from(toolCallsByItemId.values());
+    const resolvedFinalResponse =
+      finalResponse ??
+      (await (async () => {
+        const maybePromise = (streamResult as any)?.response;
+        if (maybePromise && typeof maybePromise.then === "function") {
+          try {
+            return await maybePromise;
+          } catch (error) {
+            console.error("Gemini final response retrieval failed:", error);
+            return null;
+          }
+        }
+        return null;
+      })());
+
+    if (!finalResponse && resolvedFinalResponse) {
+      await processChunk(resolvedFinalResponse);
+    }
+
+    const finalText =
+      contentBuffer.length > 0
+        ? contentBuffer
+        : extractText(resolvedFinalResponse);
+
+    const promptFeedback = finalResponse?.promptFeedback;
+    if (
+      (!finalResponse?.candidates || !finalResponse.candidates.length) &&
+      promptFeedback?.blockReason
+    ) {
+      throw new Error(
+        `Gemini blocked the response: ${promptFeedback.blockReason}`
+      );
+    }
+
+    const toolCalls = Array.from(toolCallsById.values());
 
     if (toolCalls.length) {
-      // Record that the assistant produced tool calls (no direct content)
       chatMessages.push({ role: "assistant", content: "" });
     } else {
-      chatMessages.push({ role: "assistant", content });
+      chatMessages.push({ role: "assistant", content: finalText });
     }
 
-    return { content, toolCalls };
+    return { content: finalText, toolCalls };
   };
 
   let rounds = 0;
@@ -535,12 +797,12 @@ export async function callOpenAI({
     }
   };
 
-  console.log("calling openAi");
+  console.log("calling Gemini");
 
   // main
   let pendingExtraInputItems: any[] = [];
   while (true) {
-    console.log("This is how many times we have called openAi " + (rounds + 1));
+    console.log("This is how many times we have called Gemini " + (rounds + 1));
     const { content, toolCalls } = await streamCompletion(
       rounds >= maxToolRounds,
       pendingExtraInputItems
@@ -572,6 +834,13 @@ export async function callOpenAI({
         toolCall.call_id = callId;
         toolCall.id = callId;
 
+        if (hasSurveyResults && toolCall.name === "startSkinTypeSurvey") {
+          console.log(
+            "Skipping redundant startSkinTypeSurvey call after survey completion"
+          );
+          continue;
+        }
+
         if (
           toolCall.name === "recommendRoutine" &&
           !shouldAllowRecommendRoutine(latestUserMessageContent)
@@ -592,6 +861,16 @@ export async function callOpenAI({
               error: true,
               message:
                 "recommendRoutine is only for multi-step routines or step swaps. Use searchProductsByQuery for single-product requests.",
+            }),
+          });
+          pendingExtraInputItems.push({
+            role: "tool",
+            tool_name: toolCall.name,
+            tool_call_id: callId,
+            content: JSON.stringify({
+              error: true,
+              message:
+                "Routine tool skipped: call searchProductsByQuery to recommend an individual product.",
             }),
           });
           continue;
@@ -690,7 +969,9 @@ export async function callOpenAI({
               benefitAccumulator.add(benefit)
             );
 
-            const addBenefitsFromDescriptors = (descriptors: readonly string[]) => {
+            const addBenefitsFromDescriptors = (
+              descriptors: readonly string[]
+            ) => {
               descriptors.forEach((descriptor) => {
                 const tokens = tokenizeDescriptor(descriptor);
                 if (!tokens.length) return;
@@ -713,11 +994,20 @@ export async function callOpenAI({
 
             if (originalNameQuery.length) {
               const nameTokens = tokenizeDescriptor(originalNameQuery);
-              if (nameTokens.length) {
-                const {
-                  benefits: nameBenefits,
-                  residual: nameResidual,
-                } = mapDescriptorsToBenefits(nameTokens);
+              const likelyExactName =
+                nameTokens.length >= 3 ||
+                (typeof argsRecord.brandQuery === "string" &&
+                  argsRecord.brandQuery.trim().length > 0);
+
+              if (likelyExactName) {
+                // Preserve the full product name for strict lookups and avoid broad benefit filters.
+                argsRecord.nameQuery = originalNameQuery;
+                if (Array.isArray(argsRecord.benefits)) {
+                  delete (argsRecord as Record<string, unknown>).benefits;
+                }
+              } else if (nameTokens.length) {
+                const { benefits: nameBenefits, residual: nameResidual } =
+                  mapDescriptorsToBenefits(nameTokens);
 
                 nameBenefits.forEach((benefit) =>
                   benefitAccumulator.add(benefit)
@@ -765,7 +1055,9 @@ export async function callOpenAI({
                 latestUserMessageContent,
                 ...userTokens,
               ]);
-              userBenefits.forEach((benefit) => benefitAccumulator.add(benefit));
+              userBenefits.forEach((benefit) =>
+                benefitAccumulator.add(benefit)
+              );
               mergedBenefits = Array.from(benefitAccumulator);
             }
 
@@ -813,47 +1105,6 @@ export async function callOpenAI({
                 ? (adjustedArgs as Record<string, unknown>)
                 : {};
 
-            const extractString = (value: unknown): string | undefined => {
-              if (typeof value !== "string") return undefined;
-              const trimmed = value.trim();
-              return trimmed.length ? trimmed : undefined;
-            };
-
-            const normalizeStringArray = (value: unknown): string[] =>
-              Array.isArray(value)
-                ? value
-                    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-                    .filter((entry) => entry.length > 0)
-                    .sort()
-                : [];
-
-            const normalizeBenefitArray = (value: unknown): string[] =>
-              Array.isArray(value)
-                ? value
-                    .map((entry) => normalizeBenefitSlug(String(entry)) ?? "")
-                    .filter((entry) => entry.length > 0)
-                    .sort()
-                : [];
-
-            const originalCategory = extractString(originalSnapshot.categoryQuery);
-            const finalCategory = extractString(adjustedSnapshot.categoryQuery);
-            const originalName = extractString(originalSnapshot.nameQuery);
-            const finalName = extractString(adjustedSnapshot.nameQuery);
-            const originalBenefitsArray = normalizeBenefitArray(
-              originalSnapshot.benefits
-            );
-            const finalBenefitsArray = normalizeBenefitArray(
-              adjustedSnapshot.benefits
-            );
-            const originalIngredientsArray = normalizeStringArray(
-              originalSnapshot.ingredientQueries
-            );
-           const finalIngredientsArray = normalizeStringArray(
-             adjustedSnapshot.ingredientQueries
-           );
-
-           const changes: string[] = [];
-
             if (
               adjustedSnapshot.skinConcerns &&
               Array.isArray(adjustedSnapshot.skinConcerns)
@@ -866,21 +1117,67 @@ export async function callOpenAI({
                 (value) =>
                   typeof value === "string" &&
                   (userLower.includes(value.toLowerCase()) ||
-                    userLower.includes(value.replace(/[-_]/g, " ").toLowerCase()))
+                    userLower.includes(
+                      value.replace(/[-_]/g, " ").toLowerCase()
+                    ))
               );
               if (filteredConcerns.length) {
                 (adjustedArgs as Record<string, unknown>).skinConcerns =
                   filteredConcerns;
               } else {
                 delete (adjustedArgs as Record<string, unknown>).skinConcerns;
-                changes.push("skinConcerns cleared");
               }
             }
 
-           if (finalCategory !== originalCategory) {
-             changes.push(
-               `categoryQuery → ${finalCategory ? `"${finalCategory}"` : "(removed)"}`
-             );
+            const extractString = (value: unknown): string | undefined => {
+              if (typeof value !== "string") return undefined;
+              const trimmed = value.trim();
+              return trimmed.length ? trimmed : undefined;
+            };
+
+            const normalizeStringArray = (value: unknown): string[] =>
+              Array.isArray(value)
+                ? value
+                    .map((entry) =>
+                      typeof entry === "string" ? entry.trim() : ""
+                    )
+                    .filter((entry) => entry.length > 0)
+                    .sort()
+                : [];
+
+            const normalizeBenefitArray = (value: unknown): string[] =>
+              Array.isArray(value)
+                ? value
+                    .map((entry) => normalizeBenefitSlug(String(entry)) ?? "")
+                    .filter((entry) => entry.length > 0)
+                    .sort()
+                : [];
+
+            const originalCategory = extractString(
+              originalSnapshot.categoryQuery
+            );
+            const finalCategory = extractString(adjustedSnapshot.categoryQuery);
+            const originalName = extractString(originalSnapshot.nameQuery);
+            const finalName = extractString(adjustedSnapshot.nameQuery);
+            const originalBenefitsArray = normalizeBenefitArray(
+              originalSnapshot.benefits
+            );
+            const finalBenefitsArray = normalizeBenefitArray(
+              adjustedSnapshot.benefits
+            );
+            const originalIngredientsArray = normalizeStringArray(
+              originalSnapshot.ingredientQueries
+            );
+            const finalIngredientsArray = normalizeStringArray(
+              adjustedSnapshot.ingredientQueries
+            );
+
+            const changes: string[] = [];
+
+            if (finalCategory !== originalCategory) {
+              changes.push(
+                `categoryQuery → ${finalCategory ? `"${finalCategory}"` : "(removed)"}`
+              );
             }
 
             if (
@@ -1239,7 +1536,7 @@ export async function callOpenAI({
         chatMessages.push({
           role: "developer",
           content:
-            "The latest product search returned no matches. Tell the user plainly that nothing matching their request is in stock before offering suggestions.",
+            "The latest product search returned no matches. Tell the user directly that nothing matching their request is in stock before moving to suggestions.",
         });
       }
 
@@ -1256,7 +1553,7 @@ export async function callOpenAI({
         // pass in the product to llm to refine
 
         try {
-          refinedProductsResult = await refineProductSelection({
+          refinedProductsResult = await refineProductSelectionWithGemini({
             candidates: productsArray as ProductCandidate[],
             model,
             userRequest: latestUserMessageContent ?? "",
@@ -1402,9 +1699,7 @@ export async function callOpenAI({
           productCount: streamingProducts.length,
           filters: {
             category: normalizedCategory,
-            skinTypes: filteredSkinTypes.length
-              ? filteredSkinTypes
-              : undefined,
+            skinTypes: filteredSkinTypes.length ? filteredSkinTypes : undefined,
             skinConcerns: normalizedConcerns.length
               ? normalizedConcerns
               : undefined,
@@ -1432,6 +1727,15 @@ export async function callOpenAI({
         await streamSummaryIfNeeded();
         await streamProductsIfNeeded(streamingProducts);
         lastProductSelection = streamingProducts;
+
+        if (!streamingProducts.length) {
+          chatMessages.push({
+            role: "developer",
+            content:
+              "No matching products were returned from the last tool call. Respond candidly that we don't currently stock an exact match for what they asked, suggest tweaking filters or sharing more detail, and explicitly offer to try another search. Do not invent product names or imply success when nothing was found.",
+          });
+          continue;
+        }
 
         const reasonContext = streamingProducts
           .slice(0, 4)
@@ -1494,7 +1798,7 @@ export async function callOpenAI({
 
   finalContent = finalContent.trim();
   if (!finalContent.length) {
-    finalContent = "All set—what would you like me to do next?";
+    finalContent = "Got it—let me know how you'd like me to help next.";
   }
 
   const replyText = productsPayload.length
@@ -1505,7 +1809,7 @@ export async function callOpenAI({
 
   let generatedSummary: ReplySummary | null = combinedSummary;
   if (!generatedSummary && replyText.trim().length) {
-    generatedSummary = await generateReplySummaryWithLLM({
+    generatedSummary = await generateReplySummaryWithGemini({
       reply: replyText,
       userMessage: latestUserMessageContent,
       context: summaryContext,
