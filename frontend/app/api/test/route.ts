@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runChatCompletion } from "@/convex/_utils/internalUtils";
+import { runChatCompletion as runOpenAIChatCompletion } from "@/convex/_utils/internalUtils";
+import { runChatCompletion as runGeminiChatCompletion } from "@/convex/_utils/internalGemini";
+
+const MODEL_PROVIDER =
+  (process.env.CHAT_MODEL_PROVIDER ?? "gemini").toLowerCase();
+
+const runChatCompletion =
+  MODEL_PROVIDER === "openai"
+    ? runOpenAIChatCompletion
+    : runGeminiChatCompletion;
 
 // export async function POST(req: NextRequest) {
 //   const body = await req.json();

@@ -544,7 +544,7 @@ export async function POST(req: NextRequest) {
               ? body.model.trim()
               : useOpenAI
                 ? "gpt-4o-mini"
-                : "gemini-2.0-flash-lite";
+                : "gemini-2.5-flash-lite";
           const resolvedTemperature =
             typeof body?.temperature === "number" ? body.temperature : 0.5;
           const maxToolRounds =

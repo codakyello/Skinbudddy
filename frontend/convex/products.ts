@@ -3,14 +3,14 @@ import { action, mutation, query, internalQuery } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
-import OpenAI from "openai";
 // import { captureSentryError } from "./_utils/sentry";
 import products from "../products.json";
 // Convex internal helper import is static to avoid runtime dynamic import failures.
 import { SkinConcern, SkinType } from "./schema";
 import { AHA_BHA_SET, DRYING_ALCOHOLS } from "../convex/_utils/products";
 import { Product, Brand } from "./_utils/type";
-import { runChatCompletion } from "./_utils/internalUtils";
+import { runChatCompletion as runOpenAIChatCompletion } from "./_utils/internalUtils";
+import { runChatCompletion as runGeminiChatCompletion } from "./_utils/internalGemini";
 import {
   resolveSkinConcern,
   resolveSkinType,
@@ -19,6 +19,15 @@ import {
   type SkinTypeCanonical,
   type BenefitCanonical,
 } from "../shared/skinMappings.js";
+
+const MODEL_PROVIDER = (
+  process.env.CHAT_MODEL_PROVIDER ?? "gemini"
+).toLowerCase();
+
+const runChatCompletion =
+  MODEL_PROVIDER === "openai"
+    ? runOpenAIChatCompletion
+    : runGeminiChatCompletion;
 
 export const IngredientSensitivity = v.union(
   v.literal("alcohol"),
@@ -50,12 +59,89 @@ const normalizeText = (value: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "be",
+  "by",
+  "for",
+  "from",
+  "have",
+  "in",
+  "it",
+  "its",
+  "my",
+  "of",
+  "on",
+  "or",
+  "please",
+  "show",
+  "store",
+  "the",
+  "this",
+  "to",
+  "with",
+  "you",
+  "do",
+  "any",
+  "need",
+  "want",
+  "looking",
+  "find",
+  "spf",
+  "broad",
+  "spectrum",
+  "broad-spectrum",
+  "broadband",
+  "uv",
+  "clear",
+  "fusion",
+  "fotoprotector",
+  "photoprotector",
+  "tinted",
+  "mineral",
+  "water",
+  "face",
+  "lotion",
+  "cream",
+  "bottle",
+  "sunscreen",
+  "physical",
+]);
+
 const toTokenSet = (input: string) =>
   new Set(
     normalizeText(input)
       .split(" ")
-      .filter((token) => token.length > 0)
+      .filter((token) => {
+        if (!token.length) return false;
+        if (STOP_WORDS.has(token)) return false;
+        if (/^\d+$/.test(token)) return false;
+        return true;
+      })
   );
+
+const GENERIC_INGREDIENT_KEYS = new Set([
+  "water",
+  "aqua",
+  "water_aqua",
+  "glycerin",
+  "butylene_glycol",
+  "propane_diol",
+  "propylene_glycol",
+  "squalane",
+  "dimethicone",
+  "alcohol",
+  "cetyl_alcohol",
+  "stearyl_alcohol",
+  "caprylic_capric_triglyceride",
+  "mineral_oil",
+  "petrolatum",
+  "shea_butter",
+  "squalene",
+]);
 
 const normalizeBenefitKey = (value: string): string | null => {
   const normalized = normalizeText(value);
@@ -1088,6 +1174,7 @@ type ProductCardSummary = {
   score?: number;
   brand?: { name?: string; slug?: string };
   nameMatchCount?: number;
+  benefitMatchCount?: number;
   categories?: Array<{ name?: string; slug?: string }>;
   ingredients?: string[];
 };
@@ -1106,6 +1193,14 @@ type SearchProductsByQueryArgs = {
   skip?: number;
   hasAlcohol?: boolean;
   hasFragrance?: boolean;
+  minPrice?: number;
+  maxPrice?: number;
+  ingredientsToAvoid?: string[];
+  isBestseller?: boolean;
+  isTrending?: boolean;
+  isNew?: boolean;
+  minDiscount?: number;
+  maxDiscount?: number;
 };
 
 type SearchProductsByQueryResult =
@@ -1114,7 +1209,8 @@ type SearchProductsByQueryResult =
       reason:
         | "ambiguous_or_not_found"
         | "brand_not_found"
-        | "category_not_found";
+        | "category_not_found"
+        | "not_found";
       categoryOptions: unknown[];
       brandOptions: unknown[];
     }
@@ -1151,16 +1247,97 @@ async function searchProductsByQueryImpl(
     skip, // lets implement this later
     hasAlcohol,
     hasFragrance,
+    minPrice,
+    maxPrice,
+    ingredientsToAvoid,
+    isBestseller,
+    isTrending,
+    isNew,
+    minDiscount,
+    maxDiscount,
   }: SearchProductsByQueryArgs
 ): Promise<SearchProductsByQueryResult> {
   const normalizedNameQuery =
     typeof nameQuery === "string" ? normalizeText(nameQuery) : "";
   const hasNameQuery = normalizedNameQuery.length > 0;
   const nameTokens = hasNameQuery
-    ? new Set(
-        normalizedNameQuery.split(" ").filter((token) => token.length > 0)
-      )
+    ? toTokenSet(typeof nameQuery === "string" ? nameQuery : normalizedNameQuery)
     : null;
+
+  const priceMinValue =
+    typeof minPrice === "number" && Number.isFinite(minPrice) && minPrice >= 0
+      ? minPrice
+      : null;
+  const priceMaxValue =
+    typeof maxPrice === "number" && Number.isFinite(maxPrice) && maxPrice >= 0
+      ? maxPrice
+      : null;
+  let resolvedMinPrice = priceMinValue;
+  let resolvedMaxPrice = priceMaxValue;
+  if (
+    resolvedMinPrice != null &&
+    resolvedMaxPrice != null &&
+    resolvedMinPrice > resolvedMaxPrice
+  ) {
+    const temp = resolvedMinPrice;
+    resolvedMinPrice = resolvedMaxPrice;
+    resolvedMaxPrice = temp;
+  }
+  const hasPriceFilter =
+    resolvedMinPrice != null || resolvedMaxPrice != null;
+
+  const discountMinValue =
+    typeof minDiscount === "number" && Number.isFinite(minDiscount)
+      ? Math.max(0, Math.min(100, minDiscount))
+      : null;
+  const discountMaxValue =
+    typeof maxDiscount === "number" && Number.isFinite(maxDiscount)
+      ? Math.max(0, Math.min(100, maxDiscount))
+      : null;
+  let resolvedMinDiscount = discountMinValue;
+  let resolvedMaxDiscount = discountMaxValue;
+  if (
+    resolvedMinDiscount != null &&
+    resolvedMaxDiscount != null &&
+    resolvedMinDiscount > resolvedMaxDiscount
+  ) {
+    const tempDiscount = resolvedMinDiscount;
+    resolvedMinDiscount = resolvedMaxDiscount;
+    resolvedMaxDiscount = tempDiscount;
+  }
+  const hasDiscountFilter =
+    resolvedMinDiscount != null || resolvedMaxDiscount != null;
+
+  const isPriceWithinRange = (value: unknown): boolean => {
+    const priceNumber =
+      typeof value === "number" ? value : Number(value ?? Number.NaN);
+    if (!Number.isFinite(priceNumber)) return false;
+    if (resolvedMinPrice != null && priceNumber < resolvedMinPrice) {
+      return false;
+    }
+    if (resolvedMaxPrice != null && priceNumber > resolvedMaxPrice) {
+      return false;
+    }
+    return true;
+  };
+
+  const rawIngredientsToAvoid = Array.isArray(ingredientsToAvoid)
+    ? ingredientsToAvoid
+        .map((value) => String(value).toLowerCase().trim())
+        .filter((value) => value.length > 0)
+    : [];
+  const avoidIngredientSet = new Set<string>();
+  rawIngredientsToAvoid.forEach((value) => {
+    if (value === "ahas-bhas") return;
+    const normalized = normalizeIngredient(value);
+    if (normalized) {
+      avoidIngredientSet.add(normalized);
+    } else {
+      avoidIngredientSet.add(value);
+    }
+  });
+  const wantsNoAcids = rawIngredientsToAvoid.includes("ahas-bhas");
+  const wantsNoAlcohol = rawIngredientsToAvoid.includes("alcohol");
 
   const ingredientLookup = new Map<string, string>();
 
@@ -1246,6 +1423,8 @@ async function searchProductsByQueryImpl(
     const detected = new Set<string>();
     for (const [comparable, canonical] of ingredientLookup.entries()) {
       if (matchesPhrase(value, comparable)) {
+        if (!canonical) continue;
+        if (GENERIC_INGREDIENT_KEYS.has(canonical)) continue;
         detected.add(canonical);
       }
     }
@@ -1267,13 +1446,26 @@ async function searchProductsByQueryImpl(
     ? categoryResolution.slugs
     : [];
 
-  console.log(categorySlugs, "This is the category slug");
+  // console.log(categorySlugs, "This is the category slug");
 
   const brandSlugs = Array.isArray(brandResolution.slugs)
     ? brandResolution.slugs
     : [];
 
-  console.log(brandSlugs, "This is the brand slug");
+  // console.log(brandSlugs, "This is the brand slug");
+
+  if (
+    typeof brandQuery === "string" &&
+    brandQuery.trim().length &&
+    !brandSlugs.length
+  ) {
+    return {
+      success: false,
+      reason: "not_found",
+      categoryOptions: categoryResolution.options ?? [],
+      brandOptions: brandResolution.options ?? [],
+    };
+  }
 
   const requestedSkinTypeSet = new Set<SkinTypeCanonical>();
   if (Array.isArray(skinTypes)) {
@@ -1363,7 +1555,12 @@ async function searchProductsByQueryImpl(
         new Set(
           group
             .map((value) => normalizeIngredient(value))
-            .filter((value) => value && value.length > 0)
+            .filter(
+              (value) =>
+                value &&
+                value.length > 0 &&
+                !GENERIC_INGREDIENT_KEYS.has(value)
+            )
         )
       )
     )
@@ -1390,7 +1587,7 @@ async function searchProductsByQueryImpl(
     };
   }
 
-  console.log(categorySlugs, brandSlugs, "slugs");
+  // console.log(categorySlugs, brandSlugs, "slugs");
 
   let products = allProducts;
 
@@ -1411,7 +1608,7 @@ async function searchProductsByQueryImpl(
     if (!brandIds.size) {
       return {
         success: false,
-        reason: "brand_not_found",
+        reason: "not_found",
         categoryOptions: categoryResolution.options ?? [],
         brandOptions: brandResolution.options ?? [],
       };
@@ -1438,7 +1635,7 @@ async function searchProductsByQueryImpl(
     if (!categoryIds.size) {
       return {
         success: false,
-        reason: "category_not_found",
+        reason: "not_found",
         categoryOptions: categoryResolution.options ?? [],
         brandOptions: brandResolution.options ?? [],
       };
@@ -1485,20 +1682,28 @@ async function searchProductsByQueryImpl(
     });
   }
 
+  const benefitMatchCounts = new Map<Id<"products">, number>();
   if (requestedBenefits.length) {
     const benefitSet = new Set<string>(requestedBenefits);
-    products = products.filter((product) => {
+    const matched: Doc<"products">[] = [];
+    const unmatched: Doc<"products">[] = [];
+
+    for (const product of products) {
       const productBenefits = getBenefitSlugsForProduct(product);
+      const matchCount = productBenefits.filter((benefit) =>
+        benefitSet.has(benefit)
+      ).length;
 
-      if (!productBenefits.length) return false;
+      benefitMatchCounts.set(product._id, matchCount);
 
-      for (const benefit of benefitSet) {
-        if (!productBenefits.includes(benefit)) {
-          return false;
-        }
+      if (matchCount > 0) {
+        matched.push(product);
+      } else {
+        unmatched.push(product);
       }
-      return true;
-    });
+    }
+
+    products = matched.length ? [...matched, ...unmatched] : unmatched;
   }
 
   if (normalizedIngredientGroups.length) {
@@ -1541,6 +1746,51 @@ async function searchProductsByQueryImpl(
       .map(({ product }) => product);
   }
 
+  if (
+    avoidIngredientSet.size > 0 ||
+    wantsNoAcids ||
+    wantsNoAlcohol
+  ) {
+    products = products.filter((product) => {
+      if (!Array.isArray(product.ingredients) || !product.ingredients.length) {
+        return true;
+      }
+      const normalizedIngredients = product.ingredients
+        .map((ingredient) => {
+          if (typeof ingredient !== "string") return "";
+          return normalizeIngredient(ingredient);
+        })
+        .filter((value) => value.length > 0);
+
+      if (
+        wantsNoAcids &&
+        normalizedIngredients.some((ingredient) => AHA_BHA_SET.has(ingredient))
+      ) {
+        return false;
+      }
+
+      if (
+        wantsNoAlcohol &&
+        normalizedIngredients.some((ingredient) =>
+          DRYING_ALCOHOLS.has(ingredient)
+        )
+      ) {
+        return false;
+      }
+
+      if (
+        avoidIngredientSet.size > 0 &&
+        normalizedIngredients.some((ingredient) =>
+          avoidIngredientSet.has(ingredient)
+        )
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
   if (typeof hasAlcohol === "boolean") {
     products = products.filter((product) => {
       const productHasAlcohol = Boolean(product.hasAlcohol);
@@ -1555,29 +1805,87 @@ async function searchProductsByQueryImpl(
     });
   }
 
+  if (typeof isBestseller === "boolean") {
+    products = products.filter((product) => {
+      const value = Boolean((product as any)?.isBestseller);
+      return value === isBestseller;
+    });
+  }
+
+  if (typeof isTrending === "boolean") {
+    products = products.filter((product) => {
+      const value = Boolean((product as any)?.isTrending);
+      return value === isTrending;
+    });
+  }
+
+  if (typeof isNew === "boolean") {
+    products = products.filter((product) => {
+      const value = Boolean((product as any)?.isNew);
+      return value === isNew;
+    });
+  }
+
+  if (hasDiscountFilter) {
+    products = products.filter((product) => {
+      const discountValue = Number((product as any)?.discount);
+      if (!Number.isFinite(discountValue)) return false;
+      if (
+        resolvedMinDiscount != null &&
+        discountValue < resolvedMinDiscount
+      ) {
+        return false;
+      }
+      if (
+        resolvedMaxDiscount != null &&
+        discountValue > resolvedMaxDiscount
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  if (hasPriceFilter) {
+    products = products.filter((product) => {
+      const productSizes = Array.isArray(product.sizes)
+        ? (product.sizes as Array<Record<string, unknown>>)
+        : [];
+      if (!productSizes.length) return false;
+      return productSizes.some((size) => {
+        if (!size || typeof size !== "object") return false;
+        const rawPrice = Number(
+          (size as Record<string, unknown>).price
+        );
+        if (!Number.isFinite(rawPrice)) return false;
+        if (
+          resolvedMinPrice != null &&
+          rawPrice < resolvedMinPrice
+        )
+          return false;
+        if (
+          resolvedMaxPrice != null &&
+          rawPrice > resolvedMaxPrice
+        )
+          return false;
+        return true;
+      });
+    });
+  }
+
   if (!products.length) {
     return {
-      success: true,
-      filters: {
-        categorySlugs,
-        brandSlugs,
-        ...(requestedSkinTypes.length ? { skinTypes: requestedSkinTypes } : {}),
-        ...(requestedSkinConcerns.length
-          ? { skinConcerns: requestedSkinConcerns }
-          : {}),
-        ...(normalizedIngredientQueries.length
-          ? { ingredientQueries: normalizedIngredientQueries }
-          : {}),
-        ...(requestedBenefits.length ? { benefits: requestedBenefits } : {}),
-      },
-      products: [],
+      success: false,
+      reason: "not_found",
+      categoryOptions: categoryResolution.options ?? [],
+      brandOptions: brandResolution.options ?? [],
     };
   }
 
   const brandCache = new Map<Id<"brands">, Doc<"brands"> | null>();
   const categoryCache = new Map<Id<"categories">, Doc<"categories"> | null>();
 
-  const enriched: ProductCardSummary[] = await Promise.all(
+  const enrichedResults = await Promise.all(
     products.map(async (item) => {
       let brandDoc: Doc<"brands"> | null = null;
       let categoryDocs: Doc<"categories">[] = [];
@@ -1639,6 +1947,8 @@ async function searchProductsByQueryImpl(
               )
             : [];
 
+        const benefitMatchCount = benefitMatchCounts.get(item._id) ?? 0;
+
         let nameScore = 0;
         let nameMatchCount = hasNameQuery ? 0 : undefined;
         if (hasNameQuery && nameTokens && nameTokens.size) {
@@ -1691,13 +2001,19 @@ async function searchProductsByQueryImpl(
               : 0
             : 0;
 
+        const benefitScore =
+          requestedBenefits.length > 0
+            ? Math.min(benefitMatchCount / requestedBenefits.length, 1)
+            : 0;
+
         const score = hasNameQuery
           ? nameScore * 0.6 +
             categoryScore * 0.25 +
             brandScore +
             keywordBoost +
-            ingredientScore
-          : 1;
+            ingredientScore +
+            benefitScore * 0.2
+          : 1 + benefitScore * 0.1;
 
         const sizes: ProductCardSize[] = Array.isArray(sizesSorted)
           ? sizesSorted
@@ -1727,6 +2043,15 @@ async function searchProductsByQueryImpl(
               .filter((size): size is ProductCardSize => Boolean(size))
           : [];
 
+        const filteredSizes =
+          hasPriceFilter && sizes.length
+            ? sizes.filter((size) => isPriceWithinRange(size.price))
+            : sizes;
+
+        if (hasPriceFilter && !filteredSizes.length) {
+          return null;
+        }
+
         const summary: ProductCardSummary = {
           id: item._id,
           slug: String(item.slug ?? ""),
@@ -1738,7 +2063,7 @@ async function searchProductsByQueryImpl(
                 (img): img is string => typeof img === "string"
               )
             : [],
-          sizes,
+          sizes: filteredSizes,
           score,
           brand: brandDoc
             ? {
@@ -1749,6 +2074,8 @@ async function searchProductsByQueryImpl(
               }
             : undefined,
           nameMatchCount,
+          benefitMatchCount:
+            requestedBenefits.length > 0 ? benefitMatchCount : undefined,
           categories: categoryDocs.map((doc) => ({
             name: typeof doc.name === "string" ? doc.name : undefined,
             slug: typeof doc.slug === "string" ? doc.slug : undefined,
@@ -1792,6 +2119,15 @@ async function searchProductsByQueryImpl(
               .filter((size): size is ProductCardSize => Boolean(size))
           : [];
 
+        const filteredFallbackSizes =
+          hasPriceFilter && fallbackSizes.length
+            ? fallbackSizes.filter((size) => isPriceWithinRange(size.price))
+            : fallbackSizes;
+
+        if (hasPriceFilter && !filteredFallbackSizes.length) {
+          return null;
+        }
+
         const fallbackCategories = Array.isArray(item.categories)
           ? item.categories
               .map((catId: Id<"categories">) => {
@@ -1801,6 +2137,12 @@ async function searchProductsByQueryImpl(
               })
               .filter((doc): doc is Doc<"categories"> => Boolean(doc))
           : [];
+
+        const fallbackBenefitMatchCount = benefitMatchCounts.get(item._id) ?? 0;
+        const fallbackBenefitScore =
+          requestedBenefits.length > 0
+            ? Math.min(fallbackBenefitMatchCount / requestedBenefits.length, 1)
+            : 0;
 
         const fallback: ProductCardSummary = {
           id: item._id,
@@ -1813,9 +2155,15 @@ async function searchProductsByQueryImpl(
                 (img): img is string => typeof img === "string"
               )
             : [],
-          sizes: fallbackSizes,
-          score: hasNameQuery ? 0 : 1,
+          sizes: filteredFallbackSizes,
+          score: hasNameQuery
+            ? fallbackBenefitScore * 0.2
+            : 1 + fallbackBenefitScore * 0.1,
           nameMatchCount: hasNameQuery ? 0 : undefined,
+          benefitMatchCount:
+            requestedBenefits.length > 0
+              ? fallbackBenefitMatchCount
+              : undefined,
           categories: fallbackCategories.map((doc) => ({
             name: typeof doc.name === "string" ? doc.name : undefined,
             slug: typeof doc.slug === "string" ? doc.slug : undefined,
@@ -1833,9 +2181,17 @@ async function searchProductsByQueryImpl(
       }
     })
   );
+  const enriched: ProductCardSummary[] = enrichedResults.filter(
+    (entry): entry is ProductCardSummary => Boolean(entry)
+  );
 
   // console.log(products, "beofre name search");
   let workingProducts = enriched;
+  if (!hasNameQuery && requestedBenefits.length) {
+    workingProducts = [...workingProducts].sort(
+      (a, b) => (b.benefitMatchCount ?? 0) - (a.benefitMatchCount ?? 0)
+    );
+  }
   if (hasNameQuery) {
     const withTokenMatches = workingProducts.filter(
       (product) =>
@@ -1844,6 +2200,18 @@ async function searchProductsByQueryImpl(
     );
     if (withTokenMatches.length) {
       workingProducts = withTokenMatches;
+      if (requestedBenefits.length) {
+        workingProducts = [...workingProducts].sort(
+          (a, b) => (b.benefitMatchCount ?? 0) - (a.benefitMatchCount ?? 0)
+        );
+      }
+    } else if (hasNameQuery && nameTokens && nameTokens.size) {
+      return {
+        success: false,
+        reason: "not_found",
+        categoryOptions: categoryResolution.options ?? [],
+        brandOptions: brandResolution.options ?? [],
+      };
     }
 
     const exactMatch = workingProducts.find(
@@ -1880,6 +2248,9 @@ async function searchProductsByQueryImpl(
           ? ((b as any).nameMatchCount as number)
           : 0;
       if (bCount !== aCount) return bCount - aCount;
+      const aBenefit = a.benefitMatchCount ?? 0;
+      const bBenefit = b.benefitMatchCount ?? 0;
+      if (bBenefit !== aBenefit) return bBenefit - aBenefit;
       return (b.score ?? 0) - (a.score ?? 0);
     });
 
@@ -1952,6 +2323,15 @@ async function searchProductsByQueryImpl(
 
   // console.log(finalProducts, "This are the final products");
 
+  if (!finalProducts.length) {
+    return {
+      success: false,
+      reason: "not_found",
+      categoryOptions: categoryResolution.options ?? [],
+      brandOptions: brandResolution.options ?? [],
+    };
+  }
+
   return {
     success: true,
     filters: {
@@ -1965,6 +2345,28 @@ async function searchProductsByQueryImpl(
         ? { ingredientQueries: normalizedIngredientQueries }
         : {}),
       ...(requestedBenefits.length ? { benefits: requestedBenefits } : {}),
+      ...(typeof isBestseller === "boolean" ? { isBestseller } : {}),
+      ...(typeof isTrending === "boolean" ? { isTrending } : {}),
+      ...(typeof isNew === "boolean" ? { isNew } : {}),
+      ...(hasPriceFilter
+        ? {
+            minPrice: resolvedMinPrice ?? undefined,
+            maxPrice: resolvedMaxPrice ?? undefined,
+          }
+        : {}),
+      ...(hasDiscountFilter
+        ? {
+            minDiscount: resolvedMinDiscount ?? undefined,
+            maxDiscount: resolvedMaxDiscount ?? undefined,
+          }
+        : {}),
+      ...(typeof hasAlcohol === "boolean" ? { hasAlcohol } : {}),
+      ...(typeof hasFragrance === "boolean" ? { hasFragrance } : {}),
+      ...(avoidIngredientSet.size || wantsNoAlcohol || wantsNoAcids
+        ? {
+            ingredientsToAvoid: rawIngredientsToAvoid,
+          }
+        : {}),
     },
     products: finalProducts,
   };
@@ -1989,8 +2391,18 @@ export const searchProducts = query({
     });
 
     if (!response.success) {
-      if (response.reason === "brand_not_found") {
-        return { success: true, results: [] };
+      if (
+        response.reason === "brand_not_found" ||
+        response.reason === "not_found"
+      ) {
+        return {
+          success: true,
+          results: [],
+          message:
+            response.reason === "not_found"
+              ? "No products matched the query."
+              : undefined,
+        };
       }
       return {
         success: false,
@@ -2027,6 +2439,14 @@ export const searchProductsByQuery = query({
     limit: v.optional(v.number()),
     hasAlcohol: v.optional(v.boolean()),
     hasFragrance: v.optional(v.boolean()),
+    minPrice: v.optional(v.number()),
+    maxPrice: v.optional(v.number()),
+    ingredientsToAvoid: v.optional(v.array(v.string())),
+    isBestseller: v.optional(v.boolean()),
+    isTrending: v.optional(v.boolean()),
+    isNew: v.optional(v.boolean()),
+    minDiscount: v.optional(v.number()),
+    maxDiscount: v.optional(v.number()),
   },
   handler: (ctx, args): Promise<SearchProductsByQueryResult> =>
     searchProductsByQueryImpl(ctx, args),

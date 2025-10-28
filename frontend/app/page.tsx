@@ -188,6 +188,7 @@ export default function ChatPage() {
       textarea.scrollHeight > maxHeight ? "auto" : "hidden";
   }, []);
   const conversationRef = useRef<HTMLDivElement | null>(null);
+  const placeholderRef = useRef<HTMLDivElement | null>(null);
   const [showScrollDownButton, setShowScrollDownButton] = useState(false);
   const [product, setProductToPreview] = useState<Product | null>();
   const [pendingSkinTypeQuiz, setPendingSkinTypeQuiz] = useState(false);
@@ -243,23 +244,39 @@ export default function ChatPage() {
     }
   }, [messages, updateScrollButtonVisibility]);
 
+  useEffect(() => {
+    const placeholder = placeholderRef.current;
+    if (!placeholder) return;
+    const lastMessage = messages.at(-1);
+    if (
+      !isTyping &&
+      lastMessage &&
+      isChatMessage(lastMessage) &&
+      lastMessage.role === "assistant"
+    ) {
+      placeholder.style.minHeight = "0px";
+    }
+  }, [messages, isTyping]);
+
   const markdownComponents: Components = useMemo(
     () => ({
       h1: ({ children }) => (
-        <h1 className="text-[2rem] font-medium text-[#1B1F26]">{children}</h1>
+        <h1 className="text-[2rem] leading-[2.4rem] font-medium text-[#1B1F26]">
+          {children}
+        </h1>
       ),
       h2: ({ children }) => (
-        <h2 className="text-[1.6rem] tracking-[-0.64px] font-semibold text-[#1B1F26]">
+        <h2 className="text-[1.6rem] leading-[2.4rem] tracking-[-0.64px] font-semibold text-[#1B1F26]">
           {children}
         </h2>
       ),
       h3: ({ children }) => (
-        <h3 className="text-[1.5rem] font-semibold text-[#1B1F26] leading-[1.25px]">
+        <h3 className="text-[1.5rem]  font-semibold text-[#1B1F26] leading-[2.4rem]">
           {children}
         </h3>
       ),
       p: ({ children }) => (
-        <p className="text-[1.4rem] leading-relaxed text-[#1B1F26]">
+        <p className="text-[1.4rem] leading-[20px] text-[#1B1F26]">
           {children}
         </p>
       ),
@@ -664,7 +681,7 @@ export default function ChatPage() {
               </Box>
             )}
 
-            <section className="mt-8 space-y-10 pb-36">
+            <section className="height-here mt-8 space-y-10 pb-36">
               {messages.map((message, index) => (
                 <Box
                   key={message.id}
@@ -685,7 +702,7 @@ export default function ChatPage() {
                           {isChatMessage(message) &&
                           message.summary?.headline ? (
                             <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
-                              <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
+                              <h3 className="text-[2rem] leading-[2.4rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
                                 {message.summary?.icon ? (
                                   <span>{message.summary.icon}</span>
                                 ) : null}
@@ -713,11 +730,21 @@ export default function ChatPage() {
                           {isChatMessage(message) &&
                           message.summary?.headline ? (
                             <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
-                              <h3 className="text-[2rem] font-medium text-[#1b1f26] flex gap-[0.6rem]">
+                              <h3 className="text-[2rem] leading-[2.4rem] font-medium text-[#1b1f26] flex gap-[0.6rem]">
                                 {message.summary?.icon ? (
                                   <span>{message.summary.icon}</span>
                                 ) : null}
-                                {message.summary.headline}
+                                {(() => {
+                                  const heading =
+                                    message.summary.headline.split(" ");
+                                  const first =
+                                    (heading.at(0)?.charAt(0)?.toUpperCase() ||
+                                      "") +
+                                    (heading.at(0)?.slice(1) || "") +
+                                    " ";
+                                  const remaining = heading.slice(1).join(" ");
+                                  return first + remaining;
+                                })()}
                               </h3>
                               {message.summary.subheading ? (
                                 <p className="text-[1.4rem] text-[#1b1f26]">
@@ -813,6 +840,40 @@ export default function ChatPage() {
                         !hasSent;
                       return (
                         <Box
+                          ref={(el) => {
+                            if (!el) return;
+                            const lastMessage = messages.at(-1);
+                            if (
+                              index + 1 !== messages.length ||
+                              lastMessage === undefined ||
+                              !isChatMessage(lastMessage) ||
+                              lastMessage.role !== "user"
+                            ) {
+                              return;
+                            }
+
+                            requestAnimationFrame(() => {
+                              const container = conversationRef.current;
+                              const placeholder = placeholderRef.current;
+                              if (!container || !placeholder) return;
+
+                              const viewportHeight = container.clientHeight;
+                              const messageHeight = el.offsetHeight;
+                              const buffer = 80;
+                              const placeholderHeight = Math.max(
+                                viewportHeight - messageHeight - buffer,
+                                0
+                              );
+
+                              placeholder.style.minHeight = `${placeholderHeight}px`;
+
+                              el.scrollIntoView({
+                                behavior: "smooth",
+                                block: "start",
+                                inline: "nearest",
+                              });
+                            });
+                          }}
                           className={`max-w-[72%] rounded-[18px] ${isSending ? "bg-[#494c51]" : "bg-[#1b1f26]"} py-[8px] px-[16px] text-[1.4rem] leading-[1.5] text-white `}
                         >
                           {message.content}
@@ -896,6 +957,12 @@ export default function ChatPage() {
                   </Box>
                 </Box>
               )}
+              <Box
+                ref={placeholderRef}
+                data-role="assistant-placeholder"
+                className="height-here w-full"
+                style={{ minHeight: 0 }}
+              />
             </section>
           </Box>
         </Box>

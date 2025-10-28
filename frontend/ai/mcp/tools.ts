@@ -210,6 +210,46 @@ export function registerTools(server: McpServer) {
         .max(100)
         .optional()
         .describe("Max items to return (default from backend)"),
+      isBestseller: z
+        .boolean()
+        .optional()
+        .describe("Only return products flagged as bestsellers when true."),
+      isTrending: z
+        .boolean()
+        .optional()
+        .describe("Only return products flagged as trending when true."),
+      isNew: z
+        .boolean()
+        .optional()
+        .describe("Only return products marked as newly added when true."),
+      minDiscount: z
+        .number()
+        .min(0)
+        .max(100)
+        .optional()
+        .describe("Minimum discount percentage (inclusive)."),
+      maxDiscount: z
+        .number()
+        .min(0)
+        .max(100)
+        .optional()
+        .describe("Maximum discount percentage (inclusive)."),
+      minPrice: z
+        .number()
+        .positive()
+        .optional()
+        .describe("Minimum price (inclusive) for qualifying sizes."),
+      maxPrice: z
+        .number()
+        .positive()
+        .optional()
+        .describe("Maximum price (inclusive) for qualifying sizes."),
+      ingredientsToAvoid: z
+        .array(z.string().min(1))
+        .optional()
+        .describe(
+          "Ingredients or sensitivity groups to exclude (alcohol, retinoids, essential-oils, ahas-bhas, etc.)."
+        ),
     },
     async ({
       nameQuery,
@@ -220,6 +260,14 @@ export function registerTools(server: McpServer) {
       benefits,
       ingredientQueries,
       limit,
+      isBestseller,
+      isTrending,
+      isNew,
+      minDiscount,
+      maxDiscount,
+      minPrice,
+      maxPrice,
+      ingredientsToAvoid,
     }) => {
       const api = await getApi();
 
@@ -270,6 +318,30 @@ export function registerTools(server: McpServer) {
           )
         : undefined;
 
+      const minDiscountValue =
+        typeof minDiscount === "number" && minDiscount >= 0 && minDiscount <= 100
+          ? minDiscount
+          : undefined;
+      const maxDiscountValue =
+        typeof maxDiscount === "number" && maxDiscount >= 0 && maxDiscount <= 100
+          ? maxDiscount
+          : undefined;
+
+      const cleanedIngredientsToAvoid = Array.isArray(ingredientsToAvoid)
+        ? Array.from(
+            new Set(
+              ingredientsToAvoid
+                .map((value) => value.trim().toLowerCase())
+                .filter((value) => value.length > 0)
+            )
+          )
+        : undefined;
+
+      const normalizedMinPrice =
+        typeof minPrice === "number" && minPrice > 0 ? minPrice : undefined;
+      const normalizedMaxPrice =
+        typeof maxPrice === "number" && maxPrice > 0 ? maxPrice : undefined;
+
       const response = await fetchQuery(api.products.searchProductsByQuery, {
         nameQuery,
         categoryQuery,
@@ -287,6 +359,16 @@ export function registerTools(server: McpServer) {
         benefits: cleanedBenefits,
         ingredientQueries: cleanedIngredientQueries,
         limit,
+        isBestseller:
+          typeof isBestseller === "boolean" ? isBestseller : undefined,
+        isTrending:
+          typeof isTrending === "boolean" ? isTrending : undefined,
+        isNew: typeof isNew === "boolean" ? isNew : undefined,
+        minDiscount: minDiscountValue,
+        maxDiscount: maxDiscountValue,
+        minPrice: normalizedMinPrice,
+        maxPrice: normalizedMaxPrice,
+        ingredientsToAvoid: cleanedIngredientsToAvoid,
       });
 
       if (!response?.success) {

@@ -7,6 +7,7 @@
 @tailwind utilities;
 
 :root {
+  --color-dark: 15 23 42;
   --color-grey-0: #fff;
   --color-grey-50: #f9fafb;
   --color-grey-700: #374151;
@@ -42,6 +43,11 @@ html {
 
 .shadow-lg {
   box-shadow: 0 0 30px 0 hsla(0, 0%, 43%, 0.2);
+}
+
+.bg-dark {
+  --tw-bg-opacity: 1;
+  background-color: rgb(var(--color-dark) / var(--tw-bg-opacity));
 }
 
 /* @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;600&family=Poppins:wght@100;200;300;400;500;600;700;800;900&family=DM+Sans:wght@300;400;500;700&display=swap"); */
