@@ -41,27 +41,65 @@ export async function POST(req: NextRequest) {
         selectionConfidence?: number;
         sizes?: Array<{
           sizeId: string;
+          size?: number;
+          sizeText?: string;
+          unit?: string;
+          label?: string;
           price?: number;
           currency?: string;
+          discount?: number;
+          stock?: number;
         }>;
+        ingredients?: string[];
+        isTrending?: boolean;
+        isNew?: boolean;
+        isBestseller?: boolean;
+        benefits?: string[];
+        skinTypes?: string[];
+        hasAlcohol?: boolean;
+        hasFragrance?: boolean;
       };
 
       const sanitizeProducts = (products: unknown[]): NormalizedProduct[] => {
         if (!Array.isArray(products)) return [];
 
+        const isNonEmptyString = (value: unknown): value is string =>
+          typeof value === "string" && value.trim().length > 0;
+        const toTrimmedList = (input: unknown): string[] => {
+          if (Array.isArray(input)) {
+            return input
+              .map((value) =>
+                isNonEmptyString(value) ? value.trim() : undefined
+              )
+              .filter((value): value is string => Boolean(value));
+          }
+          if (isNonEmptyString(input)) {
+            return [input.trim()];
+          }
+          return [];
+        };
+
         return products
           .map((product) => {
             if (!product || typeof product !== "object") return null;
             const raw = product as Record<string, unknown>;
+            const base =
+              raw.product && typeof raw.product === "object"
+                ? (raw.product as Record<string, unknown>)
+                : raw;
 
             const productId =
-              typeof raw._id === "string"
-                ? raw._id
-                : typeof raw.productId === "string"
-                  ? raw.productId
-                  : typeof raw.id === "string"
-                    ? raw.id
-                    : undefined;
+              typeof base._id === "string"
+                ? base._id
+                : typeof raw._id === "string"
+                  ? raw._id
+                  : typeof raw.productId === "string"
+                    ? raw.productId
+                    : typeof raw.id === "string"
+                      ? raw.id
+                      : typeof base.id === "string"
+                        ? base.id
+                        : undefined;
 
             if (!productId) return null;
 
@@ -75,42 +113,183 @@ export async function POST(req: NextRequest) {
                   .filter((name): name is string => Boolean(name))
               : [];
 
-            const sizes = Array.isArray(raw.sizes)
-              ? raw.sizes
-                  .map((size) => {
-                    if (!size || typeof size !== "object") return null;
-                    const record = size as Record<string, unknown>;
-                    const sizeId =
-                      typeof record.id === "string"
-                        ? record.id
-                        : typeof record.sizeId === "string"
-                          ? record.sizeId
-                          : undefined;
-                    if (!sizeId) return null;
-                    const price =
-                      typeof record.price === "number"
-                        ? record.price
+            const normalizeSizes = (
+              source: unknown
+            ): NormalizedProduct["sizes"] => {
+              if (!Array.isArray(source)) return undefined;
+              const entries: NonNullable<NormalizedProduct["sizes"]>[number][] =
+                [];
+              source.forEach((size) => {
+                if (!size || typeof size !== "object") return;
+                const record = size as Record<string, unknown>;
+                const sizeId =
+                  typeof record.id === "string"
+                    ? record.id
+                    : typeof record.sizeId === "string"
+                      ? record.sizeId
+                      : typeof record._id === "string"
+                        ? record._id
                         : undefined;
-                    const currency =
-                      typeof record.currency === "string"
-                        ? record.currency
-                        : undefined;
-                    return { sizeId, price, currency };
-                  })
-                  .filter((size): size is NonNullable<typeof size> =>
-                    Boolean(size)
-                  )
-              : [];
+                if (!sizeId) return;
+
+                const rawSize = record.size;
+                const explicitSizeText =
+                  typeof record.sizeText === "string" &&
+                  record.sizeText.trim().length
+                    ? record.sizeText.trim()
+                    : undefined;
+                const numericSize =
+                  typeof rawSize === "number" && Number.isFinite(rawSize)
+                    ? rawSize
+                    : undefined;
+                const sizeText =
+                  typeof rawSize === "string" && rawSize.trim().length
+                    ? rawSize.trim()
+                    : explicitSizeText;
+                const unit =
+                  typeof record.unit === "string" && record.unit.trim().length
+                    ? record.unit.trim()
+                    : undefined;
+                const name =
+                  typeof record.name === "string" && record.name.trim().length
+                    ? record.name.trim()
+                    : undefined;
+                const price =
+                  typeof record.price === "number"
+                    ? record.price
+                    : typeof record.price === "string" &&
+                        record.price.trim().length &&
+                        Number.isFinite(Number(record.price))
+                      ? Number(record.price)
+                      : undefined;
+                const currency =
+                  typeof record.currency === "string" &&
+                  record.currency.trim().length
+                    ? record.currency.trim()
+                    : undefined;
+                const discount =
+                  typeof record.discount === "number"
+                    ? record.discount
+                    : undefined;
+                const stock =
+                  typeof record.stock === "number" ? record.stock : undefined;
+
+                let label =
+                  name ||
+                  (typeof record.label === "string" &&
+                  record.label.trim().length
+                    ? record.label.trim()
+                    : undefined);
+                if (!label) {
+                  if (numericSize !== undefined && unit) {
+                    label = `${numericSize} ${unit}`.trim();
+                  } else if (sizeText && unit) {
+                    label = `${sizeText} ${unit}`.trim();
+                  } else if (sizeText) {
+                    label = sizeText;
+                  } else if (unit) {
+                    label = unit;
+                  }
+                }
+
+                entries.push({
+                  sizeId,
+                  size: numericSize,
+                  sizeText: sizeText ?? explicitSizeText,
+                  unit,
+                  label,
+                  price,
+                  currency,
+                  discount,
+                  stock,
+                });
+              });
+              return entries.length ? entries : undefined;
+            };
+
+            const sizes =
+              normalizeSizes(raw.sizes) ?? normalizeSizes(base.sizes) ?? [];
 
             const normalized: NormalizedProduct = {
               productId,
-              slug: typeof raw.slug === "string" ? raw.slug : undefined,
+              slug:
+                typeof base.slug === "string"
+                  ? base.slug
+                  : typeof raw.slug === "string"
+                    ? raw.slug
+                    : undefined,
               categoryName: categories.at(0),
               selectionReason:
                 typeof raw.selectionReason === "string"
                   ? raw.selectionReason.slice(0, 320)
-                  : undefined,
+                  : typeof base.selectionReason === "string"
+                    ? base.selectionReason.slice(0, 320)
+                    : undefined,
               sizes: sizes.length ? sizes : undefined,
+              ingredients: (() => {
+                const list = toTrimmedList(raw.ingredients);
+                if (list.length) return list;
+                const keyList = toTrimmedList(
+                  (raw as Record<string, unknown>).keyIngredients
+                );
+                if (keyList.length) return keyList;
+                const baseList = toTrimmedList(base.ingredients);
+                if (baseList.length) return baseList;
+                const baseKeyList = toTrimmedList(
+                  (base as Record<string, unknown>).keyIngredients
+                );
+                return baseKeyList.length ? baseKeyList : undefined;
+              })(),
+              isTrending:
+                typeof raw.isTrending === "boolean"
+                  ? raw.isTrending
+                  : typeof base.isTrending === "boolean"
+                    ? base.isTrending
+                    : undefined,
+              isNew:
+                typeof raw.isNew === "boolean"
+                  ? raw.isNew
+                  : typeof base.isNew === "boolean"
+                    ? base.isNew
+                    : undefined,
+              isBestseller:
+                typeof raw.isBestseller === "boolean"
+                  ? raw.isBestseller
+                  : typeof base.isBestseller === "boolean"
+                    ? base.isBestseller
+                    : undefined,
+              benefits: (() => {
+                const list = toTrimmedList(raw.benefits);
+                if (list.length) return list;
+                const baseList = toTrimmedList(base.benefits);
+                return baseList.length ? baseList : undefined;
+              })(),
+              skinTypes: (() => {
+                const combined = [
+                  ...toTrimmedList(raw.skinTypes),
+                  ...toTrimmedList(raw.skinType),
+                ];
+                const uniqueCombined = Array.from(new Set(combined));
+                if (uniqueCombined.length) return uniqueCombined;
+                const baseCombined = [
+                  ...toTrimmedList(base.skinTypes),
+                  ...toTrimmedList(base.skinType),
+                ];
+                const uniqueBase = Array.from(new Set(baseCombined));
+                return uniqueBase.length ? uniqueBase : undefined;
+              })(),
+              hasAlcohol:
+                typeof raw.hasAlcohol === "boolean"
+                  ? raw.hasAlcohol
+                  : typeof base.hasAlcohol === "boolean"
+                    ? base.hasAlcohol
+                    : undefined,
+              hasFragrance:
+                typeof raw.hasFragrance === "boolean"
+                  ? raw.hasFragrance
+                  : typeof base.hasFragrance === "boolean"
+                    ? base.hasFragrance
+                    : undefined,
             };
             return normalized;
           })
@@ -718,7 +897,7 @@ export async function POST(req: NextRequest) {
             });
           }
         } catch (error: unknown) {
-          console.error("Error calling llm model", error);
+          console.error("Error generating response", error);
 
           await send({
             type: "error",
