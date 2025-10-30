@@ -32,11 +32,11 @@ import {
   generateReplySummaryWithGemini,
   refineProductSelectionWithGemini,
 } from "../gemini/utils";
-
+console.log("lets check if we are updating");
 export async function callGemini({
   messages,
   systemPrompt,
-  model = "gemini-2.0-flash-lite",
+  model = "gemini-2.5-flash-lite",
   temperature = 0.5,
   useTools = true,
   maxToolRounds = 4, // prevent runaway loops
@@ -89,14 +89,24 @@ export async function callGemini({
       "Keep the main reply tight: at most three short sentences or ~80 words unless the user explicitly asks for detailed product information, sizes, pricing, or usage guidance—when they do, switch immediately to a structured breakdown covering the key facts they requested.",
       "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Phrase each suggestion as a first-person request the user could send to SkinBuddy—start with verbs like 'Recommend', 'Show me', 'Help me', or 'Explain'. Avoid asking the user questions such as 'What is your skin type?'; these suggestions should read like commands or requests directed at SkinBuddy (e.g., 'Recommend a brightening serum for uneven tone', 'Help me pick a gentle cleanser for sensitive skin'). Cap each suggestion at 12 words. Keep all three skincare-only and tightly relevant to the user's latest request, vary the angle when possible (ingredients, usage tips, alternatives, price points, etc.), and avoid near-duplicates. Never imply an action already happened or command SkinBuddy to perform it (skip things like 'Add…' or 'Checkout my cart'). Only reference a specific product by name if the user or your latest reply mentioned it in this turn.",
       "Each of the three suggestions must clearly build on the user's most recent request or the guidance you just provided—connect back to their specific skin type, concern, or product discussion. Do not repeat generic skincare advice, prompt them to rerun the survey, or raise unrelated topics.",
+      "Before calling `searchProductsByQuery` or `getProduct`, search the existing conversation—including earlier tool outputs stored in chat history—for the specific product facts the user needs. If the information (sizes, prices, ingredients, benefits, flags, etc.) is already available, reuse it and skip the tool call. Only invoke a tool when the required details are truly missing.",
+      "Never fabricate identifiers for tools. If you do not have a valid productId, sizeId, or other required argument from prior tool results, call a lookup tool to retrieve it or ask the user for clarifying input like the product name or size they want—not the internal id. Do not guess identifiers or reuse placeholders from memory.",
       "If the user asks for help determining their skin type (for example, 'What’s my skin type?', 'Do I have combination skin?') or types 'start skin quiz', acknowledge that intent warmly, mention that SkinBuddy can run a quick survey to identify their skin type, and make sure your suggested actions in that reply guide them toward next steps such as starting the survey ('Start the skin-type survey'), learning how it works ('Explain the survey steps'), or choosing another method ('Suggest a different approach'). If we already have their skin type stored (exposed via tools), reference it before offering the survey. **Never guess or infer a user's skin type from conversation context (including earlier requests such as 'build me an oily-skin routine')—only state what the tools return or that the survey is needed.** When the user is curious or tentative and has not issued a direct command (e.g., 'Should I take the skin quiz?', 'Can you help figure out my skin type?'), do not call the `startSkinTypeSurvey` tool; instead, reply in prose that SkinBuddy can help determine their skin type and concerns with a skin quiz and invite them to confirm if they want to start it. If the user asks for a skincare routine or product recommendations but hasn't provided their skin type or concerns, let them know SkinBuddy can help figure those out with the skin quiz before continuing, and ask whether they'd like to take it or share those details manually. Whenever the user issues a direct imperative to begin the survey (examples: 'start the skin survey', 'start the skin-type quiz', 'let’s start skin survey', 'begin the skin quiz'), immediately call the `startSkinTypeSurvey` tool with empty arguments and do not send any assistant prose in that turn. Use confirmation phrasing only when the user is asking or hesitating, not when they are commanding.",
       "When preparing tool arguments: put descriptive effects like 'hydrating', 'brightening', 'soothing' into the `benefits` array; keep actual ingredient names (niacinamide, hyaluronic acid, salicylic acid, etc.) in `ingredientQueries`; only use `nameQuery` for exact product titles or SKUs the user cited; and aim for canonical product nouns (cleanser, serum, sunscreen, toner, moisturizer) in `categoryQuery`. Avoid repeating the same value in multiple fields.",
     ].join(" "),
   });
 
-  const latestUserMessageContent = [...messages]
-    .reverse()
-    .find((msg) => msg.role === "user")?.content;
+  chatMessages.push({
+    role: "developer",
+    content:
+      "No matter how short the reply is—including clarifying questions or quick acknowledgments—always finish with the heading 'Suggested actions' followed by exactly three numbered, skincare-relevant suggestions.",
+  });
+
+  chatMessages.push({
+    role: "developer",
+    content:
+      "Never mention internal function or tool names in user-facing replies. Describe actions in plain language instead of referencing addToCart, searchProductsByQuery, or other internal APIs.",
+  });
 
   const CATEGORY_KEYWORD_MAP: Array<{ category: string; patterns: RegExp[] }> =
     [
@@ -159,6 +169,93 @@ export async function callGemini({
         );
       });
   }
+
+  const normalizeHeaderValue = (line: string): string =>
+    line
+      .toLowerCase()
+      .replace(/[\*`_~>#:\-]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const formatBodyWithParagraphs = (body: string): string => {
+    if (!body.trim().length) return "";
+    if (/\n\s*\n/.test(body)) return body;
+    if (/(?:^|\n)\s*(?:[-*•●◦▪]|\d+\.)\s/.test(body)) return body;
+    if (/(?:^|\n)\s*#{1,6}\s/.test(body)) return body;
+
+    const normalized = body.replace(/\s+/g, " ").trim();
+    if (!normalized.length) return body;
+
+    const sentences = normalized
+      .split(/(?<=[.?!])\s+(?=[A-Z0-9])/)
+      .map((sentence) => sentence.trim())
+      .filter((sentence) => sentence.length > 0);
+
+    if (sentences.length <= 1) {
+      return body;
+    }
+
+    const shouldSplit =
+      sentences.length >= 3 ||
+      (sentences.length >= 2 && normalized.length >= 160);
+    if (!shouldSplit) {
+      return body;
+    }
+
+    const paragraphs: string[] = [];
+    let currentSentences: string[] = [];
+
+    for (const sentence of sentences) {
+      currentSentences.push(sentence);
+      const joined = currentSentences.join(" ");
+      const sentenceQuotaReached =
+        currentSentences.length >= 2 || joined.length >= 220;
+      if (sentenceQuotaReached) {
+        paragraphs.push(joined);
+        currentSentences = [];
+      }
+    }
+
+    if (currentSentences.length) {
+      paragraphs.push(currentSentences.join(" "));
+    }
+
+    return paragraphs.join("\n\n");
+  };
+
+  const applyParagraphStructure = (input: string): string => {
+    if (!input.trim().length) return input.trim();
+
+    const lines = input.split(/\r?\n/);
+    let suggestedActionsIndex = -1;
+
+    for (let index = 0; index < lines.length; index++) {
+      const normalized = normalizeHeaderValue(lines[index]);
+      if (normalized === "suggested actions") {
+        suggestedActionsIndex = index;
+        break;
+      }
+    }
+
+    const bodyLines =
+      suggestedActionsIndex === -1
+        ? lines
+        : lines.slice(0, suggestedActionsIndex);
+    const footerLines =
+      suggestedActionsIndex === -1 ? [] : lines.slice(suggestedActionsIndex);
+
+    const body = bodyLines.join("\n").trim();
+    const formattedBody = formatBodyWithParagraphs(body);
+    const footer = footerLines.join("\n").trim();
+
+    if (!footer.length) {
+      return formattedBody;
+    }
+    if (!formattedBody.length) {
+      return footer;
+    }
+    return `${formattedBody}\n\n${footer}`;
+  };
 
   const ROUTINE_KEYWORDS = [
     "routine",
@@ -267,6 +364,48 @@ export async function callGemini({
       .map((token) => token.trim())
       .filter((token) => token.length > 0);
 
+  const normalizeBritishToAmerican = (input: string): string => {
+    if (typeof input !== "string" || !input.length) return input;
+    const BRITISH_TO_AMERICAN_MAP: Record<string, string> = {
+      moisturising: "moisturizing",
+      moisturise: "moisturize",
+      moisturiser: "moisturizer",
+      moisturisers: "moisturizers",
+      favourite: "favorite",
+      favourites: "favorites",
+      colour: "color",
+      colours: "colors",
+      flavour: "flavor",
+      flavours: "flavors",
+      centre: "center",
+      centres: "centers",
+      defence: "defense",
+      catalogue: "catalog",
+    };
+
+    const toTitleCaseWord = (word: string): string =>
+      word
+        .split(/([\s-])/)
+        .map((segment) => {
+          if (!segment || !/[a-zA-Z]/.test(segment)) return segment;
+          return (
+            segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase()
+          );
+        })
+        .join("");
+
+    return input.replace(/\b([a-z][a-z']*)\b/gi, (match) => {
+      const lower = match.toLowerCase();
+      const replacement = BRITISH_TO_AMERICAN_MAP[lower];
+      if (!replacement) return match;
+      if (match === lower) return replacement;
+      if (match === lower.toUpperCase()) return replacement.toUpperCase();
+      if (match[0].toUpperCase() === match[0])
+        return toTitleCaseWord(replacement);
+      return replacement;
+    });
+  };
+
   let lastProductSelection: ProductCandidate[] = [];
   let lastStreamedProductsSignature: string | null = null;
   let lastStreamedRoutineSignature: string | null = null;
@@ -277,10 +416,278 @@ export async function callGemini({
   let combinedSummary: ReplySummary | null = null;
   let startSkinTypeQuiz = false;
   let terminateAfterTool = false;
+  let silentResponseAttempts = 0;
+  const MAX_SILENT_RESPONSES = 2;
+  const knownProductIds = new Set<string>();
+  const productSizesById = new Map<string, Set<string>>();
+  const sizeToProductMap = new Map<string, Set<string>>();
+  const knownSizeIds = new Set<string>();
+  const productSizeDetailsById = new Map<
+    string,
+    Array<{
+      sizeId: string;
+      label?: string;
+      sizeText?: string;
+      unit?: string;
+      sizeValue?: number;
+    }>
+  >();
+  let pendingAddToCart = false;
+  let pendingAddToCartReminderSent = false;
+
+  const extractString = (value: unknown): string | undefined => {
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : undefined;
+  };
+
+  const registerSizeForProduct = (
+    productId: string,
+    sizeId: string,
+    meta?: {
+      label?: string;
+      sizeText?: string;
+      unit?: string;
+      sizeValue?: number;
+    }
+  ) => {
+    if (!productId || !sizeId) return;
+    if (sizeId === "[object Object]") return;
+    let productSizes = productSizesById.get(productId);
+    if (!productSizes) {
+      productSizes = new Set<string>();
+      productSizesById.set(productId, productSizes);
+    }
+    productSizes.add(sizeId);
+    knownSizeIds.add(sizeId);
+    const linkedProducts = sizeToProductMap.get(sizeId) ?? new Set<string>();
+    linkedProducts.add(productId);
+    sizeToProductMap.set(sizeId, linkedProducts);
+    const details = productSizeDetailsById.get(productId) ?? [];
+    const existingDetail = details.find((entry) => entry.sizeId === sizeId);
+    const mergedDetail = {
+      sizeId,
+      ...(existingDetail ?? {}),
+      ...(meta ?? {}),
+    };
+    if (!existingDetail) {
+      details.push(mergedDetail);
+    } else {
+      Object.assign(existingDetail, meta ?? {});
+    }
+    productSizeDetailsById.set(
+      productId,
+      details as Array<{
+        sizeId: string;
+        label?: string;
+        sizeText?: string;
+        unit?: string;
+        sizeValue?: number;
+      }>
+    );
+  };
+
+  const registerProductCandidate = (
+    candidate: ProductCandidate | UnknownRecord | null | undefined
+  ): void => {
+    if (!candidate || typeof candidate !== "object") return;
+    const record = candidate as UnknownRecord;
+    const productSource =
+      record.product && typeof record.product === "object"
+        ? (record.product as UnknownRecord)
+        : record;
+
+    const resolvedId =
+      extractString(productSource.id) ??
+      extractString(productSource._id) ??
+      extractString(productSource.productId) ??
+      extractString(record.productId) ??
+      extractString(productSource.slug) ??
+      extractString(record.slug);
+    if (!resolvedId) return;
+
+    knownProductIds.add(resolvedId);
+
+    const sizeEntries = Array.isArray(productSource.sizes)
+      ? (productSource.sizes as unknown[])
+      : [];
+
+    sizeEntries.forEach((entry) => {
+      if (!entry || typeof entry !== "object") return;
+      const sizeRecord = entry as UnknownRecord;
+      const sizeId =
+        extractString(sizeRecord.id) ??
+        extractString(sizeRecord._id) ??
+        extractString(sizeRecord.sizeId) ??
+        extractString(sizeRecord.value);
+      if (sizeId) {
+        const sizeLabel =
+          extractString(sizeRecord.label) ?? extractString(sizeRecord.name);
+        const explicitSizeText = extractString(sizeRecord.sizeText);
+        const unit = extractString(sizeRecord.unit);
+        let sizeValue: number | undefined;
+        if (
+          typeof sizeRecord.size === "number" &&
+          Number.isFinite(sizeRecord.size)
+        ) {
+          sizeValue = sizeRecord.size;
+        } else if (typeof sizeRecord.size === "string") {
+          const numeric = Number(
+            sizeRecord.size.trim().replace(/[^0-9.]/g, "")
+          );
+          if (Number.isFinite(numeric)) {
+            sizeValue = numeric;
+          }
+        }
+        const derivedSizeText = (() => {
+          if (explicitSizeText) return explicitSizeText;
+          if (typeof sizeRecord.size === "string") {
+            return sizeRecord.size.trim();
+          }
+          if (typeof sizeRecord.size === "number" && unit) {
+            return `${sizeRecord.size} ${unit}`;
+          }
+          if (typeof sizeRecord.size === "number") {
+            return `${sizeRecord.size}`;
+          }
+          return undefined;
+        })();
+        registerSizeForProduct(resolvedId, sizeId, {
+          label: sizeLabel ?? derivedSizeText,
+          sizeText: derivedSizeText,
+          unit,
+          sizeValue,
+        });
+      }
+    });
+  };
+
+  const registerProductCollection = (
+    products: readonly ProductCandidate[]
+  ): void => {
+    products.forEach((product) => registerProductCandidate(product));
+  };
+
+  const ANY_SIZE_PATTERNS = [
+    /\b(any|either|whatever|whichever)\s+size\b/i,
+    /\bno\s+preference\b/i,
+    /\bchoose\s+(?:any|either)\b/i,
+    /\byou\s+pick\s+(?:the\s+)?size\b/i,
+    /\bsurprise\s+me\b/i,
+  ];
+
+  const userAllowsAnySize = (text: string | undefined): boolean => {
+    if (!text) return false;
+    return ANY_SIZE_PATTERNS.some((pattern) => pattern.test(text));
+  };
+
+  const userMentionsSize = (
+    userText: string | undefined,
+    sizeDetail:
+      | {
+          sizeId: string;
+          label?: string;
+          sizeText?: string;
+          unit?: string;
+          sizeValue?: number;
+        }
+      | undefined
+  ): boolean => {
+    if (!userText || !sizeDetail) return false;
+    const normalized = userText.toLowerCase();
+    const candidates: string[] = [];
+    if (sizeDetail.label) candidates.push(sizeDetail.label.toLowerCase());
+    if (sizeDetail.sizeText) candidates.push(sizeDetail.sizeText.toLowerCase());
+    if (sizeDetail.unit && sizeDetail.sizeValue) {
+      const numeric = sizeDetail.sizeValue;
+      const unit = sizeDetail.unit.toLowerCase();
+      const compact = `${numeric}${unit}`;
+      const spaced = `${numeric} ${unit}`;
+      candidates.push(compact);
+      candidates.push(spaced);
+    }
+    if (sizeDetail.sizeValue && !Number.isNaN(sizeDetail.sizeValue)) {
+      candidates.push(String(sizeDetail.sizeValue));
+    }
+    return candidates.some((candidate) => {
+      if (!candidate) return false;
+      return normalized.includes(candidate);
+    });
+  };
+
+  const hydrateKnownCatalogFromHistory = (): void => {
+    for (const entry of messages) {
+      if (entry.role !== "tool") continue;
+      if (typeof entry.content !== "string" || !entry.content.trim().length)
+        continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(entry.content);
+      } catch {
+        continue;
+      }
+      if (!parsed || typeof parsed !== "object") continue;
+      const payload = parsed as Record<string, unknown>;
+      if (Array.isArray(payload.products)) {
+        registerProductCollection(payload.products as ProductCandidate[]);
+      }
+      if (
+        payload.product &&
+        typeof payload.product === "object" &&
+        payload.product !== null
+      ) {
+        registerProductCandidate(payload.product as ProductCandidate);
+      }
+      if (payload.productsMap && typeof payload.productsMap === "object") {
+        const values = Object.values(
+          payload.productsMap as Record<string, unknown>
+        );
+        registerProductCollection(values as ProductCandidate[]);
+      }
+      const routinePayload =
+        payload.routine && typeof payload.routine === "object"
+          ? (payload.routine as Record<string, unknown>)
+          : null;
+      const routineSteps = Array.isArray(routinePayload?.steps)
+        ? (routinePayload?.steps as unknown[])
+        : [];
+      routineSteps.forEach((step) => {
+        if (!step || typeof step !== "object") return;
+        const stepRecord = step as Record<string, unknown>;
+        if (
+          stepRecord.product &&
+          typeof stepRecord.product === "object" &&
+          stepRecord.product !== null
+        ) {
+          registerProductCandidate(stepRecord.product as ProductCandidate);
+        }
+        const alternatives = Array.isArray(stepRecord.alternatives)
+          ? (stepRecord.alternatives as unknown[])
+          : [];
+        alternatives.forEach((alt) => {
+          if (!alt || typeof alt !== "object") return;
+          const altRecord = alt as Record<string, unknown>;
+          if (
+            altRecord.product &&
+            typeof altRecord.product === "object" &&
+            altRecord.product !== null
+          ) {
+            registerProductCandidate(altRecord.product as ProductCandidate);
+          }
+        });
+      });
+    }
+  };
 
   // console.log(chatMessages, "This is conversation history");
 
   // messages.push({ role: "user", content: userMessage });
+
+  hydrateKnownCatalogFromHistory();
+
+  const latestUserMessageContent = [...messages]
+    .reverse()
+    .find((msg) => msg.role === "user")?.content;
 
   const hasSurveyResults = messages.some(
     (msg) =>
@@ -330,7 +737,7 @@ export async function callGemini({
       "When the user references multiple distinct product names or SKUs in the same turn, issue separate `searchProductsByQuery` tool calls—one per product—rather than combining their names into a single query."
     );
     developerInstructionParts.push(
-      "If the user asks for details, sizes, pricing, availability, or other specifics about a particular product, call `getProduct` for that item (even if you've already searched for it) before you answer. Use that data to ground your reply."
+      "If the user asks for product specifics, first look at the most recent tool outputs stored in the conversation. Only call `getProduct` when those stored details are missing or incomplete."
     );
     developerInstructionParts.push(
       "Never conclude that a product is unavailable until you've run a fresh tool call (`searchProductsByQuery` or `getProduct`) in this turn. Do not rely on memory or prior messages to assume stock status."
@@ -340,14 +747,14 @@ export async function callGemini({
         "When you have detailed data for a single product, present it in the following structure:",
         "1) Start with a heading like '✨ {Product Name}'",
         "2) Follow with short bullet points using bold labels (Overview, Key Ingredients, Sizes, Skin Types, Usage, Highlights as relevant)",
-        "3) Keep each bullet to one sentence so the layout stays scannable."
+        "3) Keep each bullet to one sentence so the layout stays scannable.",
       ].join(" ")
     );
     developerInstructionParts.push(
       "When a user asks for detailed information about a product (phrases like 'more info', 'tell me about', 'show the sizes/price/ingredients'), respond with a structured breakdown that clearly lists the product name, key actives, sizes with prices, notable benefits, and any usage notes before moving on to suggestions."
     );
     developerInstructionParts.push(
-      "Whenever you call `addToCart`, explicitly confirm in your final reply exactly what you added (include product name and size/variant) so the user hears the confirmation."
+      "When an `addToCart` tool call succeeds, explicitly confirm in your final reply exactly what you added (include product name and size/variant) so the user hears the confirmation. If the tool fails, explain the issue and next steps instead of claiming it was added."
     );
     developerInstructionParts.push(
       "When a product has multiple sizes or variants, list every option with its size/variant label and price before asking the user to choose—never ask for a selection without showing those details."
@@ -810,6 +1217,24 @@ export async function callGemini({
     // clear after consumption
     pendingExtraInputItems = [];
 
+    const contentText =
+      typeof content === "string" ? content : String(content ?? "");
+    const contentHasText = contentText.trim().length > 0;
+
+    if (!contentHasText && (!toolCalls || toolCalls.length === 0)) {
+      silentResponseAttempts += 1;
+      if (silentResponseAttempts >= MAX_SILENT_RESPONSES) {
+        throw new Error("Gemini returned an empty response multiple times.");
+      }
+      chatMessages.push({
+        role: "developer",
+        content:
+          "The previous round produced no assistant reply and no tool calls. Provide a substantive response now—either call the correct tool to carry out the user's request or draft the user-facing answer directly. Never leave the turn empty.",
+      });
+      continue;
+    }
+    silentResponseAttempts = 0;
+
     if (useTools && toolCalls.length > 0 && rounds < maxToolRounds) {
       rounds++;
 
@@ -902,6 +1327,91 @@ export async function callGemini({
               : (toolCall.arguments ?? {});
           originalArgsObject = rawArgs;
           const validatedArgs = toolDef.schema.parse(rawArgs);
+          let searchNameLockedToExact = false;
+          if (toolCall.name === "addToCart") {
+            const argsRecord =
+              validatedArgs && typeof validatedArgs === "object"
+                ? (validatedArgs as Record<string, unknown>)
+                : {};
+            const productId =
+              typeof argsRecord.productId === "string"
+                ? argsRecord.productId.trim()
+                : "";
+            const sizeId =
+              typeof argsRecord.sizeId === "string"
+                ? argsRecord.sizeId.trim()
+                : "";
+            const sizeMatchesProduct =
+              productId.length > 0 &&
+              sizeId.length > 0 &&
+              (productSizesById.get(productId)?.has(sizeId) ??
+                sizeToProductMap.get(sizeId)?.has(productId) ??
+                false);
+            const sizeIsKnown = sizeId.length > 0 && knownSizeIds.has(sizeId);
+            const productSizeDetails =
+              productId.length > 0
+                ? (productSizeDetailsById.get(productId) ?? [])
+                : [];
+            const multipleSizes = productSizeDetails.length > 1;
+            const userTextRaw =
+              typeof latestUserMessageContent === "string"
+                ? latestUserMessageContent
+                : "";
+            const allowAnySize = userAllowsAnySize(userTextRaw);
+            const sizeDetail = productSizeDetails.find(
+              (detail) => detail.sizeId === sizeId
+            );
+            const mentionedSizeIds = productSizeDetails
+              .filter((detail) => userMentionsSize(userTextRaw, detail))
+              .map((detail) => detail.sizeId);
+            const userSpecifiedDifferentSize =
+              mentionedSizeIds.length > 0 &&
+              sizeId.length > 0 &&
+              !mentionedSizeIds.includes(sizeId);
+            const userMentionedSelectedSize = userMentionsSize(
+              userTextRaw,
+              sizeDetail
+            );
+            if (!sizeMatchesProduct || !sizeIsKnown) {
+              pendingAddToCart = true;
+              pendingAddToCartReminderSent = false;
+              const serializedArgs =
+                typeof toolCall.arguments === "string"
+                  ? toolCall.arguments
+                  : JSON.stringify(toolCall.arguments ?? {});
+              chatMessages.push({
+                role: "tool",
+                tool_call_id: callId,
+                tool_name: toolCall.name,
+                tool_arguments: serializedArgs,
+                content: JSON.stringify({
+                  error: true,
+                  message:
+                    "addToCart blocked: fetch the product details first to obtain valid productId and sizeId before adding to the cart.",
+                }),
+              });
+              chatMessages.push({
+                role: "developer",
+                content:
+                  "You attempted to call addToCart without verified identifiers. Call searchProductsByQuery or getProduct for the exact item, copy the productId and sizeId from that tool output, and then retry addToCart. Never guess IDs.",
+              });
+              continue;
+            }
+            if (
+              multipleSizes &&
+              !allowAnySize &&
+              (!userMentionedSelectedSize || userSpecifiedDifferentSize)
+            ) {
+              pendingAddToCart = true;
+              pendingAddToCartReminderSent = false;
+              chatMessages.push({
+                role: "developer",
+                content:
+                  "You tried adding a product with multiple sizes before showing its options. First call an appropriate lookup (searchProductsByQuery, getProduct, or check conversation history) to list the size choices. After presenting the sizes in the reply, ask the user which one they want and only then call addToCart for the selected size.",
+              });
+              continue;
+            }
+          }
           let adjustedArgs: unknown = validatedArgs;
           let normalizationSummary: string | null = null;
 
@@ -948,6 +1458,7 @@ export async function callGemini({
             }
 
             const benefitAccumulator = new Set<string>();
+            let bestsellerHintRequested = false;
 
             const existingBenefitsRaw = Array.isArray(argsRecord.benefits)
               ? argsRecord.benefits.filter(
@@ -958,6 +1469,9 @@ export async function callGemini({
             existingBenefitsRaw.forEach((entry) => {
               const normalized = normalizeBenefitSlug(entry);
               if (normalized) benefitAccumulator.add(normalized);
+              if (normalized === "bestseller") {
+                bestsellerHintRequested = true;
+              }
             });
 
             const {
@@ -991,17 +1505,23 @@ export async function callGemini({
               typeof argsRecord.nameQuery === "string"
                 ? argsRecord.nameQuery.trim()
                 : "";
+            const normalizedNameQuery =
+              normalizeBritishToAmerican(originalNameQuery);
+            const nameQueryForSearch = normalizedNameQuery.length
+              ? normalizedNameQuery
+              : originalNameQuery;
 
-            if (originalNameQuery.length) {
-              const nameTokens = tokenizeDescriptor(originalNameQuery);
+            if (nameQueryForSearch.length) {
+              const nameTokens = tokenizeDescriptor(nameQueryForSearch);
               const likelyExactName =
                 nameTokens.length >= 3 ||
                 (typeof argsRecord.brandQuery === "string" &&
                   argsRecord.brandQuery.trim().length > 0);
 
               if (likelyExactName) {
+                searchNameLockedToExact = true;
                 // Preserve the full product name for strict lookups and avoid broad benefit filters.
-                argsRecord.nameQuery = originalNameQuery;
+                argsRecord.nameQuery = nameQueryForSearch;
                 if (Array.isArray(argsRecord.benefits)) {
                   delete (argsRecord as Record<string, unknown>).benefits;
                 }
@@ -1013,7 +1533,7 @@ export async function callGemini({
                   benefitAccumulator.add(benefit)
                 );
 
-                addBenefitsFromDescriptors([originalNameQuery]);
+                addBenefitsFromDescriptors([nameQueryForSearch]);
 
                 if (nameResidual.length === 0) {
                   delete argsRecord.nameQuery;
@@ -1024,6 +1544,20 @@ export async function callGemini({
             }
 
             addBenefitsFromDescriptors(unmatchedExistingBenefits);
+
+            const POPULAR_HINT_PATTERNS = [
+              /\bpopular\b/i,
+              /\bbest\s*sellers?\b/i,
+              /\btop\s*(picks|choices|products)\b/i,
+              /\btrending\b/i,
+            ];
+
+            const userAskedForPopularity = POPULAR_HINT_PATTERNS.some(
+              (pattern) =>
+                typeof latestUserMessageContent === "string"
+                  ? pattern.test(latestUserMessageContent)
+                  : false
+            );
 
             let ingredientResidual = Array.isArray(argsRecord.ingredientQueries)
               ? argsRecord.ingredientQueries.filter(
@@ -1048,7 +1582,8 @@ export async function callGemini({
             let mergedBenefits = Array.from(benefitAccumulator);
             if (
               mergedBenefits.length === 0 &&
-              typeof latestUserMessageContent === "string"
+              typeof latestUserMessageContent === "string" &&
+              !searchNameLockedToExact
             ) {
               const userTokens = tokenizeDescriptor(latestUserMessageContent);
               const { benefits: userBenefits } = mapDescriptorsToBenefits([
@@ -1062,9 +1597,22 @@ export async function callGemini({
             }
 
             if (mergedBenefits.length) {
+              const filteredBenefits = mergedBenefits.filter(
+                (benefit) => benefit !== "bestseller"
+              );
+              mergedBenefits = filteredBenefits.length
+                ? filteredBenefits
+                : mergedBenefits;
+            }
+
+            if (mergedBenefits.length) {
               argsRecord.benefits = mergedBenefits;
             } else {
               delete argsRecord.benefits;
+            }
+
+            if (!bestsellerHintRequested && userAskedForPopularity) {
+              delete (argsRecord as Record<string, unknown>).benefits;
             }
 
             let finalCategoryCandidate =
@@ -1078,7 +1626,7 @@ export async function callGemini({
             );
             const categoryMentionedInName = isCategoryMentionedInText(
               finalCategoryCandidate,
-              originalNameQuery
+              nameQueryForSearch
             );
 
             if (
@@ -1228,6 +1776,10 @@ export async function callGemini({
             arguments: adjustedArgs,
             result: result ?? null,
           });
+          if (toolCall.name === "addToCart") {
+            pendingAddToCart = false;
+            pendingAddToCartReminderSent = false;
+          }
 
           const sanitizedResult = sanitizeToolResultForModel(
             toolCall.name,
@@ -1337,6 +1889,7 @@ export async function callGemini({
                 : undefined;
 
             if (!product) return null;
+            registerProductCandidate(product);
 
             const stepNumber =
               typeof record.step === "number" ? record.step : index + 1;
@@ -1366,6 +1919,7 @@ export async function callGemini({
                           ? (optionRecord.product as ProductCandidate)
                           : undefined;
                       if (!optionProduct) return null;
+                      registerProductCandidate(optionProduct);
                       const optionId =
                         typeof optionRecord.productId === "string"
                           ? optionRecord.productId
@@ -1517,6 +2071,126 @@ export async function callGemini({
       // Make sure next round includes function_call and function_call_output items
       pendingExtraInputItems = [];
 
+      type ToolOutcomeSummary = {
+        name: string;
+        status: "success" | "error";
+        message?: string;
+        quantity?: number;
+      };
+
+      const actionOutcomes: ToolOutcomeSummary[] = [];
+      for (const output of toolOutputs) {
+        if (!output?.result || typeof output.result !== "object") continue;
+        const record = output.result as Record<string, unknown>;
+        const hasActionHint =
+          typeof record.statusCode === "number" ||
+          typeof record.message === "string" ||
+          typeof record.success === "boolean";
+        if (!hasActionHint) continue;
+        let status: "success" | "error" | "unknown" = "unknown";
+        if (record.success === true) status = "success";
+        else if (record.success === false) status = "error";
+        else if (
+          typeof record.status === "string" &&
+          record.status.toLowerCase().includes("error")
+        )
+          status = "error";
+        if (status === "unknown") continue;
+        const message =
+          typeof record.message === "string" && record.message.trim().length
+            ? record.message.trim()
+            : undefined;
+        const quantity =
+          typeof record.quantity === "number" &&
+          Number.isFinite(record.quantity)
+            ? record.quantity
+            : undefined;
+        actionOutcomes.push({
+          name: output.name,
+          status,
+          message,
+          quantity,
+        });
+      }
+
+      if (actionOutcomes.length) {
+        const successes = actionOutcomes.filter(
+          (entry) => entry.status === "success"
+        );
+        const failures = actionOutcomes.filter(
+          (entry) => entry.status === "error"
+        );
+        const instructions: string[] = [];
+        if (successes.length) {
+          instructions.push(
+            "The following tool actions succeeded. Confirm each plainly before moving on:"
+          );
+          successes.forEach((entry) => {
+            const detailParts: string[] = [];
+            if (entry.message) detailParts.push(entry.message);
+            if (typeof entry.quantity === "number")
+              detailParts.push(`quantity now ${entry.quantity}`);
+            const detail =
+              detailParts.length > 0 ? ` – ${detailParts.join(", ")}` : "";
+            instructions.push(`- ${entry.name}${detail}`);
+          });
+        }
+        if (failures.length) {
+          instructions.push(
+            "Some tool actions failed. State the failure clearly, do not imply success, and offer next steps:"
+          );
+          failures.forEach((entry) => {
+            const detail = entry.message ? ` – ${entry.message}` : "";
+            instructions.push(`- ${entry.name}${detail}`);
+          });
+        }
+        instructions.push(
+          "After addressing these outcomes, continue with your guidance and still end with the 'Suggested actions' heading plus three numbered suggestions."
+        );
+        chatMessages.push({
+          role: "developer",
+          content: instructions.join(" "),
+        });
+      }
+
+      const latestCartOutput = [...toolOutputs]
+        .slice()
+        .reverse()
+        .find(
+          (output) =>
+            output.name === "getUserCart" &&
+            output?.result &&
+            typeof output.result === "object"
+        );
+
+      if (latestCartOutput) {
+        const cartResult = latestCartOutput.result as Record<string, unknown>;
+        const cartItems = Array.isArray(cartResult.cart)
+          ? (cartResult.cart as unknown[])
+          : [];
+        const hasItems = cartItems.length > 0;
+        const cartInstructionParts: string[] = [];
+        cartInstructionParts.push(
+          "The previous tool call returned the user's cart. Answer with a clear, itemized list rather than a generic statement."
+        );
+        if (hasItems) {
+          cartInstructionParts.push(
+            "List each cart item on its own line or numbered bullet: include the product name, selected size/variant if available, quantity, and price if provided. Keep it concise and skip marketing fluff."
+          );
+        } else {
+          cartInstructionParts.push(
+            "If the cart is empty, say so plainly before offering next steps."
+          );
+        }
+        cartInstructionParts.push(
+          "After listing, offer brief helpful next steps (add, compare, remove, checkout) tied to their cart status, then always close with the 'Suggested actions' heading and three numbered suggestions."
+        );
+        chatMessages.push({
+          role: "developer",
+          content: cartInstructionParts.join(" "),
+        });
+      }
+
       const latestSearchOutput = [...toolOutputs]
         .slice()
         .reverse()
@@ -1542,6 +2216,9 @@ export async function callGemini({
 
       const productsArray =
         toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
+      if (productsArray.length) {
+        registerProductCollection(productsArray as ProductCandidate[]);
+      }
 
       // for products array in tool call
       if (productsArray.length) {
@@ -1568,6 +2245,16 @@ export async function callGemini({
         const streamingProducts = selectedProducts.length
           ? selectedProducts
           : (productsArray as ProductCandidate[]);
+        registerProductCollection(streamingProducts);
+
+        if (pendingAddToCart && !pendingAddToCartReminderSent) {
+          chatMessages.push({
+            role: "developer",
+            content:
+              "You just refreshed product details. Use this opportunity to show the size options, ask the user which one they want, and then complete the outstanding add-to-cart request.",
+          });
+          pendingAddToCartReminderSent = true;
+        }
 
         const searchArgs =
           (latestSearchOutput?.arguments as {
@@ -1614,12 +2301,47 @@ export async function callGemini({
             )
           : [];
 
+        const derivedSkinTypes = new Set<string>();
+        const derivedBenefits = new Set<string>();
+
+        streamingProducts.forEach((product) => {
+          if (!product || typeof product !== "object") return;
+          const record = product as Record<string, unknown>;
+          const productSkinTypes = Array.isArray(record.skinType)
+            ? record.skinType
+            : Array.isArray((record as any).skinTypes)
+              ? ((record as any).skinTypes as unknown[])
+              : [];
+          productSkinTypes.forEach((entry) => {
+            if (typeof entry !== "string") return;
+            const normalized = entry.trim().toLowerCase();
+            if (!normalized || normalized === "all") return;
+            derivedSkinTypes.add(normalized);
+          });
+
+          const productBenefits = Array.isArray(record.benefits)
+            ? record.benefits
+            : [];
+          productBenefits.forEach((entry) => {
+            if (typeof entry !== "string") return;
+            const normalized = entry.trim().toLowerCase();
+            if (!normalized) return;
+            derivedBenefits.add(normalized);
+          });
+        });
+
         const normalizedSkinTypes = rawSkinTypes
           .map((type) => toTitleCase(type))
           .filter(Boolean);
         const filteredSkinTypes = normalizedSkinTypes.filter(
           (type) => type.toLowerCase() !== "all"
         );
+        const derivedSkinTypeList = Array.from(derivedSkinTypes).map((type) =>
+          toTitleCase(type)
+        );
+        const effectiveSkinTypes = filteredSkinTypes.length
+          ? filteredSkinTypes
+          : derivedSkinTypeList;
         const normalizedConcerns = rawSkinConcerns
           .map((concern) => toTitleCase(concern))
           .filter(Boolean);
@@ -1628,32 +2350,26 @@ export async function callGemini({
           ? toTitleCase(brandQuery)
           : undefined;
 
-        const promptAudience = (() => {
-          if (typeof latestUserMessageContent !== "string") return undefined;
-          const prompt = latestUserMessageContent.toLowerCase();
-          if (prompt.includes("dark skin")) return "Dark Skin";
-          if (prompt.includes("brown skin")) return "Brown Skin";
-          if (prompt.includes("men")) return "Men";
-          if (prompt.includes("women")) return "Women";
-          return undefined;
-        })();
-
         const audiencePhrase = composeAudiencePhrase(
-          filteredSkinTypes,
+          effectiveSkinTypes,
           normalizedConcerns
         );
-        const audienceHeadline = promptAudience
-          ? promptAudience
-          : audiencePhrase
-            ? toTitleCase(audiencePhrase)
-            : undefined;
+        const audienceHeadline = audiencePhrase
+          ? toTitleCase(audiencePhrase)
+          : undefined;
         const ingredientPhraseRaw = describeIngredients(rawIngredientQueries);
         const ingredientHeadline = ingredientPhraseRaw
           ? sentenceCase(ingredientPhraseRaw)
           : undefined;
-        const benefitPhraseRaw = describeBenefits(rawBenefits);
+        const effectiveBenefitsRaw = rawBenefits.length
+          ? rawBenefits
+          : Array.from(derivedBenefits);
+        const benefitPhraseRaw = describeBenefits(effectiveBenefitsRaw);
         const benefitHeadline = benefitPhraseRaw
           ? sentenceCase(benefitPhraseRaw)
+          : undefined;
+        const benefitQualifier = benefitHeadline
+          ? benefitHeadline.replace(/\bbenefits?$/i, "").trim() || undefined
           : undefined;
         const nameQueryHeadline = nameQuery
           ? toTitleCase(nameQuery)
@@ -1679,6 +2395,7 @@ export async function callGemini({
           nameQuery: nameQueryHeadline,
           ingredients: ingredientHeadline,
           benefits: benefitHeadline,
+          benefitQualifier,
         });
 
         const summarySubheading = buildProductSubheading({
@@ -1797,6 +2514,9 @@ export async function callGemini({
   const productsPayload = shouldOmitProducts ? [] : products;
 
   finalContent = finalContent.trim();
+  if (finalContent.length) {
+    finalContent = applyParagraphStructure(finalContent);
+  }
   if (!finalContent.length) {
     finalContent = "Got it—let me know how you'd like me to help next.";
   }

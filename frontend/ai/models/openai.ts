@@ -94,7 +94,7 @@ export async function callOpenAI({
       "Whenever you call `addToCart`, explicitly confirm in your final reply exactly what you added (product name plus size/variant) so the user hears the cart update.",
       "When a product has multiple sizes or variants, list each option with its size/variant label and price before asking the user to choose—never ask for a selection without those details.",
       "Format size/price choices as a numbered list (1., 2., …) and include the currency symbol with thousands separators whenever a `currency` field is provided (e.g., '₦27,760.50'); if currency is missing, show the amount followed by the currency code (e.g., '27,760.50 NGN').",
-      "If the user asks for details, sizes, pricing, availability, or other specifics about a particular product, call `getProduct` for that item (even if you've already searched for it) before you answer. Use that data to ground your reply.",
+      "If the user wants deeper product details, inspect the stored tool outputs first; only call `getProduct` if that information isn’t already in the conversation history.",
       "When responding with detailed information about a single product, follow this layout: start with a heading like '✨ {Product Name}', then list concise bullets with bold labels (Overview, Key Ingredients, Sizes, Skin Types, Usage, Highlights as relevant). Keep each bullet to one sentence for readability.",
       "Only put actual ingredient names (specific actives like 'niacinamide', 'salicylic acid', 'avobenzone') in `ingredientQueries`. If the user mentions descriptors or product styles such as 'chemical sunscreen', 'hydrating cleanser', or 'gentle formula', treat those as categories or benefits instead and leave `ingredientQueries` empty unless a real ingredient is cited.",
       "Before you call any product tool, sanity-check each argument: keep `categoryQuery` limited to canonical product nouns, `brandQuery` to real brand names, `benefits` to outcome descriptors, `skinTypes`/`skinConcerns` to mapped canonical values, and drop anything you can’t classify confidently. When in doubt, leave the field empty rather than guessing.",
@@ -1220,6 +1220,83 @@ export async function callOpenAI({
       // Make sure next round includes function_call and function_call_output items
       pendingExtraInputItems = [];
 
+      type ToolOutcomeSummary = {
+        name: string;
+        status: "success" | "error";
+        message?: string;
+        quantity?: number;
+      };
+
+      const actionOutcomes: ToolOutcomeSummary[] = [];
+      for (const output of toolOutputs) {
+        if (!output?.result || typeof output.result !== "object") continue;
+        const record = output.result as Record<string, unknown>;
+        const hasActionHint =
+          typeof record.statusCode === "number" ||
+          typeof record.message === "string" ||
+          typeof record.success === "boolean";
+        if (!hasActionHint) continue;
+        let status: "success" | "error" | "unknown" = "unknown";
+        if (record.success === true) status = "success";
+        else if (record.success === false) status = "error";
+        else if (
+          typeof record.status === "string" &&
+          record.status.toLowerCase().includes("error")
+        )
+          status = "error";
+        if (status === "unknown") continue;
+        const message =
+          typeof record.message === "string" && record.message.trim().length
+            ? record.message.trim()
+            : undefined;
+        const quantity =
+          typeof record.quantity === "number" && Number.isFinite(record.quantity)
+            ? record.quantity
+            : undefined;
+        actionOutcomes.push({
+          name: output.name,
+          status,
+          message,
+          quantity,
+        });
+      }
+
+      if (actionOutcomes.length) {
+        const successes = actionOutcomes.filter((entry) => entry.status === "success");
+        const failures = actionOutcomes.filter((entry) => entry.status === "error");
+        const instructions: string[] = [];
+        if (successes.length) {
+          instructions.push(
+            "The following tool actions succeeded. Confirm each plainly before moving on:"
+          );
+          successes.forEach((entry) => {
+            const detailParts: string[] = [];
+            if (entry.message) detailParts.push(entry.message);
+            if (typeof entry.quantity === "number")
+              detailParts.push(`quantity now ${entry.quantity}`);
+            const detail =
+              detailParts.length > 0 ? ` – ${detailParts.join(", ")}` : "";
+            instructions.push(`- ${entry.name}${detail}`);
+          });
+        }
+        if (failures.length) {
+          instructions.push(
+            "Some tool actions failed. State the failure clearly, do not imply success, and offer next steps:"
+          );
+          failures.forEach((entry) => {
+            const detail = entry.message ? ` – ${entry.message}` : "";
+            instructions.push(`- ${entry.name}${detail}`);
+          });
+        }
+        instructions.push(
+          "After addressing these outcomes, continue with your guidance and still end with the 'Suggested actions' heading plus three numbered suggestions."
+        );
+        chatMessages.push({
+          role: "developer",
+          content: instructions.join(" "),
+        });
+      }
+
       const latestSearchOutput = [...toolOutputs]
         .slice()
         .reverse()
@@ -1317,12 +1394,47 @@ export async function callOpenAI({
             )
           : [];
 
+        const derivedSkinTypes = new Set<string>();
+        const derivedBenefits = new Set<string>();
+
+        streamingProducts.forEach((product) => {
+          if (!product || typeof product !== "object") return;
+          const record = product as Record<string, unknown>;
+          const productSkinTypes = Array.isArray(record.skinType)
+            ? record.skinType
+            : Array.isArray((record as any).skinTypes)
+              ? ((record as any).skinTypes as unknown[])
+              : [];
+          productSkinTypes.forEach((entry) => {
+            if (typeof entry !== "string") return;
+            const normalized = entry.trim().toLowerCase();
+            if (!normalized || normalized === "all") return;
+            derivedSkinTypes.add(normalized);
+          });
+
+          const productBenefits = Array.isArray(record.benefits)
+            ? record.benefits
+            : [];
+          productBenefits.forEach((entry) => {
+            if (typeof entry !== "string") return;
+            const normalized = entry.trim().toLowerCase();
+            if (!normalized) return;
+            derivedBenefits.add(normalized);
+          });
+        });
+
         const normalizedSkinTypes = rawSkinTypes
           .map((type) => toTitleCase(type))
           .filter(Boolean);
         const filteredSkinTypes = normalizedSkinTypes.filter(
           (type) => type.toLowerCase() !== "all"
         );
+        const derivedSkinTypeList = Array.from(derivedSkinTypes).map((type) =>
+          toTitleCase(type)
+        );
+        const effectiveSkinTypes = filteredSkinTypes.length
+          ? filteredSkinTypes
+          : derivedSkinTypeList;
         const normalizedConcerns = rawSkinConcerns
           .map((concern) => toTitleCase(concern))
           .filter(Boolean);
@@ -1331,32 +1443,26 @@ export async function callOpenAI({
           ? toTitleCase(brandQuery)
           : undefined;
 
-        const promptAudience = (() => {
-          if (typeof latestUserMessageContent !== "string") return undefined;
-          const prompt = latestUserMessageContent.toLowerCase();
-          if (prompt.includes("dark skin")) return "Dark Skin";
-          if (prompt.includes("brown skin")) return "Brown Skin";
-          if (prompt.includes("men")) return "Men";
-          if (prompt.includes("women")) return "Women";
-          return undefined;
-        })();
-
         const audiencePhrase = composeAudiencePhrase(
-          filteredSkinTypes,
+          effectiveSkinTypes,
           normalizedConcerns
         );
-        const audienceHeadline = promptAudience
-          ? promptAudience
-          : audiencePhrase
-            ? toTitleCase(audiencePhrase)
-            : undefined;
+        const audienceHeadline = audiencePhrase
+          ? toTitleCase(audiencePhrase)
+          : undefined;
         const ingredientPhraseRaw = describeIngredients(rawIngredientQueries);
         const ingredientHeadline = ingredientPhraseRaw
           ? sentenceCase(ingredientPhraseRaw)
           : undefined;
-        const benefitPhraseRaw = describeBenefits(rawBenefits);
+        const effectiveBenefitsRaw = rawBenefits.length
+          ? rawBenefits
+          : Array.from(derivedBenefits);
+        const benefitPhraseRaw = describeBenefits(effectiveBenefitsRaw);
         const benefitHeadline = benefitPhraseRaw
           ? sentenceCase(benefitPhraseRaw)
+          : undefined;
+        const benefitQualifier = benefitHeadline
+          ? benefitHeadline.replace(/\bbenefits?$/i, "").trim() || undefined
           : undefined;
         const nameQueryHeadline = nameQuery
           ? toTitleCase(nameQuery)
@@ -1382,6 +1488,7 @@ export async function callOpenAI({
           nameQuery: nameQueryHeadline,
           ingredients: ingredientHeadline,
           benefits: benefitHeadline,
+          benefitQualifier,
         });
 
         const summarySubheading = buildProductSubheading({

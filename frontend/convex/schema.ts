@@ -67,7 +67,8 @@ export const SkinConcern = v.union(
   v.literal("loss-of-firmness"),
   v.literal("dullness"),
   v.literal("sun-damage"),
-  v.literal("all")
+  v.literal("all"),
+  v.literal("enlarged-pores")
 );
 
 export const ActionTypes = v.union(

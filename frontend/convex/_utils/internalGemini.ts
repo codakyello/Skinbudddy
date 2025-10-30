@@ -18,13 +18,18 @@ export function hasCategory(products: Product[], categoryName: string) {
   );
 }
 
+type GeminiChatOptions = {
+  apiKey?: string;
+};
+
 export async function runChatCompletion(
   userPrompt: string,
   model = "gemini-2.5-flash-lite",
   temperature = 1,
-  systemPrompt?: string
+  systemPrompt?: string,
+  options?: GeminiChatOptions
 ) {
-  const geminiClient = getGeminiClient();
+  const geminiClient = getGeminiClient(options?.apiKey);
   const response = await geminiClient.models.generateContent({
     model,
     contents: [

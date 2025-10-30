@@ -34,10 +34,30 @@ const jaccard = (a: Set<string>, b: Set<string>) => {
 };
 
 const SYNONYMS: Record<string, string[]> = {
-  moisturizer: ["moisturiser", "cream", "face cream", "lotion", "hydrating"],
-  moisturiser: ["moisturizer", "cream", "face cream", "lotion", "hydrating"],
+  moisturizer: [
+    "moisturiser",
+    "cream",
+    "face cream",
+    "lotion",
+    "hydrating",
+    "body cream",
+    "body lotion",
+    "moisturizing lotion",
+  ],
+  moisturiser: [
+    "moisturizer",
+    "cream",
+    "face cream",
+    "lotion",
+    "hydrating",
+    "body cream",
+    "body lotion",
+    "moisturizing lotion",
+  ],
   sunscreen: ["spf", "sun screen", "sunblock", "uv"],
   cleanser: ["face wash", "washing", "gel"],
+  exfoliator: ["exfoliant", "peel", "polish", "scrub", "resurfacing"],
+  exfoliant: ["exfoliator", "peel", "polish", "scrub", "resurfacing"],
 };
 
 // Expand a query into its base tokens plus singular and synonym variants so
