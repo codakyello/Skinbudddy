@@ -6,6 +6,7 @@ export type ProductHeadlineInput = {
   nameQuery?: string;
   ingredients?: string;
   benefits?: string;
+  benefitQualifier?: string;
 };
 
 export type ProductHeadlineResult = {

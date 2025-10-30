@@ -281,12 +281,12 @@ export default function ChatPage() {
         </p>
       ),
       ul: ({ children }) => (
-        <ul className="ml-8 list-disc space-y-4 text-[1.4rem] text-[#1B1F26]">
+        <ul className="ml-8 mt-[16px] list-disc mt space-y-[16px] text-[1.4rem] text-[#1B1F26]">
           {children}
         </ul>
       ),
       ol: ({ children }) => (
-        <ol className="ml-8 list-decimal space-y-4 text-[1.4rem] text-[#1B1F26]">
+        <ol className="ml-8 list-decimal mt-[16px] space-y-[16px] text-[1.4rem] text-[#1B1F26]">
           {children}
         </ol>
       ),
@@ -791,7 +791,7 @@ export default function ChatPage() {
                               <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
                                 components={markdownComponents}
-                                className="markdown space-y-4 text-[1.4rem] leading-relaxed tracking-[-0.008em]"
+                                className="markdown space-y-[16px] text-[1.4rem] leading-relaxed tracking-[-0.008em]"
                               >
                                 {markdownSource}
                               </ReactMarkdown>

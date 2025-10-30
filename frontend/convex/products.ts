@@ -176,6 +176,18 @@ export const recommend = action({
       "This is skinProfile"
     );
     try {
+      const envGeminiKey =
+        typeof (ctx as any)?.env?.get === "function"
+          ? (ctx as any).env.get("GEMINI_API_KEY")
+          : undefined;
+      if (
+        typeof envGeminiKey === "string" &&
+        envGeminiKey.trim().length &&
+        process.env.GEMINI_API_KEY !== envGeminiKey
+      ) {
+        process.env.GEMINI_API_KEY = envGeminiKey.trim();
+      }
+
       // Pull raw products via an internal query to avoid action ctx.db access
       const internalAny = internal as any;
       const all = await ctx.runQuery(
@@ -1156,9 +1168,11 @@ export const getAllProducts = query({
 // convex/products.ts (add this)
 type ProductCardSize = {
   id: string;
-  size: number;
-  unit: string;
-  price: number;
+  size?: number;
+  sizeText?: string;
+  unit?: string;
+  label?: string;
+  price?: number;
   discount?: number;
   stock?: number;
   currency?: string;
@@ -1177,6 +1191,13 @@ type ProductCardSummary = {
   benefitMatchCount?: number;
   categories?: Array<{ name?: string; slug?: string }>;
   ingredients?: string[];
+  benefits?: string[];
+  skinType?: string[];
+  hasAlcohol?: boolean;
+  hasFragrance?: boolean;
+  isTrending?: boolean;
+  isNew?: boolean;
+  isBestseller?: boolean;
 };
 
 type SearchProductsByQueryArgs = {
@@ -1261,7 +1282,9 @@ async function searchProductsByQueryImpl(
     typeof nameQuery === "string" ? normalizeText(nameQuery) : "";
   const hasNameQuery = normalizedNameQuery.length > 0;
   const nameTokens = hasNameQuery
-    ? toTokenSet(typeof nameQuery === "string" ? nameQuery : normalizedNameQuery)
+    ? toTokenSet(
+        typeof nameQuery === "string" ? nameQuery : normalizedNameQuery
+      )
     : null;
 
   const priceMinValue =
@@ -1283,8 +1306,7 @@ async function searchProductsByQueryImpl(
     resolvedMinPrice = resolvedMaxPrice;
     resolvedMaxPrice = temp;
   }
-  const hasPriceFilter =
-    resolvedMinPrice != null || resolvedMaxPrice != null;
+  const hasPriceFilter = resolvedMinPrice != null || resolvedMaxPrice != null;
 
   const discountMinValue =
     typeof minDiscount === "number" && Number.isFinite(minDiscount)
@@ -1557,9 +1579,7 @@ async function searchProductsByQueryImpl(
             .map((value) => normalizeIngredient(value))
             .filter(
               (value) =>
-                value &&
-                value.length > 0 &&
-                !GENERIC_INGREDIENT_KEYS.has(value)
+                value && value.length > 0 && !GENERIC_INGREDIENT_KEYS.has(value)
             )
         )
       )
@@ -1746,11 +1766,7 @@ async function searchProductsByQueryImpl(
       .map(({ product }) => product);
   }
 
-  if (
-    avoidIngredientSet.size > 0 ||
-    wantsNoAcids ||
-    wantsNoAlcohol
-  ) {
+  if (avoidIngredientSet.size > 0 || wantsNoAcids || wantsNoAlcohol) {
     products = products.filter((product) => {
       if (!Array.isArray(product.ingredients) || !product.ingredients.length) {
         return true;
@@ -1830,16 +1846,10 @@ async function searchProductsByQueryImpl(
     products = products.filter((product) => {
       const discountValue = Number((product as any)?.discount);
       if (!Number.isFinite(discountValue)) return false;
-      if (
-        resolvedMinDiscount != null &&
-        discountValue < resolvedMinDiscount
-      ) {
+      if (resolvedMinDiscount != null && discountValue < resolvedMinDiscount) {
         return false;
       }
-      if (
-        resolvedMaxDiscount != null &&
-        discountValue > resolvedMaxDiscount
-      ) {
+      if (resolvedMaxDiscount != null && discountValue > resolvedMaxDiscount) {
         return false;
       }
       return true;
@@ -1854,19 +1864,11 @@ async function searchProductsByQueryImpl(
       if (!productSizes.length) return false;
       return productSizes.some((size) => {
         if (!size || typeof size !== "object") return false;
-        const rawPrice = Number(
-          (size as Record<string, unknown>).price
-        );
+        const rawPrice = Number((size as Record<string, unknown>).price);
         if (!Number.isFinite(rawPrice)) return false;
-        if (
-          resolvedMinPrice != null &&
-          rawPrice < resolvedMinPrice
-        )
+        if (resolvedMinPrice != null && rawPrice < resolvedMinPrice)
           return false;
-        if (
-          resolvedMaxPrice != null &&
-          rawPrice > resolvedMaxPrice
-        )
+        if (resolvedMaxPrice != null && rawPrice > resolvedMaxPrice)
           return false;
         return true;
       });
@@ -1889,13 +1891,86 @@ async function searchProductsByQueryImpl(
     products.map(async (item) => {
       let brandDoc: Doc<"brands"> | null = null;
       let categoryDocs: Doc<"categories">[] = [];
-      const sizesSorted = Array.isArray(item.sizes)
-        ? [...item.sizes]
-            .filter((size) => typeof size?.id === "string")
-            .sort((a, b) => (a.size ?? 0) - (b.size ?? 0))
-        : [];
+      const mapSizeEntry = (entry: unknown): ProductCardSize | null => {
+        if (!entry || typeof entry !== "object") return null;
+        const record = entry as Record<string, unknown>;
+        const sizeId =
+          (typeof record.id === "string" && record.id) ||
+          (typeof record.sizeId === "string" && record.sizeId) ||
+          (typeof record._id === "string" && record._id) ||
+          undefined;
+        if (!sizeId) return null;
+
+        const rawSize = record.size;
+        const numericSize =
+          typeof rawSize === "number" && Number.isFinite(rawSize)
+            ? rawSize
+            : undefined;
+        const sizeText =
+          typeof rawSize === "string" && rawSize.trim().length
+            ? rawSize.trim()
+            : typeof record.sizeText === "string" && record.sizeText.trim().length
+              ? record.sizeText.trim()
+              : undefined;
+        const unit =
+          typeof record.unit === "string" && record.unit.trim().length
+            ? record.unit.trim()
+            : undefined;
+        const name =
+          typeof record.name === "string" && record.name.trim().length
+            ? record.name.trim()
+            : undefined;
+        const price =
+          typeof record.price === "number"
+            ? record.price
+            : typeof record.price === "string" && record.price.trim().length
+              ? Number(record.price)
+              : undefined;
+        const discount =
+          typeof record.discount === "number" ? record.discount : undefined;
+        const stock =
+          typeof record.stock === "number" ? record.stock : undefined;
+        const currency =
+          typeof record.currency === "string" && record.currency.trim().length
+            ? record.currency.trim()
+            : undefined;
+
+        let label = name;
+        if (!label) {
+          if (numericSize !== undefined && unit) {
+            label = `${numericSize} ${unit}`.trim();
+          } else if (sizeText && unit) {
+            label = `${sizeText} ${unit}`.trim();
+          } else if (sizeText) {
+            label = sizeText;
+          } else if (unit) {
+            label = unit;
+          }
+        }
+
+        const normalized: ProductCardSize = {
+          id: sizeId,
+          price:
+            typeof price === "number" && Number.isFinite(price)
+              ? price
+              : undefined,
+          currency,
+        };
+        if (numericSize !== undefined) normalized.size = numericSize;
+        if (sizeText) normalized.sizeText = sizeText;
+        if (unit) normalized.unit = unit;
+        if (label) normalized.label = label;
+        if (discount !== undefined) normalized.discount = discount;
+        if (stock !== undefined) normalized.stock = stock;
+        return normalized;
+      };
 
       try {
+        const sizesSorted = Array.isArray(item.sizes)
+          ? [...item.sizes]
+              .filter((size) => typeof size?.id === "string")
+              .sort((a, b) => (a.size ?? 0) - (b.size ?? 0))
+          : [];
         if (item.brandId) {
           if (brandCache.has(item.brandId)) {
             brandDoc = brandCache.get(item.brandId) ?? null;
@@ -1921,7 +1996,6 @@ async function searchProductsByQueryImpl(
               )
             ).filter((doc): doc is Doc<"categories"> => Boolean(doc))
           : [];
-
         const productNameTokens =
           hasNameQuery && item.name
             ? toTokenSet(String(item.name))
@@ -2015,33 +2089,13 @@ async function searchProductsByQueryImpl(
             benefitScore * 0.2
           : 1 + benefitScore * 0.1;
 
-        const sizes: ProductCardSize[] = Array.isArray(sizesSorted)
+        const sizeEntries = Array.isArray(sizesSorted)
           ? sizesSorted
-              .map((size) => {
-                if (!size || typeof size !== "object") return null;
-                const id = typeof size.id === "string" ? size.id : undefined;
-                const sizeValue = Number(size.size ?? 0);
-                const unit = typeof size.unit === "string" ? size.unit : "";
-                const price = Number(size.price ?? 0);
-                const discount =
-                  typeof size.discount === "number" ? size.discount : undefined;
-                const stock =
-                  typeof size.stock === "number" ? size.stock : undefined;
-                const currency =
-                  typeof size.currency === "string" ? size.currency : undefined;
-                if (!id) return null;
-                return {
-                  id,
-                  size: Number.isFinite(sizeValue) ? sizeValue : 0,
-                  unit,
-                  price: Number.isFinite(price) ? price : 0,
-                  discount,
-                  stock,
-                  currency,
-                } as ProductCardSize;
-              })
-              .filter((size): size is ProductCardSize => Boolean(size))
+              .map((entry) => mapSizeEntry(entry))
+              .filter((entry): entry is ProductCardSize => Boolean(entry))
           : [];
+
+        const sizes: ProductCardSize[] = sizeEntries;
 
         const filteredSizes =
           hasPriceFilter && sizes.length
@@ -2052,6 +2106,8 @@ async function searchProductsByQueryImpl(
           return null;
         }
 
+        const benefitSlugs = getBenefitSlugsForProduct(item);
+        const skinTypesSanitized = extractStringArray(item.skinType);
         const summary: ProductCardSummary = {
           id: item._id,
           slug: String(item.slug ?? ""),
@@ -2080,49 +2136,44 @@ async function searchProductsByQueryImpl(
             name: typeof doc.name === "string" ? doc.name : undefined,
             slug: typeof doc.slug === "string" ? doc.slug : undefined,
           })),
-          ingredients: Array.isArray(item.ingredients)
-            ? item.ingredients
-                .filter(
-                  (ingredient): ingredient is string =>
-                    typeof ingredient === "string"
-                )
-                .slice(0, 2)
-            : undefined,
+          ingredients: (() => {
+            if (!Array.isArray(item.ingredients)) return undefined;
+            const list = item.ingredients.filter(
+              (ingredient): ingredient is string => typeof ingredient === "string"
+            );
+            if (!list.length) return undefined;
+            return list.slice(0, 20);
+          })(),
+          benefits: benefitSlugs.length ? benefitSlugs : undefined,
+          skinType: skinTypesSanitized.length ? skinTypesSanitized : undefined,
+          hasAlcohol:
+            typeof item.hasAlcohol === "boolean" ? item.hasAlcohol : undefined,
+          hasFragrance:
+            typeof item.hasFragrance === "boolean"
+              ? item.hasFragrance
+              : undefined,
+          isTrending:
+            typeof item.isTrending === "boolean" ? item.isTrending : undefined,
+          isNew: typeof item.isNew === "boolean" ? item.isNew : undefined,
+          isBestseller:
+            typeof item.isBestseller === "boolean"
+              ? item.isBestseller
+              : undefined,
         };
         return summary;
       } catch {
-        const fallbackSizes: ProductCardSize[] = Array.isArray(item.sizes)
+        const fallbackSizeEntries = Array.isArray(item.sizes)
           ? item.sizes
-              .map((size) => {
-                if (!size || typeof size !== "object") return null;
-                const id = typeof size.id === "string" ? size.id : undefined;
-                if (!id) return null;
-                const sizeValue = Number(size.size ?? 0);
-                const unit = typeof size.unit === "string" ? size.unit : "";
-                const price = Number(size.price ?? 0);
-                const discount =
-                  typeof size.discount === "number" ? size.discount : undefined;
-                const stock =
-                  typeof size.stock === "number" ? size.stock : undefined;
-                const currency =
-                  typeof size.currency === "string" ? size.currency : undefined;
-                return {
-                  id,
-                  size: Number.isFinite(sizeValue) ? sizeValue : 0,
-                  unit,
-                  price: Number.isFinite(price) ? price : 0,
-                  discount,
-                  stock,
-                  currency,
-                } as ProductCardSize;
-              })
-              .filter((size): size is ProductCardSize => Boolean(size))
+              .map((entry) => mapSizeEntry(entry))
+              .filter((entry): entry is ProductCardSize => Boolean(entry))
           : [];
 
         const filteredFallbackSizes =
-          hasPriceFilter && fallbackSizes.length
-            ? fallbackSizes.filter((size) => isPriceWithinRange(size.price))
-            : fallbackSizes;
+          hasPriceFilter && fallbackSizeEntries.length
+            ? fallbackSizeEntries.filter((size) =>
+                isPriceWithinRange(size.price)
+              )
+            : fallbackSizeEntries;
 
         if (hasPriceFilter && !filteredFallbackSizes.length) {
           return null;
@@ -2139,6 +2190,8 @@ async function searchProductsByQueryImpl(
           : [];
 
         const fallbackBenefitMatchCount = benefitMatchCounts.get(item._id) ?? 0;
+        const fallbackBenefitSlugs = getBenefitSlugsForProduct(item);
+        const fallbackSkinTypes = extractStringArray(item.skinType);
         const fallbackBenefitScore =
           requestedBenefits.length > 0
             ? Math.min(fallbackBenefitMatchCount / requestedBenefits.length, 1)
@@ -2168,14 +2221,31 @@ async function searchProductsByQueryImpl(
             name: typeof doc.name === "string" ? doc.name : undefined,
             slug: typeof doc.slug === "string" ? doc.slug : undefined,
           })),
-          ingredients: Array.isArray(item.ingredients)
-            ? item.ingredients
-                .filter(
-                  (ingredient): ingredient is string =>
-                    typeof ingredient === "string"
-                )
-                .slice(0, 2)
+          ingredients: (() => {
+            if (!Array.isArray(item.ingredients)) return undefined;
+            const list = item.ingredients.filter(
+              (ingredient): ingredient is string => typeof ingredient === "string"
+            );
+            if (!list.length) return undefined;
+            return list.slice(0, 20);
+          })(),
+          benefits: fallbackBenefitSlugs.length
+            ? fallbackBenefitSlugs
             : undefined,
+          skinType: fallbackSkinTypes.length ? fallbackSkinTypes : undefined,
+          hasAlcohol:
+            typeof item.hasAlcohol === "boolean" ? item.hasAlcohol : undefined,
+          hasFragrance:
+            typeof item.hasFragrance === "boolean"
+              ? item.hasFragrance
+              : undefined,
+          isTrending:
+            typeof item.isTrending === "boolean" ? item.isTrending : undefined,
+          isNew: typeof item.isNew === "boolean" ? item.isNew : undefined,
+          isBestseller:
+            typeof item.isBestseller === "boolean"
+              ? item.isBestseller
+              : undefined,
         };
         return fallback;
       }
@@ -2760,3 +2830,17 @@ export const getProductsByIds = query({
     );
   },
 });
+  const extractStringArray = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) =>
+          typeof entry === "string" ? entry.trim() : undefined
+        )
+        .filter((entry): entry is string => Boolean(entry));
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed.length ? [trimmed] : [];
+    }
+    return [];
+  };

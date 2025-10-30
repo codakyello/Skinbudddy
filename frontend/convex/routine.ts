@@ -50,6 +50,18 @@ export const createRoutine = action({
     { productIds, skinConcerns, skinType, userId, pendingActionId, orderId }
   ) => {
     try {
+      const envGeminiKey =
+        typeof (ctx as any)?.env?.get === "function"
+          ? (ctx as any).env.get("GEMINI_API_KEY")
+          : undefined;
+      if (
+        typeof envGeminiKey === "string" &&
+        envGeminiKey.trim().length &&
+        process.env.GEMINI_API_KEY !== envGeminiKey
+      ) {
+        process.env.GEMINI_API_KEY = envGeminiKey.trim();
+      }
+
       const internalAny = internal as any;
       // Try to identify user
       //   const identity = (ctx as any).auth?.getUserIdentity

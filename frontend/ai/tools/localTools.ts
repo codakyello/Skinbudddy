@@ -370,9 +370,11 @@ const ensureApi = async () => api;
 
 type SanitizedSize = {
   id: string;
-  size: number;
-  unit: string;
-  price: number;
+  size?: number;
+  sizeText?: string;
+  unit?: string;
+  label?: string;
+  price?: number;
   discount?: number;
   stock?: number;
   currency?: string;
@@ -389,6 +391,13 @@ type SanitizedProduct = {
   score?: number;
   categories?: Array<{ name?: string; slug?: string }>;
   ingredients?: string[];
+  benefits?: string[];
+  skinTypes?: string[];
+  hasAlcohol?: boolean;
+  hasFragrance?: boolean;
+  isTrending?: boolean;
+  isNew?: boolean;
+  isBestseller?: boolean;
 };
 
 type IngredientSensitivityCanonical =
@@ -431,32 +440,61 @@ const extractRelevantProductInfo = (
         .map((size) => {
           if (!size || typeof size !== "object") return null;
           const sizeRecord = size as Record<string, unknown>;
-          const sizeIdValue = sizeRecord.id ?? sizeRecord._id;
+          const sizeIdValue =
+            sizeRecord.id ?? sizeRecord.sizeId ?? sizeRecord._id;
           const sizeId =
             typeof sizeIdValue === "string" ? sizeIdValue : undefined;
           if (!sizeId) return null;
 
-          const sizeValue = toNumber(sizeRecord.size) ?? 0;
+          const explicitSizeText =
+            typeof sizeRecord.sizeText === "string" &&
+            sizeRecord.sizeText.trim().length
+              ? sizeRecord.sizeText.trim()
+              : undefined;
+          const numericSize = toNumber(sizeRecord.size);
           const unit =
-            typeof sizeRecord.unit === "string" ? sizeRecord.unit : "";
-          const price = toNumber(sizeRecord.price) ?? 0;
+            typeof sizeRecord.unit === "string" && sizeRecord.unit.trim().length
+              ? sizeRecord.unit.trim()
+              : undefined;
+          const name =
+            typeof sizeRecord.name === "string" && sizeRecord.name.trim().length
+              ? sizeRecord.name.trim()
+              : undefined;
+          const price = toNumber(sizeRecord.price);
           const discount = toNumber(sizeRecord.discount);
           const stock = toNumber(sizeRecord.stock);
           const currency =
-            typeof sizeRecord.currency === "string"
-              ? sizeRecord.currency
+            typeof sizeRecord.currency === "string" &&
+            sizeRecord.currency.trim().length
+              ? sizeRecord.currency.trim()
               : undefined;
 
-          const sanitized: SanitizedSize = {
-            id: sizeId,
-            size: Number.isFinite(sizeValue) ? sizeValue : 0,
-            unit,
-            price: Number.isFinite(price) ? price : 0,
-          };
+          let label =
+            typeof sizeRecord.label === "string" &&
+            sizeRecord.label.trim().length
+              ? sizeRecord.label.trim()
+              : name;
+          if (!label) {
+            if (typeof numericSize === "number" && unit) {
+              label = `${numericSize} ${unit}`.trim();
+            } else if (explicitSizeText && unit) {
+              label = `${explicitSizeText} ${unit}`.trim();
+            } else if (explicitSizeText) {
+              label = explicitSizeText;
+            } else if (unit) {
+              label = unit;
+            }
+          }
 
-          if (discount != null) sanitized.discount = discount;
-          if (stock != null) sanitized.stock = stock;
-          if (currency != null) sanitized.currency = currency;
+          const sanitized: SanitizedSize = { id: sizeId };
+          if (typeof numericSize === "number") sanitized.size = numericSize;
+          if (explicitSizeText) sanitized.sizeText = explicitSizeText;
+          if (unit) sanitized.unit = unit;
+          if (label) sanitized.label = label;
+          if (typeof price === "number") sanitized.price = price;
+          if (typeof discount === "number") sanitized.discount = discount;
+          if (typeof stock === "number") sanitized.stock = stock;
+          if (currency) sanitized.currency = currency;
 
           return sanitized;
         })
@@ -505,12 +543,25 @@ const extractRelevantProductInfo = (
     : [];
 
   const ingredients = Array.isArray(raw.ingredients)
-    ? raw.ingredients
-        .filter(
-          (ingredient): ingredient is string => typeof ingredient === "string"
-        )
-        .slice(0, 2)
+    ? raw.ingredients.filter(
+        (ingredient): ingredient is string => typeof ingredient === "string"
+      )
     : [];
+
+  const benefits = Array.isArray(raw.benefits)
+    ? raw.benefits.filter(
+        (benefit): benefit is string => typeof benefit === "string"
+      )
+    : [];
+
+  const skinTypesSource = Array.isArray(raw.skinTypes)
+    ? raw.skinTypes
+    : Array.isArray(raw.skinType)
+      ? raw.skinType
+      : [];
+  const skinTypes = skinTypesSource.filter(
+    (entry): entry is string => typeof entry === "string"
+  );
 
   return {
     _id: _id ?? (slug as string),
@@ -521,8 +572,20 @@ const extractRelevantProductInfo = (
     images,
     sizes,
     brand,
+    score: typeof raw.score === "number" ? raw.score : undefined,
     categories: categories.length ? categories : undefined,
     ingredients: ingredients.length ? ingredients : undefined,
+    benefits: benefits.length ? benefits : undefined,
+    skinTypes: skinTypes.length ? skinTypes : undefined,
+    hasAlcohol:
+      typeof raw.hasAlcohol === "boolean" ? raw.hasAlcohol : undefined,
+    hasFragrance:
+      typeof raw.hasFragrance === "boolean" ? raw.hasFragrance : undefined,
+    isTrending:
+      typeof raw.isTrending === "boolean" ? raw.isTrending : undefined,
+    isNew: typeof raw.isNew === "boolean" ? raw.isNew : undefined,
+    isBestseller:
+      typeof raw.isBestseller === "boolean" ? raw.isBestseller : undefined,
   };
 };
 
@@ -974,11 +1037,12 @@ const localTools: ToolSpec[] = [
           : undefined;
 
       const isBestseller =
-        typeof input.isBestseller === "boolean" ? input.isBestseller : undefined;
+        typeof input.isBestseller === "boolean"
+          ? input.isBestseller
+          : undefined;
       const isTrending =
         typeof input.isTrending === "boolean" ? input.isTrending : undefined;
-      const isNew =
-        typeof input.isNew === "boolean" ? input.isNew : undefined;
+      const isNew = typeof input.isNew === "boolean" ? input.isNew : undefined;
 
       const expandedIngredientQueries = cleanedIngredientQueries
         ? cleanedIngredientQueries.map((query) => {
@@ -1097,12 +1161,128 @@ const localTools: ToolSpec[] = [
         userId: input.userId,
       });
 
-      const sanitizedCart = Array.isArray(userCart?.cart)
-        ? userCart.cart.map((item: Record<string, unknown>) => ({
-            ...item,
-            product: extractRelevantProductInfo(item.product),
-          }))
+      const cartItems = Array.isArray(userCart?.cart)
+        ? (userCart.cart as Array<Record<string, unknown>>)
         : [];
+
+      const missingProductIds = new Set<string>();
+      const preSanitized = new Map<
+        string,
+        ReturnType<typeof extractRelevantProductInfo>
+      >();
+
+      for (const item of cartItems) {
+        const existing = extractRelevantProductInfo(item.product);
+        const productId =
+          typeof item.productId === "string" ? item.productId : undefined;
+        if (existing && productId) {
+          preSanitized.set(productId, existing);
+        } else if (!existing && productId) {
+          missingProductIds.add(productId);
+        }
+      }
+
+      let fetchedProducts: unknown[] = [];
+      if (missingProductIds.size) {
+        try {
+          fetchedProducts = await fetchQuery(
+            apiModule.products.getProductsByIds,
+            {
+              ids: Array.from(missingProductIds) as Id<"products">[],
+            }
+          );
+        } catch (error) {
+          console.error("Failed to load products for cart items:", error);
+        }
+      }
+
+      const fetchedSanitized = new Map<
+        string,
+        ReturnType<typeof extractRelevantProductInfo>
+      >();
+      for (const product of fetchedProducts) {
+        const sanitized = extractRelevantProductInfo(product);
+        if (!sanitized) continue;
+        const key =
+          typeof sanitized._id === "string"
+            ? sanitized._id
+            : typeof sanitized.slug === "string"
+              ? sanitized.slug
+              : undefined;
+        if (key) {
+          fetchedSanitized.set(key, sanitized);
+        }
+      }
+
+      const sanitizedCart = await Promise.all(
+        cartItems.map(async (item) => {
+          const productId =
+            typeof item.productId === "string" ? item.productId : undefined;
+          const direct = extractRelevantProductInfo(item.product);
+          const fallback =
+            (productId && preSanitized.get(productId)) ||
+            (productId && fetchedSanitized.get(productId)) ||
+            null;
+          const product = direct ?? fallback ?? null;
+
+          const quantity =
+            typeof item.quantity === "number" && Number.isFinite(item.quantity)
+              ? item.quantity
+              : 0;
+          const sanitizedSizes =
+            product && typeof product === "object"
+              ? ((product as Record<string, unknown>).sizes as
+                  | SanitizedSize[]
+                  | undefined)
+              : undefined;
+
+          const matchedSize =
+            sanitizedSizes?.find(
+              (size) =>
+                typeof size === "object" &&
+                size !== null &&
+                typeof size.id === "string" &&
+                size.id === item.sizeId
+            ) ?? sanitizedSizes?.[0];
+
+          const displayPrice =
+            matchedSize && typeof matchedSize.price === "number"
+              ? matchedSize.price
+              : undefined;
+          const currency =
+            matchedSize && typeof matchedSize.currency === "string"
+              ? matchedSize.currency
+              : undefined;
+          const sizeLabel =
+            matchedSize && typeof matchedSize.label === "string"
+              ? matchedSize.label
+              : undefined;
+
+          const productName =
+            product && typeof product === "object"
+              ? typeof (product as Record<string, unknown>).name === "string"
+                ? ((product as Record<string, unknown>).name as string)
+                : typeof (product as Record<string, unknown>).slug === "string"
+                  ? ((product as Record<string, unknown>).slug as string)
+                  : undefined
+              : undefined;
+
+          const lineTotal =
+            typeof displayPrice === "number" && quantity > 0
+              ? displayPrice * quantity
+              : undefined;
+
+          return {
+            ...item,
+            product,
+            productName,
+            sizeLabel,
+            price: displayPrice,
+            currency,
+            lineTotal,
+          };
+        })
+      );
 
       return {
         ...userCart,

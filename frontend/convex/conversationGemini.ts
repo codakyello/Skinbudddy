@@ -261,6 +261,18 @@ export const recomputeSummaries = action({
     sessionId: v.id("conversationSessions"),
   },
   handler: async (ctx, { sessionId }) => {
+    const envGeminiKey =
+      typeof (ctx as any)?.env?.get === "function"
+        ? (ctx as any).env.get("GEMINI_API_KEY")
+        : undefined;
+    if (
+      typeof envGeminiKey === "string" &&
+      envGeminiKey.trim().length &&
+      process.env.GEMINI_API_KEY !== envGeminiKey
+    ) {
+      process.env.GEMINI_API_KEY = envGeminiKey.trim();
+    }
+
     const source = await ctx.runQuery(internal.conversation.getSummarySource, {
       sessionId,
     });

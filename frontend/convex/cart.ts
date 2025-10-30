@@ -47,8 +47,69 @@ export const createCart = mutation({
 
       if (!size) throw new Error("Size not found");
 
+      const sizeRecord = size as Record<string, unknown>;
+      const available =
+        typeof sizeRecord.stock === "number" && Number.isFinite(sizeRecord.stock)
+          ? (sizeRecord.stock as number)
+          : 0;
+
+      const numericSize =
+        typeof sizeRecord.size === "number" &&
+        Number.isFinite(sizeRecord.size as number)
+          ? (sizeRecord.size as number)
+          : undefined;
+      const sizeText =
+        typeof sizeRecord.size === "string" &&
+        (sizeRecord.size as string).trim().length
+          ? (sizeRecord.size as string).trim()
+          : undefined;
+      const unit =
+        typeof sizeRecord.unit === "string" &&
+        (sizeRecord.unit as string).trim().length
+          ? (sizeRecord.unit as string).trim()
+          : undefined;
+      const sizeName =
+        typeof sizeRecord.name === "string" &&
+        (sizeRecord.name as string).trim().length
+          ? (sizeRecord.name as string).trim()
+          : undefined;
+      const sizeLabel = sizeName
+        ? sizeName
+        : numericSize && unit
+          ? `${numericSize} ${unit}`
+          : sizeText && unit
+            ? `${sizeText} ${unit}`
+            : sizeText ?? unit ?? undefined;
+
+      const productName =
+        typeof product.name === "string" && product.name.trim().length
+          ? product.name.trim()
+          : typeof product.slug === "string" && product.slug.trim().length
+            ? product.slug.trim()
+            : "item";
+      const productDescriptor = sizeLabel
+        ? `${productName} (${sizeLabel})`
+        : productName;
+
+      const buildResponse = ({
+        statusCode,
+        message,
+        quantity: finalQuantity,
+        cartId,
+      }: {
+        statusCode: number;
+        message: string;
+        quantity: number;
+        cartId?: Id<"carts">;
+      }) => ({
+        success: true,
+        statusCode,
+        message,
+        quantity: finalQuantity,
+        cartId,
+      });
+
       if (existingCartItem) {
-        const available = size.stock ?? 0;
         if (available < 1)
           return {
             success: false,
@@ -65,6 +126,11 @@ export const createCart = mutation({
               statusCode: 400,
             };
           await ctx.db.patch(existingCartItem._id, { quantity });
+          return buildResponse({
+            statusCode: 200,
+            message: `Set ${productDescriptor} quantity to ${quantity}.`,
+            quantity,
+          });
         } else {
           // Otherwise, treat as incremental add
           const newQty = existingCartItem.quantity + quantity;
@@ -75,13 +141,17 @@ export const createCart = mutation({
               statusCode: 400,
             };
           await ctx.db.patch(existingCartItem._id, { quantity: newQty });
+          return buildResponse({
+            statusCode: 200,
+            message: `Added ${quantity} more of ${productDescriptor}. In cart now: ${newQty}.`,
+            quantity: newQty,
+          });
         }
-        return { success: true, message: "Cart item updated", statusCode: 200 };
       } else {
-        if (!size || size.stock < 1 || quantity > size.stock) {
+        if (!size || available < 1 || quantity > available) {
           return {
             success: false,
-            message: `Only ${size?.stock || 0} left in stock`,
+            message: `Only ${available || 0} left in stock`,
             statusCode: 400,
           };
         }
@@ -95,12 +165,12 @@ export const createCart = mutation({
           recommended: false,
         });
 
-        return {
-          success: true,
-          message: "Cart item created",
+        return buildResponse({
           statusCode: 201,
+          message: `Added ${productDescriptor} ×${quantity} to your cart.`,
+          quantity,
           cartId,
-        };
+        });
       }
     } catch (error) {
       // captureSentryError(ctx, error, userId);

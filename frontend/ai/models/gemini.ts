@@ -388,7 +388,9 @@ export async function callGemini({
         .split(/([\s-])/)
         .map((segment) => {
           if (!segment || !/[a-zA-Z]/.test(segment)) return segment;
-          return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+          return (
+            segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase()
+          );
         })
         .join("");
 
@@ -398,7 +400,8 @@ export async function callGemini({
       if (!replacement) return match;
       if (match === lower) return replacement;
       if (match === lower.toUpperCase()) return replacement.toUpperCase();
-      if (match[0].toUpperCase() === match[0]) return toTitleCaseWord(replacement);
+      if (match[0].toUpperCase() === match[0])
+        return toTitleCaseWord(replacement);
       return replacement;
     });
   };
@@ -472,13 +475,16 @@ export async function callGemini({
     } else {
       Object.assign(existingDetail, meta ?? {});
     }
-    productSizeDetailsById.set(productId, details as Array<{
-      sizeId: string;
-      label?: string;
-      sizeText?: string;
-      unit?: string;
-      sizeValue?: number;
-    }>);
+    productSizeDetailsById.set(
+      productId,
+      details as Array<{
+        sizeId: string;
+        label?: string;
+        sizeText?: string;
+        unit?: string;
+        sizeValue?: number;
+      }>
+    );
   };
 
   const registerProductCandidate = (
@@ -1499,9 +1505,8 @@ export async function callGemini({
               typeof argsRecord.nameQuery === "string"
                 ? argsRecord.nameQuery.trim()
                 : "";
-            const normalizedNameQuery = normalizeBritishToAmerican(
-              originalNameQuery
-            );
+            const normalizedNameQuery =
+              normalizeBritishToAmerican(originalNameQuery);
             const nameQueryForSearch = normalizedNameQuery.length
               ? normalizedNameQuery
               : originalNameQuery;
