@@ -89,7 +89,7 @@ export async function callGemini({
       "Keep the main reply tight: at most three short sentences or ~80 words unless the user explicitly asks for detailed product information, sizes, pricing, or usage guidance—when they do, switch immediately to a structured breakdown covering the key facts they requested.",
       "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Phrase each suggestion as a first-person request the user could send to SkinBuddy—start with verbs like 'Recommend', 'Show me', 'Help me', or 'Explain'. Avoid asking the user questions such as 'What is your skin type?'; these suggestions should read like commands or requests directed at SkinBuddy (e.g., 'Recommend a brightening serum for uneven tone', 'Help me pick a gentle cleanser for sensitive skin'). Cap each suggestion at 12 words. Keep all three skincare-only and tightly relevant to the user's latest request, vary the angle when possible (ingredients, usage tips, alternatives, price points, etc.), and avoid near-duplicates. Never imply an action already happened or command SkinBuddy to perform it (skip things like 'Add…' or 'Checkout my cart'). Only reference a specific product by name if the user or your latest reply mentioned it in this turn.",
       "Each of the three suggestions must clearly build on the user's most recent request or the guidance you just provided—connect back to their specific skin type, concern, or product discussion. Do not repeat generic skincare advice, prompt them to rerun the survey, or raise unrelated topics.",
-      "Before calling `searchProductsByQuery` or `getProduct`, search the existing conversation—including earlier tool outputs stored in chat history—for the specific product facts the user needs. If the information (sizes, prices, ingredients, benefits, flags, etc.) is already available, reuse it and skip the tool call. Only invoke a tool when the required details are truly missing.",
+      "Before calling `searchProductsByQuery` or `getProduct`, scan earlier tool outputs in this conversation for the specific product facts you plan to mention. Reuse that data when it's already present, but if the most recent search turned up no matches, always run a fresh lookup instead of relying on the empty result.",
       "Never fabricate identifiers for tools. If you do not have a valid productId, sizeId, or other required argument from prior tool results, call a lookup tool to retrieve it or ask the user for clarifying input like the product name or size they want—not the internal id. Do not guess identifiers or reuse placeholders from memory.",
       "If the user asks for help determining their skin type (for example, 'What’s my skin type?', 'Do I have combination skin?') or types 'start skin quiz', acknowledge that intent warmly, mention that SkinBuddy can run a quick survey to identify their skin type, and make sure your suggested actions in that reply guide them toward next steps such as starting the survey ('Start the skin-type survey'), learning how it works ('Explain the survey steps'), or choosing another method ('Suggest a different approach'). If we already have their skin type stored (exposed via tools), reference it before offering the survey. **Never guess or infer a user's skin type from conversation context (including earlier requests such as 'build me an oily-skin routine')—only state what the tools return or that the survey is needed.** When the user is curious or tentative and has not issued a direct command (e.g., 'Should I take the skin quiz?', 'Can you help figure out my skin type?'), do not call the `startSkinTypeSurvey` tool; instead, reply in prose that SkinBuddy can help determine their skin type and concerns with a skin quiz and invite them to confirm if they want to start it. If the user asks for a skincare routine or product recommendations but hasn't provided their skin type or concerns, let them know SkinBuddy can help figure those out with the skin quiz before continuing, and ask whether they'd like to take it or share those details manually. Whenever the user issues a direct imperative to begin the survey (examples: 'start the skin survey', 'start the skin-type quiz', 'let’s start skin survey', 'begin the skin quiz'), immediately call the `startSkinTypeSurvey` tool with empty arguments and do not send any assistant prose in that turn. Use confirmation phrasing only when the user is asking or hesitating, not when they are commanding.",
       "When preparing tool arguments: put descriptive effects like 'hydrating', 'brightening', 'soothing' into the `benefits` array; keep actual ingredient names (niacinamide, hyaluronic acid, salicylic acid, etc.) in `ingredientQueries`; only use `nameQuery` for exact product titles or SKUs the user cited; and aim for canonical product nouns (cleanser, serum, sunscreen, toner, moisturizer) in `categoryQuery`. Avoid repeating the same value in multiple fields.",
@@ -685,9 +685,86 @@ export async function callGemini({
 
   hydrateKnownCatalogFromHistory();
 
-  const latestUserMessageContent = [...messages]
-    .reverse()
-    .find((msg) => msg.role === "user")?.content;
+  const latestUserMessageIndex = (() => {
+    for (let index = messages.length - 1; index >= 0; index--) {
+      if (messages[index]?.role === "user") {
+        return index;
+      }
+    }
+    return -1;
+  })();
+
+  const latestUserMessageContent =
+    latestUserMessageIndex >= 0 &&
+    typeof messages[latestUserMessageIndex]?.content === "string"
+      ? (messages[latestUserMessageIndex].content as string)
+      : undefined;
+
+  const lastEmptySearch = (() => {
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const entry = messages[index];
+      if (entry?.role !== "tool") continue;
+      const toolName =
+        typeof entry.tool_name === "string" && entry.tool_name.length
+          ? entry.tool_name
+          : undefined;
+      if (toolName !== "searchProductsByQuery") continue;
+      if (typeof entry.content !== "string" || !entry.content.trim().length) {
+        continue;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(entry.content);
+      } catch {
+        continue;
+      }
+      if (!parsed || typeof parsed !== "object") continue;
+      const payload = parsed as Record<string, unknown>;
+      const productCounts: number[] = [];
+      if (Array.isArray(payload.products)) {
+        productCounts.push(payload.products.length);
+      }
+      const resultsEntry = payload["results"];
+      if (Array.isArray(resultsEntry)) {
+        productCounts.push(resultsEntry.length);
+      }
+      const productsMap =
+        payload.productsMap && typeof payload.productsMap === "object"
+          ? (payload.productsMap as Record<string, unknown>)
+          : null;
+      const mapIsEmpty =
+        productsMap !== null && Object.keys(productsMap).length === 0;
+      const totalCount =
+        typeof payload.totalCount === "number" ? payload.totalCount : undefined;
+      const zeroFromCounts =
+        productCounts.length > 0
+          ? productCounts.every((count) => count === 0)
+          : false;
+      const zeroResults =
+        payload.success === false ||
+        Boolean(payload.error) ||
+        zeroFromCounts ||
+        mapIsEmpty ||
+        totalCount === 0;
+      return {
+        index,
+        zeroResults,
+      };
+    }
+    return null;
+  })();
+
+  if (
+    lastEmptySearch &&
+    lastEmptySearch.zeroResults &&
+    latestUserMessageIndex > lastEmptySearch.index
+  ) {
+    chatMessages.push({
+      role: "developer",
+      content:
+        "The last product search returned no matches. Assume the user may have corrected their request and run a fresh lookup in this turn instead of reusing that empty result.",
+    });
+  }
 
   const hasSurveyResults = messages.some(
     (msg) =>
