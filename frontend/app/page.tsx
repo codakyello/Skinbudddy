@@ -188,7 +188,6 @@ export default function ChatPage() {
       textarea.scrollHeight > maxHeight ? "auto" : "hidden";
   }, []);
   const conversationRef = useRef<HTMLDivElement | null>(null);
-  const placeholderRef = useRef<HTMLDivElement | null>(null);
   const [showScrollDownButton, setShowScrollDownButton] = useState(false);
   const [product, setProductToPreview] = useState<Product | null>();
   const [pendingSkinTypeQuiz, setPendingSkinTypeQuiz] = useState(false);
@@ -196,6 +195,13 @@ export default function ChatPage() {
   const [skinQuiz, setSkinQuiz] = useState<SkinQuizState>(() =>
     createInitialQuizState()
   );
+  const [userHasScrolled, setUserHasScrolled] = useState(false);
+  const messagesContainerRef = useRef<HTMLElement | null>(null);
+  const userMessagePositionedRef = useRef<string | null>(null);
+  const assistantScrolledRef = useRef<string | null>(null);
+  const [assistantWithMinHeight, setAssistantWithMinHeight] = useState<
+    string | null
+  >(null);
 
   const updateScrollButtonVisibility = useCallback(() => {
     const container = conversationRef.current;
@@ -218,7 +224,15 @@ export default function ChatPage() {
     if (!container) return;
 
     const handleScroll = () => {
-      updateScrollButtonVisibility();
+      const distanceFromBottom = updateScrollButtonVisibility();
+      const isNearBottom = distanceFromBottom <= SCROLL_THRESHOLD;
+
+      // Mark that user has scrolled away from bottom
+      if (!isNearBottom) {
+        setUserHasScrolled(true);
+      } else {
+        setUserHasScrolled(false);
+      }
     };
 
     container.addEventListener("scroll", handleScroll);
@@ -236,27 +250,75 @@ export default function ChatPage() {
     const distanceFromBottom = updateScrollButtonVisibility();
     const isNearBottom = distanceFromBottom <= SCROLL_THRESHOLD;
 
-    if (isNearBottom) {
+    const lastMessage = messages.at(-1);
+    const isLastMessageUser =
+      lastMessage && isChatMessage(lastMessage) && lastMessage.role === "user";
+
+    // Skip auto-scroll entirely when waiting for or receiving assistant response
+    // This allows free scrolling during the entire response period
+    if (isTyping || isLastMessageUser) {
+      return;
+    }
+
+    // Only auto-scroll if user hasn't manually scrolled away
+    if (isNearBottom && !userHasScrolled) {
       container.scrollTop = container.scrollHeight;
       requestAnimationFrame(() => {
         updateScrollButtonVisibility();
       });
     }
-  }, [messages, updateScrollButtonVisibility]);
+  }, [isTyping, messages, updateScrollButtonVisibility, userHasScrolled]);
 
+  // Update which assistant message should have min-height when a new one appears
   useEffect(() => {
-    const placeholder = placeholderRef.current;
-    if (!placeholder) return;
     const lastMessage = messages.at(-1);
+    const secondLastMessage = messages.at(-2);
+
+    // When a new assistant message appears, transfer the min-height to it
     if (
-      !isTyping &&
       lastMessage &&
       isChatMessage(lastMessage) &&
       lastMessage.role === "assistant"
     ) {
-      placeholder.style.minHeight = "0px";
+      setAssistantWithMinHeight(lastMessage.id);
+
+      // Only scroll once per assistant message (when it first appears)
+      if (assistantScrolledRef.current === lastMessage.id) {
+        return;
+      }
+
+      // Scroll the user message (second to last) to top after height is applied
+      if (
+        secondLastMessage &&
+        isChatMessage(secondLastMessage) &&
+        secondLastMessage.role === "user"
+      ) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            // Find the user message element
+            const userMessageElements = document.querySelectorAll(
+              '[data-message-role="user"]'
+            );
+            const lastUserMessage = userMessageElements[
+              userMessageElements.length - 1
+            ] as HTMLElement;
+
+            if (lastUserMessage) {
+              lastUserMessage.scrollIntoView({
+                behavior: "auto",
+                block: "start",
+                inline: "nearest",
+              });
+              setUserHasScrolled(true);
+
+              // Mark this assistant message as scrolled
+              assistantScrolledRef.current = lastMessage.id;
+            }
+          });
+        });
+      }
     }
-  }, [messages, isTyping]);
+  }, [messages]);
 
   const markdownComponents: Components = useMemo(
     () => ({
@@ -339,6 +401,8 @@ export default function ChatPage() {
     setError(null);
     setPendingSkinTypeQuiz(false);
     setIsSending(true);
+    // Reset scroll tracking when sending new message
+    setUserHasScrolled(false);
 
     if (rawMessage === undefined) {
       setInputValue("");
@@ -353,6 +417,13 @@ export default function ChatPage() {
     }
 
     let assistantId: string | null = null;
+
+    const newAssistantId = `assistant-${Date.now()}`;
+    assistantId = newAssistantId;
+    setMessages((prev) => [
+      ...prev,
+      { id: newAssistantId, role: "assistant", content: "" },
+    ]);
 
     // if no network we can stop them from calling
     try {
@@ -374,12 +445,6 @@ export default function ChatPage() {
 
       // successfully sent
       setHasSent(true);
-      const newAssistantId = `assistant-${Date.now()}`;
-      assistantId = newAssistantId;
-      setMessages((prev) => [
-        ...prev,
-        { id: newAssistantId, role: "assistant", content: "" },
-      ]);
 
       const updateAssistant = (patch: Partial<ChatMessage>) => {
         setMessages((prev) =>
@@ -681,20 +746,26 @@ export default function ChatPage() {
               </Box>
             )}
 
-            <section className="height-here mt-8 space-y-10 pb-36">
+            <section ref={messagesContainerRef} className=" mt-8 space-y-10">
               {messages.map((message, index) => (
                 <Box
                   key={message.id}
                   className={` ${
                     message.role === "user"
-                      ? "flex justify-end"
+                      ? "flex justify-end items-start"
                       : message.role === "assistant"
                         ? " flex justify-start"
                         : ""
                   }`}
                 >
                   {isChatMessage(message) && message.role === "assistant" ? (
-                    <Box className="w-full ">
+                    <Box
+                      className={`w-full ${
+                        message.id === assistantWithMinHeight
+                          ? "min-h-[calc(100vh-200px)]"
+                          : "h-auto"
+                      }`}
+                    >
                       {isChatMessage(message) &&
                       message.resultType === "routine" &&
                       message.routine?.steps?.length ? (
@@ -785,6 +856,7 @@ export default function ChatPage() {
                           isChatMessage(message) ? message.content : ""
                         );
                         const markdownSource = body;
+                        const isLastMessage = index + 1 === messages.length;
                         return (
                           <>
                             {markdownSource.length ? (
@@ -795,6 +867,14 @@ export default function ChatPage() {
                               >
                                 {markdownSource}
                               </ReactMarkdown>
+                            ) : isTyping && isLastMessage ? (
+                              <Box className="flex items-center gap-4">
+                                <Box className="flex gap-2">
+                                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26]" />
+                                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.18s]" />
+                                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.36s]" />
+                                </Box>
+                              </Box>
                             ) : null}
                             {suggestions.length ? (
                               <Box className="mt-4 flex flex-col gap-2">
@@ -852,28 +932,53 @@ export default function ChatPage() {
                               return;
                             }
 
+                            // Only position once per message ID
+                            if (
+                              userMessagePositionedRef.current === message.id
+                            ) {
+                              return;
+                            }
+
                             requestAnimationFrame(() => {
                               const container = conversationRef.current;
-                              const placeholder = placeholderRef.current;
-                              if (!container || !placeholder) return;
+                              const messagesContainer =
+                                messagesContainerRef.current;
+                              if (!container || !messagesContainer) return;
 
                               const viewportHeight = container.clientHeight;
                               const messageHeight = el.offsetHeight;
-                              const buffer = 80;
-                              const placeholderHeight = Math.max(
+                              // Increased buffer to account for navbar, input box, and visual spacing
+                              const buffer = 140;
+                              const paddingNeeded = Math.max(
                                 viewportHeight - messageHeight - buffer,
                                 0
                               );
 
-                              placeholder.style.minHeight = `${placeholderHeight}px`;
+                              // Add padding-bottom to create space for assistant message
+                              messagesContainer.style.transition = "none";
 
-                              el.scrollIntoView({
-                                behavior: "smooth",
-                                block: "start",
-                                inline: "nearest",
+                              // Force layout recalculation
+                              void messagesContainer.offsetHeight;
+
+                              // Wait for height to be applied, then scroll user message to top
+                              requestAnimationFrame(() => {
+                                requestAnimationFrame(() => {
+                                  // Scroll the user message to the top of the viewport
+                                  el.scrollIntoView({
+                                    behavior: "auto",
+                                    block: "start",
+                                    inline: "nearest",
+                                  });
+
+                                  // Mark this message as positioned
+                                  userMessagePositionedRef.current = message.id;
+                                  // Treat this as an intentional scroll so auto-scroll logic stays out of the way
+                                  setUserHasScrolled(true);
+                                });
                               });
                             });
                           }}
+                          data-message-role="user"
                           className={`max-w-[72%] rounded-[18px] ${isSending ? "bg-[#494c51]" : "bg-[#1b1f26]"} py-[8px] px-[16px] text-[1.4rem] leading-[1.5] text-white `}
                         >
                           {message.content}
@@ -946,23 +1051,6 @@ export default function ChatPage() {
                   )}
                 </Box>
               ))}
-              {isTyping && (
-                <Box className="flex justify-start">
-                  <Box className="flex items-center gap-4 rounded-[26px] ">
-                    <Box className="flex gap-2">
-                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26]" />
-                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.18s]" />
-                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.36s]" />
-                    </Box>
-                  </Box>
-                </Box>
-              )}
-              <Box
-                ref={placeholderRef}
-                data-role="assistant-placeholder"
-                className="height-here w-full"
-                style={{ minHeight: 0 }}
-              />
             </section>
           </Box>
         </Box>
@@ -1106,6 +1194,7 @@ export default function ChatPage() {
                 behavior: "smooth",
               });
               setShowScrollDownButton(false);
+              setUserHasScrolled(false);
             }}
             className="fixed text-white bottom-[90px] left-1/2 z-[1000] -translate-x-1/2 bg-[#1b1f26] h-[32px] w-[32px] flex items-center justify-center rounded-full shadow-lg shadow-[#f882b0]/35 cursor-pointer transition hover:brightness-110"
           >
