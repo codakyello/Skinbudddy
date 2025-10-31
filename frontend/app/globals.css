@@ -29,8 +29,8 @@
 @media (max-width: 768px)  { :root { --device: mobile; } } */
 
 html {
-  font-size: 62.5%;
-  /* font-size: 58%; */
+  /* font-size: 62.5%; */
+  font-size: 58%;
   scroll-behavior: smooth;
 }
 
