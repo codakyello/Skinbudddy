@@ -196,7 +196,6 @@ export default function ChatPage() {
     createInitialQuizState()
   );
   const [userHasScrolled, setUserHasScrolled] = useState(false);
-  const messagesContainerRef = useRef<HTMLElement | null>(null);
   const userMessagePositionedRef = useRef<string | null>(null);
   const assistantScrolledRef = useRef<string | null>(null);
   const [assistantWithMinHeight, setAssistantWithMinHeight] = useState<
@@ -746,7 +745,7 @@ export default function ChatPage() {
               </Box>
             )}
 
-            <section ref={messagesContainerRef} className=" mt-8 space-y-10">
+            <section className="mt-8 space-y-10">
               {messages.map((message, index) => (
                 <Box
                   key={message.id}
@@ -939,44 +938,9 @@ export default function ChatPage() {
                               return;
                             }
 
-                            requestAnimationFrame(() => {
-                              const container = conversationRef.current;
-                              const messagesContainer =
-                                messagesContainerRef.current;
-                              if (!container || !messagesContainer) return;
-
-                              const viewportHeight = container.clientHeight;
-                              const messageHeight = el.offsetHeight;
-                              // Increased buffer to account for navbar, input box, and visual spacing
-                              const buffer = 140;
-                              const paddingNeeded = Math.max(
-                                viewportHeight - messageHeight - buffer,
-                                0
-                              );
-
-                              // Add padding-bottom to create space for assistant message
-                              messagesContainer.style.transition = "none";
-
-                              // Force layout recalculation
-                              void messagesContainer.offsetHeight;
-
-                              // Wait for height to be applied, then scroll user message to top
-                              requestAnimationFrame(() => {
-                                requestAnimationFrame(() => {
-                                  // Scroll the user message to the top of the viewport
-                                  el.scrollIntoView({
-                                    behavior: "auto",
-                                    block: "start",
-                                    inline: "nearest",
-                                  });
-
-                                  // Mark this message as positioned
-                                  userMessagePositionedRef.current = message.id;
-                                  // Treat this as an intentional scroll so auto-scroll logic stays out of the way
-                                  setUserHasScrolled(true);
-                                });
-                              });
-                            });
+                            // Scroll is now handled by the useEffect when assistant message appears
+                            // Just mark this message as positioned
+                            userMessagePositionedRef.current = message.id;
                           }}
                           data-message-role="user"
                           className={`max-w-[72%] rounded-[18px] ${isSending ? "bg-[#494c51]" : "bg-[#1b1f26]"} py-[8px] px-[16px] text-[1.4rem] leading-[1.5] text-white `}
