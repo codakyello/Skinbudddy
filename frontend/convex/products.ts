@@ -1706,7 +1706,6 @@ async function searchProductsByQueryImpl(
   if (requestedBenefits.length) {
     const benefitSet = new Set<string>(requestedBenefits);
     const matched: Doc<"products">[] = [];
-    const unmatched: Doc<"products">[] = [];
 
     for (const product of products) {
       const productBenefits = getBenefitSlugsForProduct(product);
@@ -1718,12 +1717,11 @@ async function searchProductsByQueryImpl(
 
       if (matchCount > 0) {
         matched.push(product);
-      } else {
-        unmatched.push(product);
       }
     }
 
-    products = matched.length ? [...matched, ...unmatched] : unmatched;
+    // Hard filter: only keep products that match the requested benefits
+    products = matched;
   }
 
   if (normalizedIngredientGroups.length) {
@@ -1909,7 +1907,8 @@ async function searchProductsByQueryImpl(
         const sizeText =
           typeof rawSize === "string" && rawSize.trim().length
             ? rawSize.trim()
-            : typeof record.sizeText === "string" && record.sizeText.trim().length
+            : typeof record.sizeText === "string" &&
+                record.sizeText.trim().length
               ? record.sizeText.trim()
               : undefined;
         const unit =
@@ -2139,7 +2138,8 @@ async function searchProductsByQueryImpl(
           ingredients: (() => {
             if (!Array.isArray(item.ingredients)) return undefined;
             const list = item.ingredients.filter(
-              (ingredient): ingredient is string => typeof ingredient === "string"
+              (ingredient): ingredient is string =>
+                typeof ingredient === "string"
             );
             if (!list.length) return undefined;
             return list.slice(0, 20);
@@ -2224,7 +2224,8 @@ async function searchProductsByQueryImpl(
           ingredients: (() => {
             if (!Array.isArray(item.ingredients)) return undefined;
             const list = item.ingredients.filter(
-              (ingredient): ingredient is string => typeof ingredient === "string"
+              (ingredient): ingredient is string =>
+                typeof ingredient === "string"
             );
             if (!list.length) return undefined;
             return list.slice(0, 20);
@@ -2830,17 +2831,15 @@ export const getProductsByIds = query({
     );
   },
 });
-  const extractStringArray = (value: unknown): string[] => {
-    if (Array.isArray(value)) {
-      return value
-        .map((entry) =>
-          typeof entry === "string" ? entry.trim() : undefined
-        )
-        .filter((entry): entry is string => Boolean(entry));
-    }
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      return trimmed.length ? [trimmed] : [];
-    }
-    return [];
-  };
+const extractStringArray = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (typeof entry === "string" ? entry.trim() : undefined))
+      .filter((entry): entry is string => Boolean(entry));
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length ? [trimmed] : [];
+  }
+  return [];
+};

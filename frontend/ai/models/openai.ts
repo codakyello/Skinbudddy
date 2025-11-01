@@ -94,14 +94,16 @@ export async function callOpenAI({
       "Whenever you call `addToCart`, explicitly confirm in your final reply exactly what you added (product name plus size/variant) so the user hears the cart update.",
       "When a product has multiple sizes or variants, list each option with its size/variant label and price before asking the user to choose—never ask for a selection without those details.",
       "Format size/price choices as a numbered list (1., 2., …) and include the currency symbol with thousands separators whenever a `currency` field is provided (e.g., '₦27,760.50'); if currency is missing, show the amount followed by the currency code (e.g., '27,760.50 NGN').",
-      "If the user wants deeper product details, inspect the stored tool outputs first; only call `getProduct` if that information isn’t already in the conversation history.",
+      "If the user wants deeper product details, inspect the stored tool outputs first; only call `getProduct` if that information isn't already in the conversation history.",
       "When responding with detailed information about a single product, follow this layout: start with a heading like '✨ {Product Name}', then list concise bullets with bold labels (Overview, Key Ingredients, Sizes, Skin Types, Usage, Highlights as relevant). Keep each bullet to one sentence for readability.",
+      "After providing product details or recommendations, add a natural conversational follow-up that encourages exploring complementary products. Examples: 'Let me know if you want complementary product suggestions!', 'I can also suggest toners or moisturizers to complement this cleanser!', 'Want me to find a matching serum or sunscreen?', 'If you'd like, I can recommend products that pair well with this!' Keep it friendly and helpful, not pushy. Focus on products that naturally work together in a routine (cleanser + toner + moisturizer, serum + sunscreen, etc.). This is separate from the 'Suggested actions' section and should feel like a natural conversation.",
       "Only put actual ingredient names (specific actives like 'niacinamide', 'salicylic acid', 'avobenzone') in `ingredientQueries`. If the user mentions descriptors or product styles such as 'chemical sunscreen', 'hydrating cleanser', or 'gentle formula', treat those as categories or benefits instead and leave `ingredientQueries` empty unless a real ingredient is cited.",
       "Before you call any product tool, sanity-check each argument: keep `categoryQuery` limited to canonical product nouns, `brandQuery` to real brand names, `benefits` to outcome descriptors, `skinTypes`/`skinConcerns` to mapped canonical values, and drop anything you can’t classify confidently. When in doubt, leave the field empty rather than guessing.",
       "Never expose internal tooling, function calls, user IDs, or implementation details in user-facing replies—keep responses focused on the user experience.",
       "Do not include user identifiers (userId, customerId, email, etc.) when calling product tools; they already have the context they need.",
       "Do not infer skin concerns from skin tone, ethnicity, or general descriptors. Only pass `skinConcerns` when the user explicitly names a concern (acne, hyperpigmentation, redness, etc.).",
       "When a product search turns up empty, state it plainly as 'I couldn't find any matching items in stock right now.' before offering next steps.",
+      "When your response provides educational or informational content (like explaining ingredients, answering 'how-to' questions, or discussing skincare concepts), and there's a natural next step that would help the user (such as finding products, building a routine, or getting personalized recommendations), consider adding a brief, conversational follow-up offer BEFORE the 'Suggested actions' heading. Keep it genuine and contextual—don't force it into every response. Examples: 'If you'd like, I can help you find [specific product type] that [addresses their concern]!' or 'Let me know if you'd like personalized [product/routine] recommendations based on your [skin type/concern]!' Reference their specific context (skin type, concerns) when known. Skip this entirely for responses that are already actionable (product recommendations, routines) or when there's no logical next step.",
     ].join(" "),
   });
 
@@ -690,7 +692,9 @@ export async function callOpenAI({
               benefitAccumulator.add(benefit)
             );
 
-            const addBenefitsFromDescriptors = (descriptors: readonly string[]) => {
+            const addBenefitsFromDescriptors = (
+              descriptors: readonly string[]
+            ) => {
               descriptors.forEach((descriptor) => {
                 const tokens = tokenizeDescriptor(descriptor);
                 if (!tokens.length) return;
@@ -714,10 +718,8 @@ export async function callOpenAI({
             if (originalNameQuery.length) {
               const nameTokens = tokenizeDescriptor(originalNameQuery);
               if (nameTokens.length) {
-                const {
-                  benefits: nameBenefits,
-                  residual: nameResidual,
-                } = mapDescriptorsToBenefits(nameTokens);
+                const { benefits: nameBenefits, residual: nameResidual } =
+                  mapDescriptorsToBenefits(nameTokens);
 
                 nameBenefits.forEach((benefit) =>
                   benefitAccumulator.add(benefit)
@@ -765,7 +767,9 @@ export async function callOpenAI({
                 latestUserMessageContent,
                 ...userTokens,
               ]);
-              userBenefits.forEach((benefit) => benefitAccumulator.add(benefit));
+              userBenefits.forEach((benefit) =>
+                benefitAccumulator.add(benefit)
+              );
               mergedBenefits = Array.from(benefitAccumulator);
             }
 
@@ -822,7 +826,9 @@ export async function callOpenAI({
             const normalizeStringArray = (value: unknown): string[] =>
               Array.isArray(value)
                 ? value
-                    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+                    .map((entry) =>
+                      typeof entry === "string" ? entry.trim() : ""
+                    )
                     .filter((entry) => entry.length > 0)
                     .sort()
                 : [];
@@ -835,7 +841,9 @@ export async function callOpenAI({
                     .sort()
                 : [];
 
-            const originalCategory = extractString(originalSnapshot.categoryQuery);
+            const originalCategory = extractString(
+              originalSnapshot.categoryQuery
+            );
             const finalCategory = extractString(adjustedSnapshot.categoryQuery);
             const originalName = extractString(originalSnapshot.nameQuery);
             const finalName = extractString(adjustedSnapshot.nameQuery);
@@ -848,11 +856,11 @@ export async function callOpenAI({
             const originalIngredientsArray = normalizeStringArray(
               originalSnapshot.ingredientQueries
             );
-           const finalIngredientsArray = normalizeStringArray(
-             adjustedSnapshot.ingredientQueries
-           );
+            const finalIngredientsArray = normalizeStringArray(
+              adjustedSnapshot.ingredientQueries
+            );
 
-           const changes: string[] = [];
+            const changes: string[] = [];
 
             if (
               adjustedSnapshot.skinConcerns &&
@@ -866,7 +874,9 @@ export async function callOpenAI({
                 (value) =>
                   typeof value === "string" &&
                   (userLower.includes(value.toLowerCase()) ||
-                    userLower.includes(value.replace(/[-_]/g, " ").toLowerCase()))
+                    userLower.includes(
+                      value.replace(/[-_]/g, " ").toLowerCase()
+                    ))
               );
               if (filteredConcerns.length) {
                 (adjustedArgs as Record<string, unknown>).skinConcerns =
@@ -877,10 +887,10 @@ export async function callOpenAI({
               }
             }
 
-           if (finalCategory !== originalCategory) {
-             changes.push(
-               `categoryQuery → ${finalCategory ? `"${finalCategory}"` : "(removed)"}`
-             );
+            if (finalCategory !== originalCategory) {
+              changes.push(
+                `categoryQuery → ${finalCategory ? `"${finalCategory}"` : "(removed)"}`
+              );
             }
 
             if (
@@ -1250,7 +1260,8 @@ export async function callOpenAI({
             ? record.message.trim()
             : undefined;
         const quantity =
-          typeof record.quantity === "number" && Number.isFinite(record.quantity)
+          typeof record.quantity === "number" &&
+          Number.isFinite(record.quantity)
             ? record.quantity
             : undefined;
         actionOutcomes.push({
@@ -1262,8 +1273,12 @@ export async function callOpenAI({
       }
 
       if (actionOutcomes.length) {
-        const successes = actionOutcomes.filter((entry) => entry.status === "success");
-        const failures = actionOutcomes.filter((entry) => entry.status === "error");
+        const successes = actionOutcomes.filter(
+          (entry) => entry.status === "success"
+        );
+        const failures = actionOutcomes.filter(
+          (entry) => entry.status === "error"
+        );
         const instructions: string[] = [];
         if (successes.length) {
           instructions.push(
@@ -1509,9 +1524,7 @@ export async function callOpenAI({
           productCount: streamingProducts.length,
           filters: {
             category: normalizedCategory,
-            skinTypes: filteredSkinTypes.length
-              ? filteredSkinTypes
-              : undefined,
+            skinTypes: filteredSkinTypes.length ? filteredSkinTypes : undefined,
             skinConcerns: normalizedConcerns.length
               ? normalizedConcerns
               : undefined,

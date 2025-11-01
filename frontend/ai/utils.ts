@@ -723,18 +723,20 @@ export const buildProductHeadline = ({
       category.endsWith("s") || category.endsWith("S")
         ? category
         : `${category}s`;
-    if (audience) {
-      headline = `${descriptor} ${categoryLabel} for ${audience}`;
-      usedAudience = true;
+    // Prioritize user's explicit intent (ingredients, brand) over derived audience
+    if (ingredients) {
+      // More natural phrasing: "Salicylic acid cleansers" instead of "Top cleansers with salicylic acid"
+      headline = `${ingredients} ${categoryLabel.toLowerCase()}`;
+      usedIngredients = true;
     } else if (brand) {
       headline = `${descriptor} ${categoryLabel} from ${brand}`;
       usedBrand = true;
-    } else if (ingredients) {
-      headline = `${descriptor} ${categoryLabel} with ${ingredients}`;
-      usedIngredients = true;
     } else if (benefits) {
       headline = `${descriptor} ${categoryLabel} for ${benefits}`;
       usedBenefits = true;
+    } else if (audience) {
+      headline = `${descriptor} ${categoryLabel} for ${audience}`;
+      usedAudience = true;
     } else {
       headline = `${descriptor} ${categoryLabel}`;
     }
@@ -748,21 +750,21 @@ export const buildProductHeadline = ({
     }
   } else if (nameQuery) {
     headline = `Results for "${nameQuery}"`;
-  } else if (audience) {
-    headline =
-      productCount > 1
-        ? `Product Picks for ${audience}`
-        : `Featured Pick for ${audience}`;
-    usedAudience = true;
+  } else if (ingredients) {
+    headline = `Products with ${ingredients}`;
+    usedIngredients = true;
   } else if (benefits) {
     headline =
       productCount > 1
         ? `${descriptor} Picks for ${benefits}`
         : `Featured Pick for ${benefits}`;
     usedBenefits = true;
-  } else if (ingredients) {
-    headline = `Products with ${ingredients}`;
-    usedIngredients = true;
+  } else if (audience) {
+    headline =
+      productCount > 1
+        ? `Product Picks for ${audience}`
+        : `Featured Pick for ${audience}`;
+    usedAudience = true;
   } else {
     headline =
       productCount > 1

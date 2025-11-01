@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
       type NormalizedProduct = {
         productId: string;
         slug?: string;
+        brand?: string;
         categoryName?: string;
         selectionReason?: string;
         selectionConfidence?: number;
@@ -210,6 +211,16 @@ export async function POST(req: NextRequest) {
             const sizes =
               normalizeSizes(raw.sizes) ?? normalizeSizes(base.sizes) ?? [];
 
+            const brandRaw = raw.brand ?? base.brand;
+            const brand =
+              typeof brandRaw === "string"
+                ? brandRaw
+                : brandRaw && typeof brandRaw === "object"
+                  ? typeof (brandRaw as Record<string, unknown>).name === "string"
+                    ? ((brandRaw as Record<string, unknown>).name as string)
+                    : undefined
+                  : undefined;
+
             const normalized: NormalizedProduct = {
               productId,
               slug:
@@ -218,6 +229,7 @@ export async function POST(req: NextRequest) {
                   : typeof raw.slug === "string"
                     ? raw.slug
                     : undefined,
+              brand,
               categoryName: categories.at(0),
               selectionReason:
                 typeof raw.selectionReason === "string"

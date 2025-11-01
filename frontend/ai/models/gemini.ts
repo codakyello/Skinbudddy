@@ -104,6 +104,12 @@ export async function callGemini({
   chatMessages.push({
     role: "developer",
     content:
+      "When your response provides educational or informational content (like explaining ingredients, answering 'how-to' questions, or discussing skincare concepts), and there's a natural next step that would help the user (such as finding products, building a routine, or getting personalized recommendations), consider adding a brief, conversational follow-up offer BEFORE the 'Suggested actions' heading. Keep it genuine and contextual—don't force it into every response. Examples: 'If you'd like, I can help you find [specific product type] that [addresses their concern]!' or 'Let me know if you'd like personalized [product/routine] recommendations based on your [skin type/concern]!' Reference their specific context (skin type, concerns) when known. Skip this entirely for responses that are already actionable (product recommendations, routines) or when there's no logical next step.",
+  });
+
+  chatMessages.push({
+    role: "developer",
+    content:
       "Never mention internal function or tool names in user-facing replies. Describe actions in plain language instead of referencing addToCart, searchProductsByQuery, or other internal APIs.",
   });
 
@@ -828,6 +834,15 @@ export async function callGemini({
     );
     developerInstructionParts.push(
       "When a user asks for detailed information about a product (phrases like 'more info', 'tell me about', 'show the sizes/price/ingredients'), respond with a structured breakdown that clearly lists the product name, key actives, sizes with prices, notable benefits, and any usage notes before moving on to suggestions."
+    );
+    developerInstructionParts.push(
+      [
+        "After providing product details or recommendations, add a natural conversational follow-up that encourages exploring complementary products.",
+        "Examples: 'Let me know if you want complementary product suggestions!', 'I can also suggest toners or moisturizers to complement this cleanser!', 'Want me to find a matching serum or sunscreen?', 'If you'd like, I can recommend products that pair well with this!'",
+        "Keep it friendly and helpful, not pushy.",
+        "Focus on products that naturally work together in a routine (cleanser + toner + moisturizer, serum + sunscreen, etc.).",
+        "This is separate from the 'Suggested actions' section and should feel like a natural conversation.",
+      ].join(" ")
     );
     developerInstructionParts.push(
       "When an `addToCart` tool call succeeds, explicitly confirm in your final reply exactly what you added (include product name and size/variant) so the user hears the confirmation. If the tool fails, explain the issue and next steps instead of claiming it was added."

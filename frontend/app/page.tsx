@@ -342,12 +342,12 @@ export default function ChatPage() {
         </p>
       ),
       ul: ({ children }) => (
-        <ul className="ml-8 mt-[16px] list-disc mt space-y-[16px] text-[1.4rem] text-[#1B1F26]">
+        <ul className="ml-8 list-disc mt space-y-[16px] text-[1.4rem] text-[#1B1F26]">
           {children}
         </ul>
       ),
       ol: ({ children }) => (
-        <ol className="ml-8 list-decimal mt-[16px] space-y-[16px] text-[1.4rem] text-[#1B1F26]">
+        <ol className="ml-8 list-decimal space-y-[16px] text-[1.4rem] text-[#1B1F26]">
           {children}
         </ol>
       ),
