@@ -632,9 +632,9 @@ export default function ChatPage() {
         setSessionId(finalSessionId);
       }
     } catch (err) {
-      if (assistantId) {
-        setMessages((prev) => prev.filter((msg) => msg.id !== assistantId));
-      }
+      // if (assistantId) {
+      //   setMessages((prev) => prev.filter((msg) => msg.id !== assistantId));
+      // }
       setError(
         err instanceof Error ? err.message : "Something went wrong. Try again."
       );
