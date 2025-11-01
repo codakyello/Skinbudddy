@@ -474,13 +474,10 @@ export const normalizeSummary = (input: unknown): MessageSummary | null => {
   const rawHeadline =
     typeof input.headline === "string" ? input.headline.trim() : "";
   if (!rawHeadline.length) return null;
-  const rawSubheading =
-    typeof input.subheading === "string" ? input.subheading.trim() : "";
   const rawIcon = typeof input.icon === "string" ? input.icon.trim() : "";
 
   return {
     headline: rawHeadline,
-    subheading: rawSubheading.length ? rawSubheading : undefined,
     icon: rawIcon.length ? rawIcon : undefined,
   };
 };

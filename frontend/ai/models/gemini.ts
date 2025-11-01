@@ -1201,21 +1201,11 @@ export async function callGemini({
   const recomputeCombinedSummary = (): ReplySummary | null => {
     if (routineSummaryParts && productSummaryParts) {
       const mergedHeadline = `${routineSummaryParts.headline} + ${productSummaryParts.headline}`;
-      const subheadingParts = [
-        routineSummaryParts.subheading,
-        productSummaryParts.subheading,
-      ].filter(
-        (entry): entry is string =>
-          typeof entry === "string" && entry.length > 0
-      );
       combinedSummary = {
         headline:
           mergedHeadline.length > 160
             ? `${mergedHeadline.slice(0, 157)}...`
             : mergedHeadline,
-        subheading: subheadingParts.length
-          ? subheadingParts.join(" · ")
-          : undefined,
         icon: routineSummaryParts.icon ?? productSummaryParts.icon ?? undefined,
       };
     } else {
@@ -2134,9 +2124,6 @@ export async function callGemini({
           const routineIcon = "🧖";
           routineSummaryParts = {
             headline: routineHeadline,
-            subheading: routineDescription.length
-              ? sentenceCase(routineDescription)
-              : undefined,
             icon: routineIcon,
           };
           await streamSummaryIfNeeded();
@@ -2529,7 +2516,6 @@ export async function callGemini({
 
         productSummaryParts = {
           headline: summaryHeadline,
-          subheading: summarySubheading ?? selectionNote,
           icon: productIcon,
         };
         await streamSummaryIfNeeded();
@@ -2579,10 +2565,14 @@ export async function callGemini({
 
         // instead of passing the products to the llm to generate final products, we tell it to give us a summary instead
         // we leave the heavy lifting of the product selection to another model, that follows the user prompts
+        const userQuestionContext = latestUserMessageContent
+          ? `User's original question: "${latestUserMessageContent}"\n\n`
+          : "";
         chatMessages.push({
           role: "developer",
           content:
-            "You have the products returned in the previous tool call. Write one friendly paragraph (1–2 sentences) explaining how the selection fits the user. Do not enumerate the individual products; reference them if plural or it if singular collectively and offer to help with next steps like adding to cart, comparing, or getting more detail.",
+            userQuestionContext +
+            "You have the products returned in the previous tool call. Use the actual product data from the tool result to directly answer the user's original question. If the user asked for detailed info about a product (e.g., 'tell me about X', 'give me details on X', 'what is X'), provide comprehensive information using the tool data: always include the brand name (e.g., 'CeraVe Hydrating Cleanser' not just 'cleanser'), use the product description exactly as provided, mention key ingredients from the ingredients list, explain benefits, and highlight what makes it unique. Don't just give a generic overview—use the actual product description, ingredients list, and benefits from the tool result. Never fabricate or infer texture, feel, or other sensory details not present in the data. For general product searches (e.g., 'show me serums'), keep it brief and focus on how the selection fits their needs. Then include 2–3 helpful, conversational follow-up suggestions tailored to this context (e.g., 'Want to see more options?', 'Curious about ingredients?', 'Should I compare these?', 'Ready to add one to your cart?') to keep the conversation going naturally.",
         });
       }
 

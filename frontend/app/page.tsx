@@ -816,11 +816,6 @@ export default function ChatPage() {
                                   return first + remaining;
                                 })()}
                               </h3>
-                              {message.summary.subheading ? (
-                                <p className="text-[1.4rem] text-[#1b1f26]">
-                                  {message.summary.subheading}
-                                </p>
-                              ) : null}
                             </Box>
                           ) : null}
 

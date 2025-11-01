@@ -12,10 +12,9 @@ const SUMMARY_RESPONSE_JSON_SCHEMA = {
   type: "object",
   properties: {
     headline: { type: "string", minLength: 1, maxLength: 120 },
-    subheading: { type: "string", minLength: 1, maxLength: 200 },
     icon: { type: "string", minLength: 1, maxLength: 4 },
   },
-  required: ["headline", "subheading"],
+  required: ["headline"],
   additionalProperties: false,
 } as const;
 
@@ -56,8 +55,8 @@ export async function generateReplySummaryWithGemini({
           'The routineDescription field already captures the skin type and focus (e.g., "oily skin and focused on acne concerns"); reuse that wording verbatim without reordering its meaning.',
           "Keep the remainder of the headline concise—if you need to add a short clause about the routine's focus, do so naturally.",
           stepCountText
-            ? `In the subheading, reference that the routine covers ${stepCountText} and, if possible, nod to one of the stepHighlights or invite the user to tweak steps.`
-            : "In the subheading, highlight what the routine focuses on and invite the user to tweak steps.",
+            ? `Weave into the headline that the routine covers ${stepCountText} and, if possible, nod to one of the stepHighlights or invite the user to tweak steps.`
+            : "Use the headline to highlight what the routine focuses on and invite the user to tweak steps.",
         ].join(" ")
       : "";
 
@@ -66,7 +65,7 @@ export async function generateReplySummaryWithGemini({
       ? [
           `Begin the headline with "Here are the products I found" and immediately append the provided filterDescription${filterDescription ? ' exactly as written (it already begins with wording like "including category cleanser")' : " or, if missing, summarize the most relevant filters (category, skin type, concerns, actives, brand)"}.`,
           "Keep the headline brief and action-oriented.",
-          "Use the subheading to reiterate the key filters in one sentence and invite the user to take next steps like comparing or learning more.",
+          "Reiterate the key filters inside the headline and invite the user to take next steps like comparing or learning more.",
         ].join(" ")
       : "";
 
@@ -74,7 +73,7 @@ export async function generateReplySummaryWithGemini({
     .filter(Boolean)
     .join(" ");
 
-  const iconInstruction = `Set the "icon" field in your JSON to "${icon}". Do not place any emoji inside the headline or subheading. Provide exactly one headline and one subheading—no additional fields or sentences.`;
+  const iconInstruction = `Set the "icon" field in your JSON to "${icon}". Do not place any emoji inside the headline. Provide exactly one headline—no additional fields or sentences.`;
 
   try {
     const client = getGeminiClient();
@@ -91,7 +90,7 @@ export async function generateReplySummaryWithGemini({
           role: "system",
           parts: [
             {
-              text: `You are a succinct copywriter for SkinBuddy, a skincare assistant. Given the assistant's reply and the structured context, craft a heading and subheading that match the requested format. Keep the headline between 3–10 words (≤60 characters) and ensure it stays conversational and skincare-focused. The subheading must be exactly one supportive sentence (≤110 characters) that complements—but never repeats verbatim—the headline. ${iconInstruction} ${contextualInstructions} Output ONLY a JSON object with keys headline, subheading, and optional icon—no prose, no markdown, no code fences.`,
+              text: `You are a succinct copywriter for SkinBuddy, a skincare assistant. Given the assistant's reply and the structured context, craft a heading that matches the requested format. Keep the headline between 3–10 words (≤60 characters) and ensure it stays conversational and skincare-focused. ${iconInstruction} ${contextualInstructions} Output ONLY a JSON object with keys headline and optional icon—no prose, no markdown, no code fences.`,
             },
           ],
         },
@@ -101,7 +100,8 @@ export async function generateReplySummaryWithGemini({
       },
     });
 
-    const rawText = (response as any)?.text ?? (response as any)?.response?.text;
+    const rawText =
+      (response as any)?.text ?? (response as any)?.response?.text;
     const fallbackPart =
       (response as any)?.candidates?.[0]?.content?.parts?.find(
         (part: any) => typeof part?.text === "string" && part.text.trim().length
@@ -111,9 +111,7 @@ export async function generateReplySummaryWithGemini({
         ? rawText.trim()
         : fallbackPart;
 
-    const sanitized = content
-      .replace(/```(?:json)?|```/gi, "")
-      .trim();
+    const sanitized = content.replace(/```(?:json)?|```/gi, "").trim();
     if (!sanitized.length) return null;
 
     const parsed = JSON.parse(sanitized);
@@ -125,7 +123,6 @@ export async function generateReplySummaryWithGemini({
 
     return {
       headline: result.data.headline.trim(),
-      subheading: result.data.subheading.trim(),
       icon: result.data.icon?.trim() || undefined,
     };
   } catch (error) {
@@ -183,7 +180,8 @@ export async function refineProductSelectionWithGemini({
       },
     });
 
-    const rawText = (response as any)?.text ?? (response as any)?.response?.text;
+    const rawText =
+      (response as any)?.text ?? (response as any)?.response?.text;
     const content =
       typeof rawText === "string" && rawText.trim().length
         ? rawText.trim()

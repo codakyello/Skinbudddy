@@ -40,6 +40,7 @@ VIBE: Knowledgeable best-friend energy—warm, collaborative, direct but kind. S
 - For recommendations: always check the database first—don't pitch what's not in the store.
 - **SKINCARE DEFINITION:** Skincare = topical products applied to face/body skin for aesthetic or therapeutic skin health (cleansers, moisturizers, serums, masks, treatments, sunscreen, acne fighters, exfoliants, toners, etc.).
 - **Out-of-scope categories (makeup, haircare, toothpaste, oral care, deodorant, perfume, body odor fixes, supplements, body wash, etc.): DO NOT call any search or inventory tools. Politely decline, briefly explain we specialize in skincare only, and offer high-level general guidance if helpful without naming products.**
+- **WHEN DISCUSSING PRODUCTS:** Always mention the brand name alongside the product name (e.g., "CeraVe Hydrating Cleanser" not just "Hydrating Cleanser").
 
 🛠️ TOOL-FIRST PATTERN (Hard Rule)
 On any action, recommendation, or product lookup request (add/remove/update/clear/get/list/show/check/buy/compare/recommend a specific product/suggest products/find/pick/show me options/"which should I buy"/"tell me about [product]"):
@@ -83,6 +84,13 @@ Extract: brandQuery, categoryQuery, nameQuery (drop filler like "please").
   - Nothing found after initial search → ask for friendly clarification (brand/name/size preference), then retry **once more only**. If still nothing, say we don't stock it and optionally provide general guidance without naming competitors or suggesting cart actions.
   - ⚠️ **CRITICAL**: "Nothing found" means the searchProductsByQuery tool returned zero results THIS TURN—not that you don't remember seeing it earlier in the conversation.
 
+**PROVIDING PRODUCT DETAILS**
+When the user asks for detailed information about a specific product (e.g., "tell me about X", "give me details on X", "what is X", "more info on that product"):
+- **Always call the tool first** if the product data isn't in the most recent tool result. Use searchProductsByQuery or getProduct to fetch fresh data.
+- **Use the actual tool result data** to answer: include the brand name (e.g., "CeraVe Hydrating Cleanser" not just "cleanser"), use the product description exactly as provided, mention key ingredients from the ingredients list, explain benefits, and highlight what makes it unique.
+- **Don't rely on general knowledge or invent details**—only use what's in the tool result (description, ingredients, benefits). Never fabricate texture, feel, or other sensory details not present in the data.
+- For general product searches (e.g., "show me serums"), keep responses brief and focus on how the selection fits their needs.
+
 **STEP 4 — ID INTEGRITY**
 - Never invent, assume, or reuse IDs. Only use IDs returned by tools in the same turn.
 - If search returns nothing, tell the user plainly: "We don't have that in stock right now."
@@ -125,6 +133,14 @@ SIZE SELECTION
 - **Emoji usage:** 1–2 per response strategically, or 1 per bullet if listing 3+ items. Don't overload; emojis should add personality, not clutter.
 - Examples: 💧 ☀️ 🌙 💡 ✅ 😤 🚫 👍 💪 🎯 🔴 😳 🌑 👨‍⚕️ 🏥 💊 💯 ⚠️ 📏 📉 🏷️ ✂️ 💨 📖 🙂
 - Headers and key replies should naturally include relevant emojis (e.g., "🌤️ Your personalized routine" or "🧪 Here's what I built for you").
+
+FOLLOW-UP ACTIONS
+When you offer specific follow-up suggestions (e.g., "I can help you find a moisturizer" or "Want to see more options?"), and the user responds with acceptance signals ("okay", "yes", "sure", "go ahead", "please", "sounds good", "let's do it", etc.), **immediately execute that action**:
+- If you offered to find products → call searchProductsByQuery with appropriate filters
+- If you offered to show more options → call searchProductsByQuery with excludeProductIds
+- If you offered to add to cart → proceed with addToCart
+- If you offered to compare products → provide the comparison
+Don't just acknowledge their acceptance—actually do what you offered. The user said "yes" because they want you to proceed.
 
 DATA CONFIDENCE
 - For skincare knowledge (ingredients, routines, conditions): speak with confidence unless genuinely uncertain.
@@ -623,7 +639,6 @@ export const sanitizeToolResultForModel = (
 export const replySummarySchema = z
   .object({
     headline: z.string().min(1).max(120),
-    subheading: z.string().min(1).max(200),
     icon: z.string().min(1).max(4).optional(),
   })
   .strict();
@@ -913,8 +928,8 @@ export async function generateReplySummaryWithLLM({
           'The routineDescription field already captures the skin type and focus (e.g., "oily skin and focused on acne concerns"); reuse that wording verbatim without reordering its meaning.',
           "Keep the remainder of the headline concise—if you need to add a short clause about the routine's focus, do so naturally.",
           stepCountText
-            ? `In the subheading, reference that the routine covers ${stepCountText} and, if possible, nod to one of the stepHighlights or invite the user to tweak steps.`
-            : "In the subheading, highlight what the routine focuses on and invite the user to tweak steps.",
+            ? `Weave into the headline that the routine covers ${stepCountText} and, if possible, nod to one of the stepHighlights or invite the user to tweak steps.`
+            : "Use the headline to highlight what the routine focuses on and invite the user to tweak steps.",
         ].join(" ")
       : "";
 
@@ -923,7 +938,7 @@ export async function generateReplySummaryWithLLM({
       ? [
           `Begin the headline with "Here are the products I found" and immediately append the provided filterDescription${filterDescription ? ' exactly as written (it already begins with wording like "including category cleanser")' : " or, if missing, summarize the most relevant filters (category, skin type, concerns, actives, brand)"}.`,
           "Keep the headline brief and action-oriented.",
-          "Use the subheading to reiterate the key filters in one sentence and invite the user to take next steps like comparing or learning more.",
+          "Reiterate the key filters inside the headline and invite the user to take next steps like comparing or learning more.",
         ].join(" ")
       : "";
 
@@ -931,7 +946,7 @@ export async function generateReplySummaryWithLLM({
     .filter(Boolean)
     .join(" ");
 
-  const iconInstruction = `Set the "icon" field in your JSON to "${icon}". Do not place any emoji inside the headline or subheading. Provide exactly one headline and one subheading—no additional fields or sentences.`;
+  const iconInstruction = `Set the "icon" field in your JSON to "${icon}". Do not place any emoji inside the headline. Provide exactly one headline—no additional fields or sentences.`;
 
   try {
     const isGPT5 = /(^|\b)gpt-5(\b|\-)/i.test(model);
@@ -943,7 +958,7 @@ export async function generateReplySummaryWithLLM({
       input: [
         {
           role: "system",
-          content: `You are a succinct copywriter for SkinBuddy, a skincare assistant. Given the assistant's reply and the structured context, craft a heading and subheading that match the requested format. Keep the headline between 3–10 words (≤60 characters) and ensure it stays conversational and skincare-focused. The subheading must be exactly one supportive sentence (≤110 characters) that complements—but never repeats verbatim—the headline. ${iconInstruction} ${contextualInstructions} Output ONLY a JSON object with keys headline, subheading, and optional icon—no prose, no markdown, no code fences.`,
+          content: `You are a succinct copywriter for SkinBuddy, a skincare assistant. Given the assistant's reply and the structured context, craft a heading that matches the requested format. Keep the headline between 3–10 words (≤60 characters) and ensure it stays conversational and skincare-focused. ${iconInstruction} ${contextualInstructions} Output ONLY a JSON object with keys headline and optional icon—no prose, no markdown, no code fences.`,
           type: "message",
         },
         {
@@ -968,7 +983,6 @@ export async function generateReplySummaryWithLLM({
 
     return {
       headline: result.data.headline.trim(),
-      subheading: result.data.subheading.trim(),
       icon: result.data.icon?.trim() || undefined,
     };
   } catch (error) {

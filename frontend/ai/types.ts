@@ -50,7 +50,6 @@ export type RoutineSelection = {
 export type ReplySummary = {
   icon?: string;
   headline: string;
-  subheading?: string;
 };
 
 export type RoutineSummaryContext = {

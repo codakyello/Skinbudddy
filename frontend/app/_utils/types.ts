@@ -164,7 +164,6 @@ export type Routine = {
 export type MessageSummary = {
   icon?: string;
   headline: string;
-  subheading?: string;
 };
 
 export type ChatMessage = {
