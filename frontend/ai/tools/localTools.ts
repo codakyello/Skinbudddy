@@ -927,6 +927,49 @@ const localTools: ToolSpec[] = [
       }
     },
   },
+  /*
+  {
+    name: "addToCart",
+    description:
+      "Adds a product (with a specific size) to a user's cart, validating stock and merging per server rules.",
+    parameters: {
+      type: "object",
+      properties: {
+        userId: { type: "string" },
+        productId: { type: "string" },
+        sizeId: { type: "string" },
+        quantity: { type: "integer", minimum: 1 },
+      },
+      required: ["userId", "productId", "sizeId", "quantity"],
+      additionalProperties: false,
+    },
+    schema: z
+      .object({
+        userId: z.string(),
+        productId: z.string(),
+        sizeId: z.string(),
+        quantity: z.number().min(1),
+      })
+      .strict(),
+    handler: async (rawInput) => {
+      const input = z
+        .object({
+          userId: z.string(),
+          productId: z.string(),
+          sizeId: z.string(),
+          quantity: z.number().min(1),
+        })
+        .parse(rawInput);
+      const apiModule = await ensureApi();
+      return fetchMutation(apiModule.cart.createCart, {
+        userId: input.userId,
+        productId: input.productId as Id<"products">,
+        sizeId: input.sizeId,
+        quantity: input.quantity,
+      });
+    },
+  },
+  */
   {
     name: "searchProductsByQuery",
     description:
@@ -1327,47 +1370,6 @@ const localTools: ToolSpec[] = [
         ...result,
         ...sanitized,
       };
-    },
-  },
-  {
-    name: "addToCart",
-    description:
-      "Adds a product (with a specific size) to a user's cart, validating stock and merging per server rules.",
-    parameters: {
-      type: "object",
-      properties: {
-        userId: { type: "string" },
-        productId: { type: "string" },
-        sizeId: { type: "string" },
-        quantity: { type: "integer", minimum: 1 },
-      },
-      required: ["userId", "productId", "sizeId", "quantity"],
-      additionalProperties: false,
-    },
-    schema: z
-      .object({
-        userId: z.string(),
-        productId: z.string(),
-        sizeId: z.string(),
-        quantity: z.number().min(1),
-      })
-      .strict(),
-    handler: async (rawInput) => {
-      const input = z
-        .object({
-          userId: z.string(),
-          productId: z.string(),
-          sizeId: z.string(),
-          quantity: z.number().min(1),
-        })
-        .parse(rawInput);
-      const apiModule = await ensureApi();
-      return fetchMutation(apiModule.cart.createCart, {
-        userId: input.userId,
-        productId: input.productId as Id<"products">,
-        sizeId: input.sizeId,
-        quantity: input.quantity,
-      });
     },
   },
   {

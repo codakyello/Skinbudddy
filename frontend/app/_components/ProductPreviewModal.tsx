@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Image from "next/image";
-import { Product } from "../_utils/types";
+import { Product, Size } from "../_utils/types";
 import { IoCloseOutline } from "react-icons/io5";
 import { Box } from "@chakra-ui/react";
 import { formatPrice } from "../_utils/utils";
@@ -24,45 +24,54 @@ export function ProductPreviewModal({
   listenCapturing?: boolean;
   position?: "center" | "top" | "bottom" | "left" | "right";
 }) {
-  const [selectedSize, setSelectedSize] = useState(product.sizes?.at(0));
-  const [isAdding, setIsAdding] = useState(false);
   const { user } = useUser();
   const addToCart = useMutation(api.cart.createCart);
   const { open } = useModal();
+  const [selectedSize, setSelectedSize] = useState(product.sizes?.at(0));
   const [quantity, setQuantity] = useState(1);
+  const [isAdding, setIsAdding] = useState(false);
 
-  const handleIncrement = function () {
-    setQuantity((q) => q + 1);
+  const formatSizeLabel = (size?: Size) => {
+    if (!size) return "Size";
+    if (size.name && size.name.trim().length) return size.name;
+    const numeric =
+      typeof size.size === "number" && Number.isFinite(size.size)
+        ? String(size.size)
+        : "";
+    const unit = size.unit ? String(size.unit) : "";
+    return `${numeric} ${unit}`.trim() || "Size";
   };
-  const handleDecrement = function () {
-    setQuantity((q) => (q > 1 ? q - 1 : 1));
+
+  const handleIncrement = () => {
+    setQuantity((value) => value + 1);
+  };
+
+  const handleDecrement = () => {
+    setQuantity((value) => (value > 1 ? value - 1 : 1));
   };
 
   const handleAddToCart = async () => {
     try {
+      if (!user?._id)
+        throw new AppError("Please sign in to add items to your cart.");
+      if (!selectedSize?.id) throw new AppError("Please select a size first.");
+      if (!product?._id) throw new AppError("Product information missing.");
+
       setIsAdding(true);
-      console.log(user, "This is the user");
-
-      if (!user._id) return;
-      if (!selectedSize?.id) return;
-
-      const res = await addToCart({
+      const result = await addToCart({
         sizeId: selectedSize.id,
         userId: user._id,
         productId: product._id as Id<"products">,
         quantity,
       });
 
-      if (!res?.success) throw new AppError(res?.message as string);
-
-      toast.success(`Added to cart`);
-      // open the cart modal for confirmation
+      if (!result?.success) throw new AppError(result?.message as string);
+      toast.success("Added to cart");
       open("cart");
     } catch (error) {
       if (error instanceof AppError) toast.error(error.message);
-      else {
-        toast.error("An unknown error occured");
-      }
+      else
+        toast.error("Couldn't add this product right now. Please try again.");
     } finally {
       setIsAdding(false);
     }
@@ -113,7 +122,7 @@ export function ProductPreviewModal({
                       : "bg-white text-black border-[#e1ded9] hover:border-black"
                   }`}
                 >
-                  {size.size + " " + size.unit}
+                  {formatSizeLabel(size)}
                 </button>
               ))}
             </Box>
@@ -145,6 +154,7 @@ export function ProductPreviewModal({
                 className="w-[3rem] h-[3rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
                 onClick={handleDecrement}
                 aria-label="Decrease quantity"
+                type="button"
               >
                 -
               </button>
@@ -152,10 +162,14 @@ export function ProductPreviewModal({
                 {quantity}
               </p>
               <button
-                disabled={quantity >= (selectedSize?.stock ?? 0)}
-                className="w-[3rem] h-[3rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
+                disabled={
+                  typeof selectedSize?.stock === "number" &&
+                  quantity >= selectedSize.stock
+                }
+                className="w-[3rem] h-[3rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all disabled:opacity-50"
                 onClick={handleIncrement}
                 aria-label="Increase quantity"
+                type="button"
               >
                 +
               </button>
@@ -163,12 +177,12 @@ export function ProductPreviewModal({
           </Box>
           <button
             disabled={isAdding}
-            className="hover:bg-black flex-shrink-0 hover:text-white font-hostgrotesk capitalize w-full h-[5rem] border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
+            className="hover:bg-black flex-shrink-0 hover:text-white font-hostgrotesk capitalize w-full h-[5rem] border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all disabled:opacity-50"
             onClick={handleAddToCart}
+            type="button"
           >
-            Add to cart
+            {isAdding ? "Adding…" : "Add to cart"}
           </button>
-
           <p className="mt-[2rem] text-[1.4rem]">
             Cocos nucifera (Coconut) Oil, De-ionized Water, Sodium Hydroxide,
             Fragrance, Kojic Acid, Glycerin, Aqua (and) Xanthan Gum (and)

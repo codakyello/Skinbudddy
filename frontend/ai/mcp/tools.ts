@@ -405,6 +405,7 @@ export function registerTools(server: McpServer) {
     }
   );
 
+  /*
   server.tool(
     "addToCart",
     "Adds a product (with a specific size) to a user's cart. Validates stock and merges with existing items per server rules.",
@@ -430,6 +431,7 @@ export function registerTools(server: McpServer) {
       }
     }
   );
+  */
 
   server.tool(
     "updateCartQuantity",

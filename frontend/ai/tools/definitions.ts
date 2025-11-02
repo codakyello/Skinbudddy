@@ -18,6 +18,7 @@ export const TOOL_DEFINITIONS = {
     },
   },
 
+  /*
   addToCart: {
     name: "addToCart",
     description:
@@ -49,6 +50,7 @@ export const TOOL_DEFINITIONS = {
       required: ["userId", "productId", "sizeId", "quantity"],
     },
   },
+  */
 
   updateCartQuantity: {
     name: "updateCartQuantity",

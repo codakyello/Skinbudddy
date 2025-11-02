@@ -10,9 +10,10 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useMutation } from "convex/react";
 import { toast } from "sonner";
-import AppError from "../_utils/appError";
 import { formatPrice } from "../_utils/utils";
+import Link from "next/link";
 import { Product, Size, Brand } from "../_utils/types";
+import AppError from "../_utils/appError";
 
 // type Essentials =
 //   | false
@@ -115,11 +116,22 @@ export function RoutineSuggestionsModal({
   );
   const essentials = essentialsQuery.data as EssentialsResponse | undefined;
 
-  const addToCart = useMutation(api.cart.createCart);
   const [selectedSizeByProduct, setSelectedSizeByProduct] = useState<
     Record<string, string | undefined>
   >({});
   const [addingId, setAddingId] = useState<string | null>(null);
+  const addToCart = useMutation(api.cart.createCart);
+
+  const formatSizeLabel = (size?: Size) => {
+    if (!size) return "Size";
+    if (size.name && size.name.trim().length) return size.name;
+    const numeric =
+      typeof size.size === "number" && Number.isFinite(size.size)
+        ? String(size.size)
+        : "";
+    const unit = size.unit ? String(size.unit) : "";
+    return `${numeric} ${unit}`.trim() || "Size";
+  };
 
   const resolveSelectedSizeId = (p: EssentialsProduct) => {
     const key = String(p?._id ?? "");
@@ -137,20 +149,22 @@ export function RoutineSuggestionsModal({
     try {
       const productId = String(p?._id ?? "");
       const sizeId = resolveSelectedSizeId(p);
-      if (!user?._id) throw new AppError("You need to be signed in");
+      if (!user?._id)
+        throw new AppError("Please sign in to add items to your cart.");
       if (!productId || !sizeId) throw new AppError("Size unavailable");
       setAddingId(productId);
-      const res = await addToCart({
+      const result = await addToCart({
         sizeId,
         userId: user._id,
         productId: p._id as Id<"products">,
         quantity: 1,
       });
-      if (!res?.success) throw new AppError(res?.message as string);
-      // toast.success("Added to cart");
-    } catch (err) {
-      if (err instanceof AppError) toast.error(err.message);
-      else toast.error("Something went wrong");
+      if (!result?.success) throw new AppError(result?.message as string);
+      toast.success("Added to cart");
+    } catch (error) {
+      if (error instanceof AppError) toast.error(error.message);
+      else
+        toast.error("Couldn't add this product right now. Please try again.");
     } finally {
       setAddingId(null);
     }
@@ -234,23 +248,26 @@ export function RoutineSuggestionsModal({
                         <p className="text-[1.2rem] text-gray-500">
                           {p?.brand?.name ?? ""}
                         </p>
-                        {sizes.length > 1 ? (
-                          <select
-                            className="h-[3.6rem] border border-gray-300 rounded-md px-[0.8rem] text-[1.3rem]"
-                            value={selId}
-                            onChange={(e) =>
-                              handleSizeChange(pid, e.target.value)
-                            }
-                          >
+                        {sizes.length > 0 ? (
+                          <div className="flex flex-wrap gap-[0.6rem]">
                             {sizes.map((s: Size) => (
-                              <option key={s.id} value={s.id}>
-                                {s.size} {s.unit}
-                              </option>
+                              <button
+                                key={s.id}
+                                type="button"
+                                onClick={() => handleSizeChange(pid, s.id)}
+                                className={`px-[1.2rem] py-[0.6rem] border rounded-full text-[1.2rem] transition-colors ${
+                                  selId === s.id
+                                    ? "bg-black text-white border-black"
+                                    : "bg-white text-gray-800 border-gray-300 hover:border-black"
+                                }`}
+                              >
+                                {formatSizeLabel(s)}
+                              </button>
                             ))}
-                          </select>
+                          </div>
                         ) : (
                           <p className="text-[1.2rem] text-gray-600">
-                            {sizes[0]?.size} {sizes[0]?.unit}
+                            Size information unavailable
                           </p>
                         )}
                         <div className="flex items-center gap-[0.8rem] text-[1.3rem]">
@@ -274,9 +291,16 @@ export function RoutineSuggestionsModal({
                           onClick={() => handleAdd(p)}
                           disabled={addingId === pid}
                           className="mt-[0.4rem] h-[3.6rem] rounded-md border border-gray-300 hover:border-black hover:bg-black hover:text-white transition-colors text-[1.3rem]"
+                          type="button"
                         >
                           {addingId === pid ? "Adding…" : "Add to cart"}
                         </button>
+                        <Link
+                          href={p?.slug ? `/products/${p.slug}` : "#"}
+                          className="mt-[0.4rem] h-[3.6rem] rounded-md border border-gray-200 hover:border-black text-[1.3rem] flex items-center justify-center"
+                        >
+                          View product
+                        </Link>
                       </div>
                     </Box>
                   );

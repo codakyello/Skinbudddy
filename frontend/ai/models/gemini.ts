@@ -845,7 +845,7 @@ export async function callGemini({
       ].join(" ")
     );
     developerInstructionParts.push(
-      "When an `addToCart` tool call succeeds, explicitly confirm in your final reply exactly what you added (include product name and size/variant) so the user hears the confirmation. If the tool fails, explain the issue and next steps instead of claiming it was added."
+      "Add-to-cart tooling is temporarily disabled—never attempt to call `addToCart`. If a user asks for it, respond with 'I can’t add items to your cart directly right now' and keep assisting with recommendations or comparisons instead."
     );
     developerInstructionParts.push(
       "When a product has multiple sizes or variants, list every option with its size/variant label and price before asking the user to choose—never ask for a selection without showing those details."
@@ -1468,13 +1468,13 @@ export async function callGemini({
                 content: JSON.stringify({
                   error: true,
                   message:
-                    "addToCart blocked: fetch the product details first to obtain valid productId and sizeId before adding to the cart.",
+                    "addToCart is temporarily disabled—let the user know they can add items from the UI instead.",
                 }),
               });
               chatMessages.push({
                 role: "developer",
                 content:
-                  "You attempted to call addToCart without verified identifiers. Call searchProductsByQuery or getProduct for the exact item, copy the productId and sizeId from that tool output, and then retry addToCart. Never guess IDs.",
+                  "Add-to-cart tooling is temporarily disabled. Let the user know they can add items from the UI, then keep assisting with guidance or recommendations.",
               });
               continue;
             }
@@ -1483,12 +1483,12 @@ export async function callGemini({
               !allowAnySize &&
               (!userMentionedSelectedSize || userSpecifiedDifferentSize)
             ) {
-              pendingAddToCart = true;
+              pendingAddToCart = false;
               pendingAddToCartReminderSent = false;
               chatMessages.push({
                 role: "developer",
                 content:
-                  "You tried adding a product with multiple sizes before showing its options. First call an appropriate lookup (searchProductsByQuery, getProduct, or check conversation history) to list the size choices. After presenting the sizes in the reply, ask the user which one they want and only then call addToCart for the selected size.",
+                  "Add-to-cart tooling is disabled, so guide the user to pick a size and let them know they can add it themselves from the UI instead of attempting the tool call.",
               });
               continue;
             }

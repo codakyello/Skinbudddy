@@ -15,7 +15,7 @@ export async function executeTool(
         userId: toolInput.userId,
       });
 
-    // working fine
+    /*
     case "addToCart":
       return await fetchMutation(api.cart.createCart, {
         userId: toolInput.userId,
@@ -23,6 +23,7 @@ export async function executeTool(
         sizeId: toolInput.sizeId,
         quantity: toolInput.quantity,
       });
+    */
 
     case "updateCartQuantity":
       return await fetchMutation(api.cart.updateCartQuantity, {

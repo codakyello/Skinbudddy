@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 import { Box } from "@chakra-ui/react";
-import { Product } from "../_utils/types";
+import { Product, Size } from "../_utils/types";
 import { formatPrice } from "../_utils/utils";
 import { CiHeart } from "react-icons/ci";
 import { FiEye } from "react-icons/fi";
@@ -13,63 +13,75 @@ import { useUser } from "../_contexts/CreateConvexUser";
 import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
 import { ModalOpen, useModal } from "./Modal";
-import { ChangeEvent, useState } from "react";
-import Select from "./Select";
-import AppError from "../_utils/appError";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Category } from "../_utils/types";
+import AppError from "../_utils/appError";
 
 export default function ProductCard({
   className,
   product,
-  selectClassName,
-  bgwhite,
   sectionName,
   inChat = false,
   onProductToPreview,
 }: {
   product: Product;
   className?: string;
-  selectClassName?: string;
   sectionName?: string;
-  bgwhite?: boolean;
   inChat?: boolean;
   onProductToPreview?: (product: Product) => void;
 }) {
   const addToCart = useMutation(api.cart.createCart);
   const addToWishList = useMutation(api.wishlist.createWishList);
-  const [isAdding, setIsAdding] = useState(false);
   const { user } = useUser();
-  const [selectedSize, setSelectedSize] = useState(product.sizes?.at(0));
   const { open } = useModal();
+  const sizeOptions = Array.isArray(product.sizes) ? product.sizes : [];
+  const [selectedSize, setSelectedSize] = useState<Size | null>(
+    sizeOptions[0] ?? null
+  );
+  const [isAdding, setIsAdding] = useState(false);
   const isDiscounted = selectedSize?.discount;
+
+  const formatSizeLabel = (size: Size) => {
+    if (size.name && size.name.trim().length) return size.name;
+    const numeric =
+      typeof size.size === "number" && Number.isFinite(size.size)
+        ? String(size.size)
+        : "";
+    const unit = size.unit ? String(size.unit) : "";
+    return `${numeric} ${unit}`.trim() || "Size";
+  };
+
+  useEffect(() => {
+    setSelectedSize(sizeOptions[0] ?? null);
+  }, [product._id, sizeOptions.length]);
+
+  const handleSizeSelect = (sizeId: string) => {
+    const next = sizeOptions.find((size) => size.id === sizeId);
+    if (next) setSelectedSize(next);
+  };
 
   const handleAddToCart = async () => {
     try {
+      if (!user?._id)
+        throw new AppError("Please sign in to add items to your cart.");
+      if (!selectedSize?.id) throw new AppError("Please choose a size first.");
+      if (!product?._id) throw new AppError("Product information missing.");
+
       setIsAdding(true);
-      console.log(user, "This is the user");
-
-      if (!user._id) return;
-      if (!selectedSize?.id) return;
-
-      const res = await addToCart({
+      const result = await addToCart({
         sizeId: selectedSize.id,
         userId: user._id,
         productId: product._id as Id<"products">,
         quantity: 1,
       });
 
-      if (!res?.success) throw new AppError(res?.message as string);
-
-      // toast.success(`Added to cart`);
-      // open the cart modal for confirmation
+      if (!result?.success) throw new AppError(result?.message as string);
+      toast.success("Added to cart");
       open("cart");
     } catch (error) {
-      console.log(error, "This is the error");
       if (error instanceof AppError) toast.error(error.message);
-      else {
-        toast.error("Something went wrong");
-      }
+      else toast.error("Couldn't add this item. Please try again.");
     } finally {
       setIsAdding(false);
     }
@@ -88,11 +100,6 @@ export default function ProductCard({
     } catch (err) {
       if (err instanceof Error) toast.error("Failed to add to wishlist");
     }
-  };
-
-  const handleSizeChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    const value = event.currentTarget.value;
-    setSelectedSize(product.sizes?.find((s) => s.id === value));
   };
 
   if (inChat)
@@ -141,11 +148,28 @@ export default function ProductCard({
             </ModalOpen>
           </Box>
 
-          <Box className="flex flex-wrap gap-[8px] text-[1.4rem] mb-[2rem] font-semibold">
-            <p
-              className={` ${isDiscounted ? "line-through text-[#888]" : ""} `}
-            >
-              {selectedSize && formatPrice(selectedSize.price)}
+          {sizeOptions.length > 0 ? (
+            <Box className="flex flex-wrap gap-[0.8rem] mb-[1.6rem]">
+              {sizeOptions.map((size) => (
+                <button
+                  key={size.id}
+                  onClick={() => handleSizeSelect(size.id)}
+                  className={`px-[1.2rem] py-[0.6rem] rounded-full border text-[1.2rem] transition-colors ${
+                    selectedSize?.id === size.id
+                      ? "bg-[#1454d4] text-white border-[#1454d4]"
+                      : "bg-white text-[#1b1f26] border-[#d9d9de] hover:border-[#1454d4]"
+                  }`}
+                  type="button"
+                >
+                  {formatSizeLabel(size)}
+                </button>
+              ))}
+            </Box>
+          ) : null}
+
+          <Box className="flex flex-wrap gap-[8px] text-[1.4rem] font-semibold">
+            <p className={isDiscounted ? "line-through text-[#888]" : ""}>
+              {selectedSize ? formatPrice(selectedSize.price) : ""}
             </p>
             {selectedSize?.discount ? (
               <>
@@ -157,16 +181,16 @@ export default function ProductCard({
                   % off
                 </span>
               </>
-            ) : (
-              ""
-            )}
+            ) : null}
           </Box>
 
           <button
             onClick={handleAddToCart}
-            className="mt-auto rounded-[16px]  bg-[#1454d4] hover:bg-opacity-80 enabled:hover:bg-opacity-100 disabled:bg-opacity-40 text-[#fff] font-medium text-[14px] leading-[20px] min-h-[20px] flex text-center justify-center py-[6px] px-[16px] "
+            className="mt-auto rounded-[16px] bg-[#1454d4] hover:bg-opacity-80 enabled:hover:bg-opacity-100 disabled:bg-opacity-40 text-[#fff] font-medium text-[14px] leading-[20px] min-h-[20px] flex text-center justify-center py-[6px] px-[16px]"
+            disabled={isAdding}
+            type="button"
           >
-            Add to Cart
+            {isAdding ? "Adding…" : "Add to Cart"}
           </button>
 
           {/* <button></button> */}
@@ -222,27 +246,27 @@ export default function ProductCard({
 
       {/* Size selection UI */}
       <Box className="relative mt-auto mb-[20px]">
-        {product.sizes && product.sizes.length < 2 ? (
-          <Box className="flex flex-col text-[1.4rem] min-h-[4.5rem] ">
-            <span>One size only</span>
-            <span>
-              {selectedSize && selectedSize?.size + selectedSize?.unit}
-            </span>
+        {sizeOptions.length > 0 ? (
+          <Box className="flex flex-wrap gap-[0.8rem] justify-center">
+            {sizeOptions.map((size) => (
+              <button
+                key={size.id}
+                type="button"
+                onClick={() => handleSizeSelect(size.id)}
+                className={`px-[1.4rem] py-[0.8rem] rounded-full border text-[1.2rem] transition-colors ${
+                  selectedSize?.id === size.id
+                    ? "bg-black text-white border-black"
+                    : "bg-white text-[#1b1f26] border-[#d9d9de] hover:border-black"
+                }`}
+              >
+                {formatSizeLabel(size)}
+              </button>
+            ))}
           </Box>
         ) : (
-          product.sizes && (
-            <Select
-              label="Select a size"
-              className={selectClassName}
-              bgwhite={bgwhite}
-              handleChange={handleSizeChange}
-              value={selectedSize?.id}
-              options={product.sizes.map((s) => ({
-                name: s.size + " " + s.unit,
-                value: s.id,
-              }))}
-            />
-          )
+          <Box className="text-[1.2rem] text-[#666]">
+            Size information unavailable
+          </Box>
         )}
       </Box>
 
@@ -264,11 +288,12 @@ export default function ProductCard({
       </Box>
 
       <button
-        className="bg-black uppercase shadow-[0_4px_8px_rgba(0,0,0,0.15)] text-white font-hostgrotesk w-full h-[35px] text-[1.2rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all"
+        className="bg-black uppercase shadow-[0_4px_8px_rgba(0,0,0,0.15)] text-white font-hostgrotesk w-full h-[35px] text-[1.2rem] flex items-center justify-center border border-[#e1ded9] font-medium rounded-md hover:border-black transition-all disabled:bg-opacity-40"
         onClick={handleAddToCart}
         disabled={isAdding}
+        type="button"
       >
-        {isAdding ? "..Adding" : "Add to Bag"}
+        {isAdding ? "Adding…" : "Add to Bag"}
       </button>
     </Box>
   );
