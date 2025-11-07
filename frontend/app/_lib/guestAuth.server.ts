@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import {
   SignJWT,
   importPKCS8,
@@ -12,8 +13,27 @@ import {
   type GuestTokenClaims,
 } from "./guestAuth";
 
-const privatePem = fs.readFileSync("./private.pem", "utf8");
-const publicPem = fs.readFileSync("./public.pem", "utf8");
+const normalizePem = (value: string): string =>
+  value.replace(/\\n/g, "\n").trim();
+
+const resolveKey = (envName: string, fallbackFile: string): string => {
+  const fromEnv = process.env[envName];
+  if (fromEnv && fromEnv.trim().length) {
+    return normalizePem(fromEnv);
+  }
+
+  const absolutePath = path.resolve(process.cwd(), fallbackFile);
+  if (fs.existsSync(absolutePath)) {
+    return fs.readFileSync(absolutePath, "utf8");
+  }
+
+  throw new Error(
+    `Missing ${envName} and fallback file ${fallbackFile}. Configure the PEM via environment variable or add the file to the project.`
+  );
+};
+
+const privatePem = resolveKey("GUEST_JWT_PRIVATE_KEY", "./private.pem");
+const publicPem = resolveKey("GUEST_JWT_PUBLIC_KEY", "./public.pem");
 
 export async function generateGuestToken(guestId: string): Promise<string> {
   if (!guestId || !guestId.startsWith("guest_")) {
