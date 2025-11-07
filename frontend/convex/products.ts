@@ -162,7 +162,6 @@ export const recommend = action({
     // Support both spellings for backward compatibility
     ingredientsToAvoid: v.optional(v.array(IngredientSensitivity)),
     fragranceFree: v.optional(v.boolean()),
-    userId: v.string(),
     createRoutine: v.optional(v.boolean()),
     excludeProductIds: v.optional(
       v.array(v.union(v.id("products"), v.string()))

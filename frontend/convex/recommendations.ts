@@ -2,11 +2,11 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery, query } from "./_generated/server";
 
 export const _saveRecommendations = internalMutation({
-  args: { recommendations: v.array(v.id("products")), userId: v.string() },
-  handler: async (ctx, { recommendations, userId }) => {
+  args: { recommendations: v.array(v.id("products")) },
+  handler: async (ctx, { recommendations }) => {
     // Resolve the current user from auth; we tie recs to the authenticated user
-    // const identity = await ctx.auth.getUserIdentity();
-    // const userId = identity?.subject;
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
     if (!userId) {
       // If there's no authenticated user, we can't persist personalized recommendations
       return { success: false, message: "Not authenticated" };
@@ -72,8 +72,14 @@ export const _saveRecommendations = internalMutation({
 
 // implement get user Recommendations
 export const getUserRecommendations = internalQuery({
-  args: { userId: v.string() },
-  handler: async (ctx, { userId }) => {
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId) {
+      throw new Error("Authentication required");
+    }
+
     // Ensure user exists (defensive)
     const user = await ctx.db
       .query("users")
@@ -104,8 +110,14 @@ export const getUserRecommendations = internalQuery({
 });
 
 export const getUserRecommendationIds = internalQuery({
-  args: { userId: v.string() },
-  handler: async (ctx, { userId }) => {
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId) {
+      throw new Error("Authentication required");
+    }
+
     const rows = await ctx.db
       .query("userRecommendations")
       .withIndex("by_userId", (q) => q.eq("userId", userId))

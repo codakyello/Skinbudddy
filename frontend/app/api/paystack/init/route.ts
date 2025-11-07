@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchMutation } from "convex/nextjs";
+import {
+  fetchMutation,
+  runWithConvexAuthToken,
+} from "@/ai/convex/client";
 import { api } from "@/convex/_generated/api";
+import { auth } from "@clerk/nextjs/server";
+import { GUEST_COOKIE_NAME } from "@/app/_lib/guestAuth";
 
 export async function POST(req: NextRequest) {
   try {
-    const { orderId, email, amount, phone, fullName, userId } =
-      await req.json();
+    const { orderId, email, amount, phone, fullName } = await req.json();
 
-    if (!orderId || !email || !amount || !userId) {
+    if (!orderId || !email || !amount) {
       return NextResponse.json(
         { success: false, message: "Missing required fields" },
         { status: 400 }
@@ -59,11 +63,26 @@ export async function POST(req: NextRequest) {
     const { authorization_url, reference } = paystackData.data;
 
     // Call Convex mutation to update the order with Paystack reference
-    const res = await fetchMutation(api.order.createOrderReference, {
-      orderId,
-      reference,
-      userId,
-    });
+    const { getToken } = auth();
+    const clerkToken =
+      getToken ? await getToken({ template: "convex" }) : null;
+    const guestToken = req.cookies.get(GUEST_COOKIE_NAME)?.value ?? null;
+
+    if (!clerkToken && !guestToken) {
+      return NextResponse.json(
+        { success: false, message: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
+    const res = await runWithConvexAuthToken(
+      clerkToken ?? guestToken ?? null,
+      () =>
+        fetchMutation(api.order.createOrderReference, {
+          orderId,
+          reference,
+        })
+    );
 
     if (!res?.success) {
       console.error("Convex updateOrder mutation failed:", res);

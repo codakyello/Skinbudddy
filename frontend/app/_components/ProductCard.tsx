@@ -71,7 +71,6 @@ export default function ProductCard({
       setIsAdding(true);
       const result = await addToCart({
         sizeId: selectedSize.id,
-        userId: user._id,
         productId: product._id as Id<"products">,
         quantity: 1,
       });
@@ -92,7 +91,6 @@ export default function ProductCard({
     try {
       console.log("clicked");
       await addToWishList({
-        userId: user._id as string,
         productId: product._id as Id<"products">,
       });
 

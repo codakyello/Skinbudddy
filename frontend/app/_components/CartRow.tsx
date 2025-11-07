@@ -28,7 +28,6 @@ export default function CartRow({ item }: { item: Cart }) {
       const res = await updateCartQuantity({
         quantity,
         cartId,
-        userId: user?._id as string,
       });
       if (!res.success) throw new AppError(res.message as string);
       toast.success("Cart updated successfully");
@@ -43,7 +42,7 @@ export default function CartRow({ item }: { item: Cart }) {
   const handleDeleteCartItem = async function (cartId: Id<"carts">) {
     try {
       setIsDeleting(true);
-      const res = await removeFromCart({ userId: user._id as string, cartId });
+      const res = await removeFromCart({ cartId });
       if (!res.success) throw new AppError(res.message as string);
       toast.success("Cart item deleted successfully");
     } catch (err) {

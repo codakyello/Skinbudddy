@@ -99,11 +99,13 @@ export const StepFrequency = v.union(
   v.literal("as_needed")
 );
 
+export const AuthType = v.union(v.literal("anon"), v.literal("clerk"));
 export default defineSchema({
   users: defineTable({
     userId: v.string(),
     email: v.optional(v.string()),
     clerkId: v.optional(v.string()),
+    authType: AuthType,
     name: v.optional(v.string()),
     phone: v.optional(v.string()),
 
@@ -140,6 +142,14 @@ export default defineSchema({
     createdAt: v.number(),
     hasUsedRecommender: v.optional(v.boolean()),
     aiBuilderUsed: v.optional(v.boolean()),
+    skinProfile: v.optional(
+      v.object({
+        skinType: v.optional(v.string()),
+        skinConcerns: v.optional(v.array(v.string())),
+        ingredientSensitivities: v.optional(v.array(v.string())),
+        updatedAt: v.optional(v.number()),
+      })
+    ),
   }).index("by_userId", ["userId"]),
 
   products: defineTable({

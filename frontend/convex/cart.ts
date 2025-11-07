@@ -6,12 +6,21 @@ import { Id } from "./_generated/dataModel";
 // Create or update cart item
 export const createCart = mutation({
   args: {
-    userId: v.string(),
     productId: v.id("products"),
     quantity: v.number(),
     sizeId: v.string(),
   },
-  handler: async (ctx, { userId, productId, quantity, sizeId }) => {
+  handler: async (ctx, { productId, quantity, sizeId }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId) {
+      return {
+        success: false,
+        message: "Authentication required",
+        statusCode: 401,
+      } as const;
+    }
+
     try {
       const user = await ctx.db
         .query("users")
@@ -49,7 +58,8 @@ export const createCart = mutation({
 
       const sizeRecord = size as Record<string, unknown>;
       const available =
-        typeof sizeRecord.stock === "number" && Number.isFinite(sizeRecord.stock)
+        typeof sizeRecord.stock === "number" &&
+        Number.isFinite(sizeRecord.stock)
           ? (sizeRecord.stock as number)
           : 0;
 
@@ -79,7 +89,7 @@ export const createCart = mutation({
           ? `${numericSize} ${unit}`
           : sizeText && unit
             ? `${sizeText} ${unit}`
-            : sizeText ?? unit ?? undefined;
+            : (sizeText ?? unit ?? undefined);
 
       const productName =
         typeof product.name === "string" && product.name.trim().length
@@ -180,11 +190,20 @@ export const createCart = mutation({
 });
 
 export const getUserCart = query({
-  args: {
-    userId: v.string(),
-  },
-  handler: async (ctx, { userId }) => {
+  args: {},
+  handler: async (ctx) => {
     try {
+      const identity = await ctx.auth.getUserIdentity();
+      if (!identity) {
+        return {
+          success: false,
+          message: "Authentication required",
+          cart: [],
+          statusCode: 401,
+        } as const;
+      }
+
+      const userId = identity.subject;
       if (!userId) {
         return {
           success: false,
@@ -194,6 +213,24 @@ export const getUserCart = query({
         };
       }
 
+      // if (identity.subject !== userId) {
+      //   return {
+      //     success: false,
+      //     message: "Forbidden",
+      //     cart: [],
+      //     statusCode: 403,
+      //   } as const;
+      // }
+
+      // if (!userId) {
+      //   return {
+      //     success: false,
+      //     message: "Missing userId",
+      //     cart: [],
+      //     statusCode: 400,
+      //   };
+      // }
+
       const cartItems = await ctx.db
         .query("carts")
         .filter((q) => q.eq(q.field("userId"), userId))
@@ -201,7 +238,7 @@ export const getUserCart = query({
 
       // if (!cartItems.length) {
       //   return { success: false, message: "Cart is empty", statusCode:400, cart: [] };
-      // }
+      // }bv
 
       cartItems.sort((a, b) => b.createdAt - a.createdAt);
 
@@ -259,10 +296,19 @@ export const getUserCart = query({
 export const updateCartQuantity = mutation({
   args: {
     cartId: v.id("carts"),
-    userId: v.string(),
     quantity: v.number(),
   },
-  handler: async (ctx, { cartId, quantity, userId }) => {
+  handler: async (ctx, { cartId, quantity }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId) {
+      return {
+        success: false,
+        message: "Authentication required",
+        statusCode: 401,
+      } as const;
+    }
+
     try {
       const cart = await ctx.db.get(cartId);
       if (!cart)
@@ -324,9 +370,18 @@ export const updateCartQuantity = mutation({
 export const removeFromCart = mutation({
   args: {
     cartId: v.id("carts"),
-    userId: v.string(),
   },
-  handler: async (ctx, { cartId, userId }) => {
+  handler: async (ctx, { cartId }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId) {
+      return {
+        success: false,
+        message: "Authentication required",
+        statusCode: 401,
+      } as const;
+    }
+
     try {
       const cart = await ctx.db.get(cartId);
 
@@ -355,10 +410,18 @@ export const removeFromCart = mutation({
 
 // Bonus: Clear entire cart for user
 export const clearCart = mutation({
-  args: {
-    userId: v.string(),
-  },
-  handler: async (ctx, { userId }) => {
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId) {
+      return {
+        success: false,
+        message: "Authentication required",
+        statusCode: 401,
+      } as const;
+    }
+
     try {
       const cartItems = await ctx.db
         .query("carts")
@@ -380,7 +443,6 @@ export const clearCart = mutation({
 // Bulk add many items to cart at once (all created/updated rows will be marked recommended: true)
 export const bulkAddCartItems = mutation({
   args: {
-    userId: v.string(),
     items: v.array(
       v.object({
         productId: v.id("products"),
@@ -389,7 +451,17 @@ export const bulkAddCartItems = mutation({
       })
     ),
   },
-  handler: async (ctx, { userId, items }) => {
+  handler: async (ctx, { items }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId) {
+      return {
+        success: false,
+        statusCode: 401,
+        message: "Authentication required",
+      } as const;
+    }
+
     try {
       if (!items?.length) {
         return {

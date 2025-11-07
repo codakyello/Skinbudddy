@@ -48,7 +48,6 @@ export default function CartModal({ onClose }: { onClose?: () => void }) {
       const res = await updateCartQuantity({
         quantity,
         cartId,
-        userId: user._id as string,
       });
       if (!res.success) throw new AppError(res.message as string);
       toast.success("Cart updated successfully");
@@ -69,7 +68,7 @@ export default function CartModal({ onClose }: { onClose?: () => void }) {
   const handleDeleteCartItem = async function (cartId: Id<"carts">) {
     try {
       setIsDeleting(true);
-      const res = await removeFromCart({ cartId, userId: user._id as string });
+      const res = await removeFromCart({ cartId });
       if (!res.success) throw new AppError(res.message as string);
       toast.success("Cart item deleted successfully");
     } catch (err) {

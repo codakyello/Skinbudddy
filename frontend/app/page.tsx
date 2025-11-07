@@ -19,6 +19,7 @@ import type {
   RoutineStep,
   MessageSummary,
   ChatMessage,
+  QuizMessage,
   Message,
 } from "@/app/_utils/types";
 import { Box } from "@chakra-ui/react";
@@ -38,6 +39,7 @@ import {
 } from "./_utils/utils";
 import { IoChevronDownOutline } from "react-icons/io5";
 import RoutineCard from "./_components/RoutineCard";
+import { ErrorMessageBox } from "./_components/ErrorMessageBox";
 // import useProducts from "./_hooks/useProducts";
 
 const SUGGESTIONS = [
@@ -93,7 +95,7 @@ type QuizQuestion = {
 };
 
 type SkinQuizState = {
-  role: "quiz";
+  role: "assistant";
   currentIndex: number;
   questions: QuizQuestion[];
 };
@@ -154,7 +156,7 @@ const SKIN_QUIZ_TEMPLATES: Array<Omit<QuizQuestion, "selected">> = [
 ];
 
 const createInitialQuizState = (): SkinQuizState => ({
-  role: "quiz",
+  role: "assistant",
   currentIndex: 0,
   questions: SKIN_QUIZ_TEMPLATES.map((question) => ({
     ...question,
@@ -173,6 +175,7 @@ export default function ChatPage() {
   const [isTyping, setShowTyping] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const { user } = useUser();
+  const lastUserMessageRef = useRef<string | null>(null);
   const [displayedSuggestions] = useState(() =>
     getRandomSuggestions(3, SUGGESTIONS)
   );
@@ -229,8 +232,6 @@ export default function ChatPage() {
       // Mark that user has scrolled away from bottom
       if (!isNearBottom) {
         setUserHasScrolled(true);
-      } else {
-        setUserHasScrolled(false);
       }
     };
 
@@ -262,6 +263,7 @@ export default function ChatPage() {
     // Only auto-scroll if user hasn't manually scrolled away
     if (isNearBottom && !userHasScrolled) {
       container.scrollTop = container.scrollHeight;
+      setUserHasScrolled(false);
       requestAnimationFrame(() => {
         updateScrollButtonVisibility();
       });
@@ -273,12 +275,8 @@ export default function ChatPage() {
     const lastMessage = messages.at(-1);
     const secondLastMessage = messages.at(-2);
 
-    // When a new assistant message appears, transfer the min-height to it
-    if (
-      lastMessage &&
-      isChatMessage(lastMessage) &&
-      lastMessage.role === "assistant"
-    ) {
+    // When a new assistant message appears (chat or quiz), transfer the min-height to it
+    if (lastMessage && lastMessage.role === "assistant") {
       setAssistantWithMinHeight(lastMessage.id);
 
       // Only scroll once per assistant message (when it first appears)
@@ -406,6 +404,9 @@ export default function ChatPage() {
     if (rawMessage === undefined) {
       setInputValue("");
     }
+
+    // Store the last user message for retry functionality
+    lastUserMessageRef.current = trimmed;
 
     const optimisticId = `user-${Date.now()}`;
     if (!silent) {
@@ -632,12 +633,25 @@ export default function ChatPage() {
         setSessionId(finalSessionId);
       }
     } catch (err) {
-      // if (assistantId) {
-      //   setMessages((prev) => prev.filter((msg) => msg.id !== assistantId));
-      // }
-      setError(
-        err instanceof Error ? err.message : "Something went wrong. Try again."
-      );
+      // Attach error to the assistant message instead of global error state
+      const errorMessage =
+        err instanceof Error ? err.message : "Something went wrong. Try again.";
+
+      if (assistantId) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantId
+              ? {
+                  ...(msg as ChatMessage),
+                  error: errorMessage,
+                }
+              : msg
+          )
+        );
+      } else {
+        // Fallback to global error if no assistant message exists
+        setError(errorMessage);
+      }
     } finally {
       setIsSending(false);
       setHasSent(false);
@@ -656,6 +670,17 @@ export default function ChatPage() {
 
   const handleProductToPreview = (product: Product) => {
     setProductToPreview(product);
+  };
+
+  const handleRetry = async (failedAssistantId: string) => {
+    const lastMessage = lastUserMessageRef.current;
+    if (!lastMessage) return;
+
+    // Remove the failed assistant message
+    setMessages((prev) => prev.filter((msg) => msg.id !== failedAssistantId));
+
+    // Resend the last user message
+    await sendMessage(lastMessage, { silent: true });
   };
 
   const lastAssistantMessageId = useMemo(() => {
@@ -677,7 +702,7 @@ export default function ChatPage() {
           {/* conversation container */}
           <Box
             ref={conversationRef}
-            className="w-full relative max-w-[67rem] flex-1 overflow-y-auto min-h-0 scroll-smooth no-scrollbar"
+            className="w-full relative max-w-[67rem] flex-1 overflow-y-auto pb-[20px] min-h-0 scroll-smooth no-scrollbar"
             // style={{ maxHeight: "calc(100vh - 220px)" }}
           >
             {/* {pendingSkinTypeQuiz && (
@@ -729,7 +754,7 @@ export default function ChatPage() {
                 </header>
 
                 <section className="space-y-3 rounded-3xl border border-transparent bg-white/80 backdrop-blur-md ">
-                  {displayedSuggestions.map((suggestion) => (
+                  {displayedSuggestions.map((suggestion: string) => (
                     <button
                       key={suggestion}
                       onClick={() => handleSuggestion(suggestion)}
@@ -757,257 +782,301 @@ export default function ChatPage() {
                         : ""
                   }`}
                 >
-                  {isChatMessage(message) && message.role === "assistant" ? (
-                    <Box
-                      className={`w-full ${
-                        message.id === assistantWithMinHeight
-                          ? "min-h-[calc(100vh-200px)]"
-                          : "h-auto"
-                      }`}
-                    >
-                      {isChatMessage(message) &&
-                      message.resultType === "routine" &&
-                      message.routine?.steps?.length ? (
-                        <Box className="mt-6 flex flex-col mb-[24px]">
-                          {isChatMessage(message) &&
-                          message.summary?.headline ? (
-                            <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
-                              <h3 className="text-[2rem] leading-[2.4rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
-                                {message.summary?.icon ? (
-                                  <span>{message.summary.icon}</span>
-                                ) : null}
-                                {message.summary.headline}
-                              </h3>
-                            </Box>
-                          ) : null}
-                          <Box className="flex flex-col gap-[16px]">
-                            {message.routine.steps.map(
-                              (routine: RoutineStep) => {
-                                const productKey = `${message.id}-routine-${routine.productId ?? routine.step}`;
-                                return (
-                                  <RoutineCard
-                                    key={productKey}
-                                    routine={routine}
-                                    onProductToPreview={handleProductToPreview}
-                                  />
-                                );
-                              }
-                            )}
-                          </Box>
-                        </Box>
-                      ) : isChatMessage(message) && message.products?.length ? (
-                        <Box>
-                          {isChatMessage(message) &&
-                          message.summary?.headline ? (
-                            <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
-                              <h3 className="text-[2rem] leading-[2.4rem] font-medium text-[#1b1f26] flex gap-[0.6rem]">
-                                {message.summary?.icon ? (
-                                  <span>{message.summary.icon}</span>
-                                ) : null}
-                                {(() => {
-                                  const heading =
-                                    message.summary.headline.split(" ");
-                                  const first =
-                                    (heading.at(0)?.charAt(0)?.toUpperCase() ||
-                                      "") +
-                                    (heading.at(0)?.slice(1) || "") +
-                                    " ";
-                                  const remaining = heading.slice(1).join(" ");
-                                  return first + remaining;
-                                })()}
-                              </h3>
-                            </Box>
-                          ) : null}
-
-                          <Box className="mt-6 flex items-stretch gap-[1rem] overflow-auto mb-[20px]">
-                            {message.products.map(
-                              (product: Product, index: number) => {
-                                const productKey = `${message.id}-${String(
-                                  product._id ?? product.slug ?? index
-                                )}`;
-                                return (
-                                  <Box
-                                    key={productKey}
-                                    className="min-w-[90%] md:min-w-[75%] flex"
-                                  >
-                                    <ProductCard
-                                      onProductToPreview={
-                                        handleProductToPreview
-                                      }
-                                      inChat={true}
-                                      product={product}
-                                    />
-                                  </Box>
-                                );
-                              }
-                            )}
-                          </Box>
-                        </Box>
-                      ) : null}
-
-                      {(() => {
-                        const { body, suggestions } = extractSuggestedActions(
-                          isChatMessage(message) ? message.content : ""
-                        );
-                        const markdownSource = body;
-                        const isLastMessage = index + 1 === messages.length;
-                        return (
-                          <>
-                            {markdownSource.length ? (
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={markdownComponents}
-                                className="markdown space-y-[16px] text-[1.4rem] leading-relaxed tracking-[-0.008em]"
-                              >
-                                {markdownSource}
-                              </ReactMarkdown>
-                            ) : isTyping && isLastMessage ? (
-                              <Box className="flex items-center gap-4">
-                                <Box className="flex gap-2">
-                                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26]" />
-                                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.18s]" />
-                                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.36s]" />
-                                </Box>
+                  {message.role === "assistant"
+                    ? (() => {
+                        // Handle both chat and quiz messages as assistant messages
+                        if (isQuizMessage(message)) {
+                          const quizMsg = message as QuizMessage;
+                          return (
+                            <Box
+                              className={`w-full ${
+                                quizMsg.id === assistantWithMinHeight
+                                  ? "min-h-[calc(100vh-200px)]"
+                                  : "h-auto"
+                              }`}
+                            >
+                              <Box className="-tracking-[0.0175rem]">
+                                <h4 className="text-[1.4rem] font-semibold leading-[1.8rem] ">
+                                  {quizMsg.header}
+                                </h4>
+                                <p className="text-[1.4rem] leading-relaxed">
+                                  {quizMsg.question}
+                                </p>
                               </Box>
-                            ) : null}
-                            {suggestions.length ? (
-                              <Box className="mt-4 flex flex-col gap-2">
-                                {suggestions.map((suggestion, index) => {
-                                  const key = `${message.id}-suggestion-${index}`;
-                                  const alreadyUsed =
-                                    usedSuggestionKeysRef.current.has(key);
-                                  const isLatestAssistant =
-                                    message.id === lastAssistantMessageId;
-                                  const isDisabled =
-                                    alreadyUsed || !isLatestAssistant;
+
+                              <div className="mt-4 flex flex-col gap-3">
+                                {quizMsg.options.map((option: string) => {
+                                  const isSelected =
+                                    quizMsg.selected === option;
+                                  const isLocked =
+                                    quizMsg.index < skinQuiz.currentIndex ||
+                                    !pendingSkinTypeQuiz;
+                                  const baseClasses =
+                                    "rounded-[8px] text-start px-[1.6rem] py-[2rem] text-[1.4rem]";
+                                  const activeClasses = isSelected
+                                    ? "bg-[#2159D9] text-white"
+                                    : "bg-[#EFF3FF] text-black";
+                                  const hoverClasses =
+                                    !isLocked && !isSelected
+                                      ? "hover:bg-[#4D78E1] hover:text-white"
+                                      : "";
                                   return (
                                     <button
-                                      key={key}
+                                      key={option}
                                       type="button"
+                                      disabled={isLocked}
+                                      className={`${baseClasses} ${activeClasses} ${hoverClasses} ${
+                                        isLocked
+                                          ? "cursor-not-allowed opacity-70"
+                                          : ""
+                                      }`}
                                       onClick={() => {
-                                        if (isDisabled) return;
-                                        usedSuggestionKeysRef.current.add(key);
-                                        setError(null);
-                                        sendMessage(suggestion);
+                                        if (isLocked) return;
+                                        setSkinQuiz((quiz) => ({
+                                          ...quiz,
+                                          questions: quiz.questions.map((q) =>
+                                            q.index === quizMsg.index
+                                              ? { ...q, selected: option }
+                                              : q
+                                          ),
+                                        }));
+
+                                        setMessages((prev) =>
+                                          prev.map((msg) =>
+                                            isQuizMessage(msg) &&
+                                            msg.id === quizMsg.id
+                                              ? { ...msg, selected: option }
+                                              : msg
+                                          )
+                                        );
                                       }}
-                                      disabled={isDisabled || isTyping}
-                                      className="text-start rounded-[8px] border-none focus-visible:border-none px-[16px] py-[10px] text-[1.4rem] bg-[#eef3ff] text-[#1b1f26] transition hover:bg-[#5377E1] hover:text-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#eef3ff] disabled:hover:text-[#1b1f26]"
                                     >
-                                      {suggestion}
+                                      {option}
                                     </button>
                                   );
                                 })}
+                              </div>
+                            </Box>
+                          );
+                        }
+
+                        // Handle regular chat messages
+                        const chatMsg = message as ChatMessage;
+                        return (
+                          <Box
+                            className={`w-full ${
+                              chatMsg.id === assistantWithMinHeight
+                                ? "min-h-[calc(100vh-200px)]"
+                                : "h-auto"
+                            }`}
+                          >
+                            {chatMsg.resultType === "routine" &&
+                            chatMsg.routine?.steps?.length ? (
+                              <Box className="mt-6 flex flex-col mb-[24px]">
+                                {chatMsg.summary?.headline ? (
+                                  <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
+                                    <h3 className="text-[2rem] leading-[2.4rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
+                                      {chatMsg.summary?.icon ? (
+                                        <span>{chatMsg.summary.icon}</span>
+                                      ) : null}
+                                      {chatMsg.summary.headline}
+                                    </h3>
+                                  </Box>
+                                ) : null}
+                                <Box className="flex flex-col gap-[16px]">
+                                  {chatMsg.routine.steps.map(
+                                    (routine: RoutineStep) => {
+                                      const productKey = `${chatMsg.id}-routine-${routine.productId ?? routine.step}`;
+                                      return (
+                                        <RoutineCard
+                                          key={productKey}
+                                          routine={routine}
+                                          onProductToPreview={
+                                            handleProductToPreview
+                                          }
+                                        />
+                                      );
+                                    }
+                                  )}
+                                </Box>
+                              </Box>
+                            ) : chatMsg.products?.length ? (
+                              <Box>
+                                {chatMsg.summary?.headline ? (
+                                  <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
+                                    <h3 className="text-[2rem] leading-[2.4rem] font-medium text-[#1b1f26] flex gap-[0.6rem]">
+                                      {chatMsg.summary?.icon ? (
+                                        <span>{chatMsg.summary.icon}</span>
+                                      ) : null}
+                                      {(() => {
+                                        const heading =
+                                          chatMsg.summary.headline.split(" ");
+                                        const first =
+                                          (heading
+                                            .at(0)
+                                            ?.charAt(0)
+                                            ?.toUpperCase() || "") +
+                                          (heading.at(0)?.slice(1) || "") +
+                                          " ";
+                                        const remaining = heading
+                                          .slice(1)
+                                          .join(" ");
+                                        return first + remaining;
+                                      })()}
+                                    </h3>
+                                  </Box>
+                                ) : null}
+
+                                <Box className="mt-6 flex items-stretch gap-[1rem] overflow-auto mb-[20px]">
+                                  {chatMsg.products.map(
+                                    (product: Product, index: number) => {
+                                      const productKey = `${chatMsg.id}-${String(
+                                        product._id ?? product.slug ?? index
+                                      )}`;
+                                      return (
+                                        <Box
+                                          key={productKey}
+                                          className="min-w-[90%] md:min-w-[75%] flex"
+                                        >
+                                          <ProductCard
+                                            onProductToPreview={
+                                              handleProductToPreview
+                                            }
+                                            inChat={true}
+                                            product={product}
+                                          />
+                                        </Box>
+                                      );
+                                    }
+                                  )}
+                                </Box>
                               </Box>
                             ) : null}
-                          </>
-                        );
-                      })()}
-                    </Box>
-                  ) : isChatMessage(message) && message.role === "user" ? (
-                    (() => {
-                      const msgAtIndex = messages.at(index);
-                      const isSending =
-                        index + 1 === messages.length &&
-                        msgAtIndex !== undefined &&
-                        isChatMessage(msgAtIndex) &&
-                        msgAtIndex.role === "user" &&
-                        !hasSent;
-                      return (
-                        <Box
-                          ref={(el) => {
-                            if (!el) return;
-                            const lastMessage = messages.at(-1);
-                            if (
-                              index + 1 !== messages.length ||
-                              lastMessage === undefined ||
-                              !isChatMessage(lastMessage) ||
-                              lastMessage.role !== "user"
-                            ) {
-                              return;
-                            }
 
-                            // Only position once per message ID
-                            if (
-                              userMessagePositionedRef.current === message.id
-                            ) {
-                              return;
-                            }
-
-                            // Scroll is now handled by the useEffect when assistant message appears
-                            // Just mark this message as positioned
-                            userMessagePositionedRef.current = message.id;
-                          }}
-                          data-message-role="user"
-                          className={`max-w-[72%] rounded-[18px] ${isSending ? "bg-[#494c51]" : "bg-[#1b1f26]"} py-[8px] px-[16px] text-[1.4rem] leading-[1.5] text-white `}
-                        >
-                          {message.content}
-                        </Box>
-                      );
-                    })()
-                  ) : isQuizMessage(message) ? (
-                    <Box>
-                      <Box className="-tracking-[0.0175rem]">
-                        <h4 className="text-[1.4rem] font-semibold leading-[1.8rem] ">
-                          {/* {message.questions[message.index].header} */}
-                          {message.header}
-                        </h4>
-                        <p className="text-[1.4rem] leading-relaxed">
-                          {message.question}
-                        </p>
-                      </Box>
-
-                      <div className="mt-4 flex flex-col gap-3">
-                        {message.options.map((option) => {
-                          const isSelected = message.selected === option;
-                          const isLocked =
-                            message.index < skinQuiz.currentIndex ||
-                            !pendingSkinTypeQuiz;
-                          const baseClasses =
-                            "rounded-[8px] text-start px-[1.6rem] py-[2rem] text-[1.4rem]";
-                          const activeClasses = isSelected
-                            ? "bg-[#2159D9] text-white"
-                            : "bg-[#EFF3FF] text-black";
-                          const hoverClasses =
-                            !isLocked && !isSelected
-                              ? "hover:bg-[#4D78E1] hover:text-white"
-                              : "";
-                          return (
-                            <button
-                              key={option}
-                              type="button"
-                              disabled={isLocked}
-                              className={`${baseClasses} ${activeClasses} ${hoverClasses} ${
-                                isLocked ? "cursor-not-allowed opacity-70" : ""
-                              }`}
-                              onClick={() => {
-                                if (isLocked) return;
-                                setSkinQuiz((quiz) => ({
-                                  ...quiz,
-                                  questions: quiz.questions.map((q) =>
-                                    q.index === message.index
-                                      ? { ...q, selected: option }
-                                      : q
-                                  ),
-                                }));
-
-                                setMessages((prev) =>
-                                  prev.map((msg) =>
-                                    isQuizMessage(msg) && msg.id === message.id
-                                      ? { ...msg, selected: option }
-                                      : msg
-                                  )
+                            {(() => {
+                              // Check if this message has an error
+                              if (chatMsg.error) {
+                                return (
+                                  <ErrorMessageBox
+                                    onRetry={() => handleRetry(chatMsg.id)}
+                                    isRetrying={isSending}
+                                  />
                                 );
+                              }
+
+                              const { body, suggestions } =
+                                extractSuggestedActions(chatMsg.content);
+                              const markdownSource = body;
+                              const isLastMessage =
+                                index + 1 === messages.length;
+                              const showTypingIndicator =
+                                isTyping && isLastMessage;
+                              return (
+                                <>
+                                  {markdownSource.length ? (
+                                    <ReactMarkdown
+                                      remarkPlugins={[remarkGfm]}
+                                      components={markdownComponents}
+                                      className="markdown space-y-[16px] text-[1.4rem] leading-relaxed tracking-[-0.008em]"
+                                    >
+                                      {markdownSource}
+                                    </ReactMarkdown>
+                                  ) : null}
+                                  {showTypingIndicator ? (
+                                    <Box className="mt-3 flex items-center gap-4">
+                                      <Box className="flex gap-2">
+                                        <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26]" />
+                                        <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.18s]" />
+                                        <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.36s]" />
+                                      </Box>
+                                    </Box>
+                                  ) : null}
+                                  {suggestions.length ? (
+                                    <Box className="mt-4 flex flex-col gap-2">
+                                      {suggestions.map(
+                                        (suggestion: string, index: number) => {
+                                          const key = `${chatMsg.id}-suggestion-${index}`;
+                                          const alreadyUsed =
+                                            usedSuggestionKeysRef.current.has(
+                                              key
+                                            );
+                                          const isLatestAssistant =
+                                            chatMsg.id ===
+                                            lastAssistantMessageId;
+                                          const isDisabled =
+                                            alreadyUsed || !isLatestAssistant;
+                                          return (
+                                            <button
+                                              key={key}
+                                              type="button"
+                                              onClick={() => {
+                                                if (isDisabled) return;
+                                                usedSuggestionKeysRef.current.add(
+                                                  key
+                                                );
+                                                setError(null);
+                                                sendMessage(suggestion);
+                                              }}
+                                              disabled={isDisabled || isTyping}
+                                              className="text-start rounded-[8px] border-none focus-visible:border-none px-[16px] py-[10px] text-[1.4rem] bg-[#eef3ff] text-[#1b1f26] transition hover:bg-[#5377E1] hover:text-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#eef3ff] disabled:hover:text-[#1b1f26]"
+                                            >
+                                              {suggestion}
+                                            </button>
+                                          );
+                                        }
+                                      )}
+                                    </Box>
+                                  ) : null}
+                                </>
+                              );
+                            })()}
+                          </Box>
+                        );
+                      })()
+                    : isChatMessage(message) && message.role === "user"
+                      ? (() => {
+                          const userMsg = message as ChatMessage;
+                          const msgAtIndex = messages.at(index);
+                          const isSending =
+                            index + 1 === messages.length &&
+                            msgAtIndex !== undefined &&
+                            isChatMessage(msgAtIndex) &&
+                            msgAtIndex.role === "user" &&
+                            !hasSent;
+                          return (
+                            <Box
+                              ref={(el) => {
+                                if (!el) return;
+                                const lastMessage = messages.at(-1);
+                                if (
+                                  index + 1 !== messages.length ||
+                                  lastMessage === undefined ||
+                                  !isChatMessage(lastMessage) ||
+                                  lastMessage.role !== "user"
+                                ) {
+                                  return;
+                                }
+
+                                // Only position once per message ID
+                                if (
+                                  userMessagePositionedRef.current ===
+                                  userMsg.id
+                                ) {
+                                  return;
+                                }
+
+                                // Scroll is now handled by the useEffect when assistant message appears
+                                // Just mark this message as positioned
+                                userMessagePositionedRef.current = userMsg.id;
                               }}
+                              data-message-role="user"
+                              className={`max-w-[72%] rounded-[18px] ${isSending ? "bg-[#494c51]" : "bg-[#1b1f26]"} py-[8px] px-[16px] text-[1.4rem] leading-[1.5] text-white `}
                             >
-                              {option}
-                            </button>
+                              {userMsg.content}
+                            </Box>
                           );
-                        })}
-                      </div>
-                    </Box>
-                  ) : (
-                    <Box>Unknown Message Type</Box>
-                  )}
+                        })()
+                      : null}
                 </Box>
               ))}
             </section>

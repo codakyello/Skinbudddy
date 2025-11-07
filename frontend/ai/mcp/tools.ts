@@ -2,7 +2,7 @@ import z from "zod";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 // import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { fetchMutation, fetchQuery } from "convex/nextjs";
+import { fetchMutation, fetchQuery } from "../convex/client";
 import type { Id } from "../../convex/_generated/dataModel";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -161,7 +161,7 @@ const searchProducts = async ({
 export function registerTools(server: McpServer) {
   server.tool(
     "searchProductsByQuery",
-    "List products using free‑text queries for category, brand, or name. The tool resolves fuzzy text (e.g., 'moisturiser', 'face crem', 'cerave') to exact DB slugs, then lists products. Examples: { \"categoryQuery\": \"serum\", \"benefits\": [\"hydrating\"] } · { \"ingredientQueries\": [\"niacinamide\"] }.",
+    'List products using free‑text queries for category, brand, or name. The tool resolves fuzzy text (e.g., \'moisturiser\', \'face crem\', \'cerave\') to exact DB slugs, then lists products. Examples: { "categoryQuery": "serum", "benefits": ["hydrating"] } · { "ingredientQueries": ["niacinamide"] }.',
     {
       nameQuery: z
         .string()
@@ -319,11 +319,15 @@ export function registerTools(server: McpServer) {
         : undefined;
 
       const minDiscountValue =
-        typeof minDiscount === "number" && minDiscount >= 0 && minDiscount <= 100
+        typeof minDiscount === "number" &&
+        minDiscount >= 0 &&
+        minDiscount <= 100
           ? minDiscount
           : undefined;
       const maxDiscountValue =
-        typeof maxDiscount === "number" && maxDiscount >= 0 && maxDiscount <= 100
+        typeof maxDiscount === "number" &&
+        maxDiscount >= 0 &&
+        maxDiscount <= 100
           ? maxDiscount
           : undefined;
 
@@ -361,8 +365,7 @@ export function registerTools(server: McpServer) {
         limit,
         isBestseller:
           typeof isBestseller === "boolean" ? isBestseller : undefined,
-        isTrending:
-          typeof isTrending === "boolean" ? isTrending : undefined,
+        isTrending: typeof isTrending === "boolean" ? isTrending : undefined,
         isNew: typeof isNew === "boolean" ? isNew : undefined,
         minDiscount: minDiscountValue,
         maxDiscount: maxDiscountValue,
@@ -595,13 +598,79 @@ export function registerTools(server: McpServer) {
   );
 
   server.tool(
+    "getSkinProfile",
+    "Fetch the signed-in user's saved skin profile (skin type, concerns, ingredient sensitivities).",
+    {},
+    async () => {
+      try {
+        const api = await getApi();
+        const response = await fetchQuery(api.users.getUser, {});
+        const userRecord = response?.success
+          ? (response.user as unknown)
+          : null;
+        const skinProfile =
+          userRecord &&
+          typeof userRecord === "object" &&
+          "skinProfile" in userRecord &&
+          userRecord.skinProfile &&
+          typeof (userRecord as Record<string, unknown>).skinProfile ===
+            "object"
+            ? ((userRecord as Record<string, unknown>).skinProfile as Record<
+                string,
+                unknown
+              >)
+            : null;
+
+        if (!skinProfile) {
+          return ok({
+            success: false,
+            skinProfile: null,
+            quizCallToAction:
+              "We haven't saved your skin profile yet. SkinBuddy can walk you through a quick quiz to discover it whenever you're ready.",
+          });
+        }
+
+        const toStringArray = (value: unknown): string[] | undefined =>
+          Array.isArray(value)
+            ? value
+                .map((entry) =>
+                  typeof entry === "string" && entry.trim().length
+                    ? entry.trim().toLowerCase()
+                    : null
+                )
+                .filter((entry): entry is string => Boolean(entry))
+            : undefined;
+
+        const normalizedProfile = {
+          skinType:
+            typeof skinProfile.skinType === "string"
+              ? skinProfile.skinType
+              : undefined,
+          skinConcerns: toStringArray(skinProfile.skinConcerns),
+          ingredientSensitivities: toStringArray(
+            skinProfile.ingredientSensitivities
+          ),
+          updatedAt:
+            typeof skinProfile.updatedAt === "number"
+              ? skinProfile.updatedAt
+              : undefined,
+        };
+
+        return ok({ success: true, skinProfile: normalizedProfile });
+      } catch (e: unknown) {
+        return fail((e as Error)?.message || "Failed to load skin profile");
+      }
+    }
+  );
+
+  server.tool(
     "getAllBrands",
     "Retrieves a complete list of all skincare brands available in the database.",
     {},
     async () => {
       try {
         const api = await getApi();
-        const result = await fetchQuery(api.brands.getAllBrands);
+        const result = await fetchQuery(api.brands.getAllBrands, {});
         return ok(result);
       } catch (e: unknown) {
         return fail((e as Error)?.message || "Failed to get brands");

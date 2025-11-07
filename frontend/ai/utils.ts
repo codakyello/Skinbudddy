@@ -94,6 +94,7 @@ When the user asks for detailed information about a specific product (e.g., "tel
 **STEP 4 — ID INTEGRITY**
 - Never invent, assume, or reuse IDs. Only use IDs returned by tools in the same turn.
 - If search returns nothing, tell the user plainly: "We don't have that in stock right now."
+- Never ask the user for any ID (user ID, product ID, size ID, etc.) in user-facing responses—always use human-readable labels (product names, size names, etc.).
 - Never reference productIds, sizeIds, or userIds in user-facing responses—always use human-readable labels (product names, size names, etc.).
 
 **STEP 5 — PRODUCT SELECTION (Multiple Options)**
@@ -738,20 +739,27 @@ export const buildProductHeadline = ({
       category.endsWith("s") || category.endsWith("S")
         ? category
         : `${category}s`;
-    // Prioritize user's explicit intent (ingredients, brand) over derived audience
-    if (ingredients) {
+    const normalizedAudience = audience?.trim() || undefined;
+    const normalizedBenefits = benefits?.trim() || undefined;
+    const normalizedIngredients = ingredients?.trim() || undefined;
+
+    const hasAudience = Boolean(normalizedAudience);
+    const hasBenefits = Boolean(normalizedBenefits);
+
+    // Prioritize explicit user filters (ingredients, audience) over derived benefits.
+    if (normalizedIngredients) {
       // More natural phrasing: "Salicylic acid cleansers" instead of "Top cleansers with salicylic acid"
-      headline = `${ingredients} ${categoryLabel.toLowerCase()}`;
+      headline = `${normalizedIngredients} ${categoryLabel.toLowerCase()}`;
       usedIngredients = true;
     } else if (brand) {
       headline = `${descriptor} ${categoryLabel} from ${brand}`;
       usedBrand = true;
-    } else if (benefits) {
-      headline = `${descriptor} ${categoryLabel} for ${benefits}`;
-      usedBenefits = true;
-    } else if (audience) {
-      headline = `${descriptor} ${categoryLabel} for ${audience}`;
+    } else if (hasAudience) {
+      headline = `${descriptor} ${categoryLabel} for ${normalizedAudience}`;
       usedAudience = true;
+    } else if (hasBenefits) {
+      headline = `${descriptor} ${categoryLabel} for ${normalizedBenefits}`;
+      usedBenefits = true;
     } else {
       headline = `${descriptor} ${categoryLabel}`;
     }

@@ -1,4 +1,4 @@
-import { fetchAction } from "convex/nextjs";
+import { fetchAction } from "@/ai/convex/client";
 import { api } from "@/convex/_generated/api";
 import { NextRequest, NextResponse } from "next/server";
 

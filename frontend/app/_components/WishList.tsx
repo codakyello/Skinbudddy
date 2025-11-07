@@ -14,9 +14,9 @@ type WishlistItem = {
 
 export default function WishList() {
   const { user } = useUser();
-  const res = useQuery(api.wishlist.getUserWishLists, {
-    userId: user._id as string,
-  });
+  const res = useQuery(
+    user._id ? api.wishlist.getUserWishLists : undefined
+  );
 
   const wishlistItems = Array.isArray(res)
     ? (res as WishlistItem[])

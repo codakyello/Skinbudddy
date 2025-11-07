@@ -307,7 +307,7 @@ export function registerTools(server: McpServer) {
   server.tool(
     "getUserCart",
     "Retrieves all cart items for a specific user, including product details, pricing, size information, stock availability, and associated categories.",
-    z.object({}),
+    {},
     async () => {
       try {
         const api = await getApi();
@@ -386,7 +386,7 @@ export function registerTools(server: McpServer) {
   server.tool(
     "clearCart",
     "Removes all items from a user's cart.",
-    z.object({}),
+    {},
     async () => {
       try {
         const api = await getApi();
@@ -459,7 +459,7 @@ export function registerTools(server: McpServer) {
   server.tool(
     "getUserRoutines",
     "Retrieves all skincare/beauty routines created by a specific user.",
-    z.object({}),
+    {},
     async () => {
       try {
         const api = await getApi();

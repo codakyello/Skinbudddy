@@ -124,6 +124,12 @@ export type User = {
   createdAt: number;
   hasUsedRecommender?: boolean;
   aiBuilderUsed?: boolean;
+  skinProfile?: {
+    skinType?: string;
+    skinConcerns?: string[];
+    ingredientSensitivities?: string[];
+    updatedAt?: number;
+  };
 };
 
 export type FormError = {
@@ -174,6 +180,7 @@ export type ChatMessage = {
   resultType?: "routine";
   routine?: Routine;
   summary?: MessageSummary;
+  error?: string;
 };
 
 export type QuizMessage = {

@@ -482,10 +482,15 @@ export const normalizeSummary = (input: unknown): MessageSummary | null => {
   };
 };
 
-export const isChatMessage = (message: Message): message is ChatMessage => {
-  return message.role === "user" || message.role === "assistant";
+export const isQuizMessage = (message: Message): message is QuizMessage => {
+  // Quiz messages have unique properties: header, question, options, index
+  return "question" in message && "options" in message && "header" in message;
 };
 
-export const isQuizMessage = (message: Message): message is QuizMessage => {
-  return message.role === "quiz";
+export const isChatMessage = (message: Message): message is ChatMessage => {
+  // Chat messages have role user/assistant but are NOT quiz messages
+  return (
+    (message.role === "user" || message.role === "assistant") &&
+    !isQuizMessage(message)
+  );
 };

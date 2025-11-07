@@ -1,5 +1,5 @@
 import z from "zod";
-import { fetchAction, fetchMutation, fetchQuery } from "convex/nextjs";
+import { fetchAction, fetchMutation, fetchQuery } from "../convex/client";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -9,6 +9,84 @@ import {
   type SkinConcernCanonical,
   type SkinTypeCanonical,
 } from "../../shared/skinMappings";
+
+type NormalizedSkinProfile = {
+  skinType?: string;
+  skinConcerns?: string[];
+  ingredientSensitivities?: string[];
+  updatedAt?: number;
+};
+
+type SkinProfileFetchResult = {
+  success: boolean;
+  skinProfile: NormalizedSkinProfile | null;
+  quizCallToAction?: string;
+  error?: string;
+};
+
+async function fetchUserSkinProfile(
+  apiModule: Awaited<ReturnType<typeof ensureApi>>
+): Promise<SkinProfileFetchResult> {
+  try {
+    const response = await fetchQuery(apiModule.users.getUser, {});
+    const userRecord = response?.success ? (response.user as unknown) : null;
+    const skinProfile =
+      userRecord &&
+      typeof userRecord === "object" &&
+      "skinProfile" in userRecord &&
+      userRecord.skinProfile &&
+      typeof (userRecord as Record<string, unknown>).skinProfile === "object"
+        ? ((userRecord as Record<string, unknown>).skinProfile as Record<
+            string,
+            unknown
+          >)
+        : null;
+
+    if (!skinProfile) {
+      return {
+        success: false,
+        skinProfile: null,
+        quizCallToAction:
+          "We haven't saved your skin profile yet. SkinBuddy can walk you through a quick quiz to discover it whenever you're ready.",
+      };
+    }
+
+    const toStringArray = (value: unknown): string[] | undefined =>
+      Array.isArray(value)
+        ? value
+            .map((entry) =>
+              typeof entry === "string" && entry.trim().length
+                ? entry.trim().toLowerCase()
+                : null
+            )
+            .filter((entry): entry is string => Boolean(entry))
+        : undefined;
+
+    return {
+      success: true,
+      skinProfile: {
+        skinType:
+          typeof skinProfile.skinType === "string"
+            ? skinProfile.skinType
+            : undefined,
+        skinConcerns: toStringArray(skinProfile.skinConcerns),
+        ingredientSensitivities: toStringArray(
+          skinProfile.ingredientSensitivities
+        ),
+        updatedAt:
+          typeof skinProfile.updatedAt === "number"
+            ? skinProfile.updatedAt
+            : undefined,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      skinProfile: null,
+      error: error instanceof Error ? error.message : String(error ?? ""),
+    };
+  }
+}
 
 type ToolSpec = {
   name: string;
@@ -42,13 +120,13 @@ const searchProductsSchema = z
       .array(z.string())
       .optional()
       .describe(
-        "Canonical skin types to filter by (e.g. ['oily','sensitive'])."
+        "Canonical skin types to filter by (e.g. ['oily','sensitive']). If not provided, the user's saved profile will be used when available."
       ),
     skinConcerns: z
       .array(z.string())
       .optional()
       .describe(
-        "Canonical skin concerns to target (e.g. ['acne','hyperpigmentation'])."
+        "Canonical skin concerns to target (e.g. ['acne','hyperpigmentation']). If not provided, the user's saved profile will be used when available."
       ),
     benefits: z
       .array(z.string())
@@ -148,13 +226,14 @@ const searchProductsParameters = {
     skinTypes: {
       type: "array",
       items: { type: "string" },
-      description: "Canonical skin types to filter by (oily, dry, sensitive).",
+      description:
+        "Canonical skin types to filter by (oily, dry, sensitive). If omitted, the user's saved profile will be used when available.",
     },
     skinConcerns: {
       type: "array",
       items: { type: "string" },
       description:
-        "Canonical skin concerns to focus on (acne, hyperpigmentation, redness, etc.).",
+        "Canonical skin concerns to focus on (acne, hyperpigmentation, redness, etc.). If omitted, the user's saved profile will be used when available.",
     },
     benefits: {
       type: "array",
@@ -257,17 +336,12 @@ const productFiltersParameters = {
 
 const recommendRoutineSchema = z
   .object({
-    userId: z
-      .string()
-      .optional()
-      .describe(
-        "User identifier for saving routines; use 'guest' if the user is anonymous."
-      ),
     skinType: z
       .string()
       .min(1)
+      .optional()
       .describe(
-        "Canonical or user-provided skin type (oily, dry, combination, sensitive, balanced, etc.)."
+        "Canonical or user-provided skin type (oily, dry, combination, sensitive, balanced, etc.). If not provided, the user's saved profile will be used when available."
       ),
     skinConcerns: z
       .array(
@@ -278,7 +352,11 @@ const recommendRoutineSchema = z
             "Primary skin concerns the routine must target (acne, hyperpigmentation, sensitivity, dullness, etc.)."
           )
       )
-      .min(1),
+      .min(1)
+      .optional()
+      .describe(
+        "If not provided, the user's saved profile will be used when available."
+      ),
     ingredientsToAvoid: z
       .array(
         z
@@ -315,21 +393,16 @@ const recommendRoutineSchema = z
 const recommendRoutineParameters = {
   type: "object",
   properties: {
-    userId: {
-      type: "string",
-      description:
-        "User identifier for saving the routine; provide 'guest' if the user is anonymous.",
-    },
     skinType: {
       type: "string",
       description:
-        "Canonical skin type label (oily, dry, combination, sensitive, balanced, etc.).",
+        "Canonical skin type label (oily, dry, combination, sensitive, balanced, etc.). If omitted, the user's saved profile will be used when available.",
     },
     skinConcerns: {
       type: "array",
       items: { type: "string" },
       description:
-        "List of key skin concerns the routine must address (acne, dark spots, redness, etc.).",
+        "List of key skin concerns the routine must address (acne, dark spots, redness, etc.). If omitted, the user's saved profile will be used when available.",
     },
     ingredientsToAvoid: {
       type: "array",
@@ -345,7 +418,7 @@ const recommendRoutineParameters = {
     createRoutine: {
       type: "boolean",
       description:
-        "Set true to persist the generated routine for the user (requires authenticated userId).",
+        "Set true to persist the generated routine for the user (requires authentication).",
     },
     excludeProductIds: {
       type: "array",
@@ -354,7 +427,7 @@ const recommendRoutineParameters = {
         "IDs or slugs for products that should be omitted from the result set (e.g. user rejected them).",
     },
   },
-  required: ["skinType", "skinConcerns"],
+  required: [],
   additionalProperties: false,
 };
 
@@ -365,6 +438,50 @@ const startSkinTypeSurveyParameters = {
   properties: {},
   additionalProperties: false,
 } as const;
+
+const saveUserProfileSchema = z
+  .object({
+    skinType: z.string().optional(),
+    skinConcerns: z.array(z.string()).optional(),
+    skinConcern: z.string().optional(),
+    ingredientSensitivities: z.array(z.string()).optional(),
+    ingredientSensitivity: z.string().optional(),
+  })
+  .strict();
+
+const saveUserProfileParameters = {
+  type: "object",
+  properties: {
+    skinType: {
+      type: "string",
+      description:
+        "User's declared skin type (e.g. oily, dry, combination, sensitive).",
+    },
+    skinConcerns: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Primary skin concerns mentioned by the user (e.g. acne, hyperpigmentation).",
+    },
+    skinConcern: {
+      type: "string",
+      description:
+        "Singular skin concern value; converts into the skinConcerns list automatically.",
+    },
+    ingredientSensitivities: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Specific ingredients or ingredient families the user wishes to avoid (e.g. fragrance, alcohol).",
+    },
+    ingredientSensitivity: {
+      type: "string",
+      description:
+        "Singular ingredient sensitivity value; converts into the ingredientSensitivities list automatically.",
+    },
+  },
+  additionalProperties: false,
+};
 
 const ensureApi = async () => api;
 
@@ -600,6 +717,53 @@ const localTools: ToolSpec[] = [
       const input = recommendRoutineSchema.parse(rawInput);
       const apiModule = await ensureApi();
 
+      // Fallback to saved profile if explicit skin details are missing
+      let finalSkinType = input.skinType;
+      let finalSkinConcerns = input.skinConcerns;
+      let finalIngredientsToAvoid = input.ingredientsToAvoid;
+
+      const shouldFetchProfile =
+        !input.skinType || !input.skinConcerns || !input.skinConcerns.length;
+
+      if (shouldFetchProfile) {
+        try {
+          const userResult = await fetchQuery(apiModule.users.getUser, {});
+          if (userResult?.success && userResult.user?.skinProfile) {
+            const profile = userResult.user.skinProfile as {
+              skinType?: string;
+              skinConcerns?: string[];
+              ingredientSensitivities?: string[];
+            };
+            if (!finalSkinType && profile.skinType) {
+              finalSkinType = profile.skinType;
+            }
+            if (
+              (!finalSkinConcerns || !finalSkinConcerns.length) &&
+              Array.isArray(profile.skinConcerns) &&
+              profile.skinConcerns.length > 0
+            ) {
+              finalSkinConcerns = profile.skinConcerns;
+            }
+            if (
+              Array.isArray(profile.ingredientSensitivities) &&
+              profile.ingredientSensitivities.length > 0
+            ) {
+              // Merge with explicit ingredientsToAvoid
+              const mergedAvoid = new Set([
+                ...(input.ingredientsToAvoid || []),
+                ...profile.ingredientSensitivities,
+              ]);
+              finalIngredientsToAvoid = Array.from(mergedAvoid);
+            }
+          }
+        } catch (error) {
+          console.warn(
+            "Failed to fetch saved skin profile for fallback:",
+            error
+          );
+        }
+      }
+
       const allowedSkinTypes = new Set<SkinTypeCanonical>([
         "normal",
         "oily",
@@ -650,15 +814,27 @@ const localTools: ToolSpec[] = [
           : null;
       };
 
-      const canonicalSkinType = resolveCanonicalSkinType(input.skinType);
+      if (!finalSkinType) {
+        throw new Error(
+          "Skin type is required. Either provide it explicitly or ensure user has a saved profile."
+        );
+      }
+
+      const canonicalSkinType = resolveCanonicalSkinType(finalSkinType);
       if (!canonicalSkinType) {
         throw new Error(
-          `Unsupported skin type "${input.skinType}". Provide a canonical type (oily, dry, combination, sensitive, mature, acne-prone, normal, all).`
+          `Unsupported skin type "${finalSkinType}". Provide a canonical type (oily, dry, combination, sensitive, mature, acne-prone, normal, all).`
+        );
+      }
+
+      if (!finalSkinConcerns || !finalSkinConcerns.length) {
+        throw new Error(
+          "At least one skin concern is required. Either provide it explicitly or ensure user has a saved profile."
         );
       }
 
       const concernSet = new Set<SkinConcernCanonical>();
-      input.skinConcerns.forEach((concern) => {
+      finalSkinConcerns.forEach((concern) => {
         const resolved = resolveCanonicalSkinConcern(concern);
         if (resolved) concernSet.add(resolved);
       });
@@ -705,10 +881,10 @@ const localTools: ToolSpec[] = [
         return hyphenated ?? null;
       };
 
-      const ingredientsToAvoid = Array.isArray(input.ingredientsToAvoid)
+      const ingredientsToAvoid = Array.isArray(finalIngredientsToAvoid)
         ? Array.from(
             new Set(
-              input.ingredientsToAvoid
+              finalIngredientsToAvoid
                 .map(resolveSensitivity)
                 .filter(
                   (value): value is IngredientSensitivityCanonical =>
@@ -727,7 +903,6 @@ const localTools: ToolSpec[] = [
       );
 
       const payload = {
-        userId: input.userId ?? "guest",
         skinType: canonicalSkinType,
         skinConcern: Array.from(concernSet),
         ingredientsToAvoid:
@@ -935,17 +1110,15 @@ const localTools: ToolSpec[] = [
     parameters: {
       type: "object",
       properties: {
-        userId: { type: "string" },
         productId: { type: "string" },
         sizeId: { type: "string" },
         quantity: { type: "integer", minimum: 1 },
       },
-      required: ["userId", "productId", "sizeId", "quantity"],
+      required: ["productId", "sizeId", "quantity"],
       additionalProperties: false,
     },
     schema: z
       .object({
-        userId: z.string(),
         productId: z.string(),
         sizeId: z.string(),
         quantity: z.number().min(1),
@@ -954,7 +1127,6 @@ const localTools: ToolSpec[] = [
     handler: async (rawInput) => {
       const input = z
         .object({
-          userId: z.string(),
           productId: z.string(),
           sizeId: z.string(),
           quantity: z.number().min(1),
@@ -962,7 +1134,6 @@ const localTools: ToolSpec[] = [
         .parse(rawInput);
       const apiModule = await ensureApi();
       return fetchMutation(apiModule.cart.createCart, {
-        userId: input.userId,
         productId: input.productId as Id<"products">,
         sizeId: input.sizeId,
         quantity: input.quantity,
@@ -1016,15 +1187,60 @@ const localTools: ToolSpec[] = [
         return { canonical: Array.from(canonical), unresolved };
       };
 
+      // Fallback to saved profile if explicit filters are missing
+      let finalSkinTypes = input.skinTypes;
+      let finalSkinConcerns = input.skinConcerns;
+      let finalIngredientsToAvoid = input.ingredientsToAvoid;
+
+      const shouldFetchProfile = !input.skinTypes && !input.skinConcerns;
+
+      if (shouldFetchProfile) {
+        try {
+          const userResult = await fetchQuery(apiModule.users.getUser, {});
+          if (userResult?.success && userResult.user?.skinProfile) {
+            const profile = userResult.user.skinProfile as {
+              skinType?: string;
+              skinConcerns?: string[];
+              ingredientSensitivities?: string[];
+            };
+            if (profile.skinType) {
+              finalSkinTypes = [profile.skinType];
+            }
+            if (
+              Array.isArray(profile.skinConcerns) &&
+              profile.skinConcerns.length > 0
+            ) {
+              finalSkinConcerns = profile.skinConcerns;
+            }
+            if (
+              Array.isArray(profile.ingredientSensitivities) &&
+              profile.ingredientSensitivities.length > 0
+            ) {
+              // Merge with explicit ingredientsToAvoid
+              const mergedAvoid = new Set([
+                ...(input.ingredientsToAvoid || []),
+                ...profile.ingredientSensitivities,
+              ]);
+              finalIngredientsToAvoid = Array.from(mergedAvoid);
+            }
+          }
+        } catch (error) {
+          console.warn(
+            "Failed to fetch saved skin profile for fallback:",
+            error
+          );
+        }
+      }
+
       const {
         canonical: canonicalSkinTypes,
         unresolved: unresolvedSkinTypeQueries,
-      } = processValues<SkinTypeCanonical>(input.skinTypes, resolveSkinType);
+      } = processValues<SkinTypeCanonical>(finalSkinTypes, resolveSkinType);
       const {
         canonical: canonicalSkinConcerns,
         unresolved: unresolvedSkinConcernQueries,
       } = processValues<SkinConcernCanonical>(
-        input.skinConcerns,
+        finalSkinConcerns,
         resolveSkinConcern
       );
 
@@ -1042,10 +1258,10 @@ const localTools: ToolSpec[] = [
           )
         : undefined;
 
-      const cleanedIngredientsToAvoid = Array.isArray(input.ingredientsToAvoid)
+      const cleanedIngredientsToAvoid = Array.isArray(finalIngredientsToAvoid)
         ? Array.from(
             new Set(
-              input.ingredientsToAvoid
+              finalIngredientsToAvoid
                 .map((value) => value.trim().toLowerCase())
                 .filter((value) => value.length > 0)
             )
@@ -1142,7 +1358,7 @@ const localTools: ToolSpec[] = [
 
       const sanitizedProducts = Array.isArray(response.products)
         ? response.products
-            .map((product) => {
+            .map((product: unknown) => {
               const info = extractRelevantProductInfo(product);
               if (!info) return null;
               if (excludedIds.size > 0) {
@@ -1161,7 +1377,10 @@ const localTools: ToolSpec[] = [
                   : undefined;
               return score != null ? { ...info, score } : info;
             })
-            .filter((product): product is SanitizedProduct => Boolean(product))
+            .filter(
+              (product: SanitizedProduct | null): product is SanitizedProduct =>
+                Boolean(product)
+            )
         : [];
 
       if (!sanitizedProducts.length) {
@@ -1183,26 +1402,16 @@ const localTools: ToolSpec[] = [
   {
     name: "getUserCart",
     description:
-      "Retrieves all cart items for a specific user, including product details, pricing, and stock availability.",
+      "Retrieves all cart items for the current user, including product details, pricing, and stock availability.",
     parameters: {
       type: "object",
-      properties: {
-        userId: { type: "string" },
-      },
-      required: ["userId"],
+      properties: {},
       additionalProperties: false,
     },
-    schema: z
-      .object({
-        userId: z.string(),
-      })
-      .strict(),
-    handler: async (rawInput) => {
-      const input = z.object({ userId: z.string() }).parse(rawInput);
+    schema: z.object({}).strict(),
+    handler: async () => {
       const apiModule = await ensureApi();
-      const userCart = await fetchQuery(apiModule.cart.getUserCart, {
-        userId: input.userId,
-      });
+      const userCart = await fetchQuery(apiModule.cart.getUserCart, {});
 
       const cartItems = Array.isArray(userCart?.cart)
         ? (userCart.cart as Array<Record<string, unknown>>)
@@ -1381,16 +1590,14 @@ const localTools: ToolSpec[] = [
       properties: {
         cartId: { type: "string" },
         quantity: { type: "integer", minimum: 1 },
-        userId: { type: "string" },
       },
-      required: ["cartId", "quantity", "userId"],
+      required: ["cartId", "quantity"],
       additionalProperties: false,
     },
     schema: z
       .object({
         cartId: z.string(),
         quantity: z.number().min(1),
-        userId: z.string(),
       })
       .strict(),
     handler: async (rawInput) => {
@@ -1398,14 +1605,12 @@ const localTools: ToolSpec[] = [
         .object({
           cartId: z.string(),
           quantity: z.number().min(1),
-          userId: z.string(),
         })
         .parse(rawInput);
       const apiModule = await ensureApi();
       return fetchMutation(apiModule.cart.updateCartQuantity, {
         cartId: input.cartId as Id<"carts">,
         quantity: input.quantity,
-        userId: input.userId,
       });
     },
   },
@@ -1416,28 +1621,24 @@ const localTools: ToolSpec[] = [
       type: "object",
       properties: {
         cartId: { type: "string" },
-        userId: { type: "string" },
       },
-      required: ["cartId", "userId"],
+      required: ["cartId"],
       additionalProperties: false,
     },
     schema: z
       .object({
         cartId: z.string(),
-        userId: z.string(),
       })
       .strict(),
     handler: async (rawInput) => {
       const input = z
         .object({
           cartId: z.string(),
-          userId: z.string(),
         })
         .parse(rawInput);
       const apiModule = await ensureApi();
       return fetchMutation(apiModule.cart.removeFromCart, {
         cartId: input.cartId as Id<"carts">,
-        userId: input.userId,
       });
     },
   },
@@ -1446,23 +1647,94 @@ const localTools: ToolSpec[] = [
     description: "Removes all items from a user's cart.",
     parameters: {
       type: "object",
-      properties: {
-        userId: { type: "string" },
-      },
-      required: ["userId"],
+      properties: {},
       additionalProperties: false,
     },
-    schema: z
-      .object({
-        userId: z.string(),
-      })
-      .strict(),
-    handler: async (rawInput) => {
-      const input = z.object({ userId: z.string() }).parse(rawInput);
+    schema: z.object({}).strict(),
+    handler: async () => {
       const apiModule = await ensureApi();
-      return fetchMutation(apiModule.cart.clearCart, {
-        userId: input.userId,
-      });
+      return fetchMutation(apiModule.cart.clearCart, {});
+    },
+  },
+  {
+    name: "getSkinProfile",
+    description:
+      "Fetch the signed-in user's saved skin profile (skin type, concerns, ingredient sensitivities). Call this when the user asks about their skin profile (skin type, concerns, ingredient sensitivities).",
+    parameters: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+    schema: z.object({}).strict(),
+    handler: async () => {
+      const apiModule = await ensureApi();
+      try {
+        const response = await fetchQuery(apiModule.users.getUser, {});
+        const userRecord = response?.success
+          ? (response.user as unknown)
+          : null;
+        const skinProfile =
+          userRecord &&
+          typeof userRecord === "object" &&
+          "skinProfile" in userRecord &&
+          userRecord.skinProfile &&
+          typeof (userRecord as Record<string, unknown>).skinProfile ===
+            "object"
+            ? ((userRecord as Record<string, unknown>).skinProfile as Record<
+                string,
+                unknown
+              >)
+            : null;
+
+        if (!skinProfile) {
+          return {
+            success: false,
+            skinProfile: null,
+            quizCallToAction:
+              "We haven't saved your skin profile yet. SkinBuddy can walk you through a quick quiz to discover it whenever you're ready.",
+          };
+        }
+
+        const toStringArray = (value: unknown): string[] | undefined =>
+          Array.isArray(value)
+            ? value
+                .map((entry) =>
+                  typeof entry === "string" && entry.trim().length
+                    ? entry.trim().toLowerCase()
+                    : null
+                )
+                .filter((entry): entry is string => Boolean(entry))
+            : undefined;
+
+        const normalizedProfile = {
+          skinType:
+            typeof skinProfile.skinType === "string"
+              ? skinProfile.skinType
+              : undefined,
+          skinConcerns: toStringArray(skinProfile.skinConcerns),
+          ingredientSensitivities: toStringArray(
+            skinProfile.ingredientSensitivities
+          ),
+          updatedAt:
+            typeof skinProfile.updatedAt === "number"
+              ? skinProfile.updatedAt
+              : undefined,
+        };
+
+        return {
+          success: true,
+          skinProfile: normalizedProfile,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          skinProfile: null,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to load skin profile",
+        };
+      }
     },
   },
   // {
@@ -1531,6 +1803,73 @@ const localTools: ToolSpec[] = [
     schema: startSkinTypeSurveySchema,
     handler: async () => {
       return { acknowledged: true };
+    },
+  },
+  {
+    name: "saveUserProfile",
+    description:
+      "Persist the user's skin profile details (skin type, concerns, ingredient sensitivities) for use in future recommendations.",
+    parameters: saveUserProfileParameters,
+    schema: saveUserProfileSchema,
+    handler: async (rawInput) => {
+      const input = saveUserProfileSchema.parse(rawInput);
+
+      const normalizeString = (value: unknown): string | null => {
+        if (typeof value !== "string") return null;
+        const trimmed = value.trim();
+        return trimmed.length ? trimmed : null;
+      };
+
+      const toUniqueList = (...sources: Array<unknown>): string[] => {
+        const unique = new Set<string>();
+        sources.forEach((source) => {
+          if (Array.isArray(source)) {
+            source.forEach((entry) => {
+              const normalized = normalizeString(entry);
+              if (!normalized) return;
+              unique.add(normalized.toLowerCase());
+            });
+          } else {
+            const normalized = normalizeString(source);
+            if (!normalized) return;
+            unique.add(normalized.toLowerCase());
+          }
+        });
+        return Array.from(unique);
+      };
+
+      const skinType = (() => {
+        const normalized = normalizeString(input.skinType);
+        if (!normalized) return undefined;
+        const resolved = resolveSkinType(normalized);
+        return (resolved ?? normalized).toLowerCase();
+      })();
+
+      const skinConcernsRaw = toUniqueList(
+        input.skinConcerns,
+        input.skinConcern
+      );
+      const skinConcerns = skinConcernsRaw.length
+        ? skinConcernsRaw.map((concern) => {
+            const resolved = resolveSkinConcern(concern);
+            return (resolved ?? concern).toLowerCase();
+          })
+        : undefined;
+
+      const ingredientSensitivitiesRaw = toUniqueList(
+        input.ingredientSensitivities,
+        input.ingredientSensitivity
+      );
+      const ingredientSensitivities = ingredientSensitivitiesRaw.length
+        ? ingredientSensitivitiesRaw
+        : undefined;
+
+      const apiModule = await ensureApi();
+      return fetchMutation(apiModule.users.saveSkinProfile, {
+        ...(typeof skinType === "string" ? { skinType } : {}),
+        ...(skinConcerns ? { skinConcerns } : {}),
+        ...(ingredientSensitivities ? { ingredientSensitivities } : {}),
+      });
     },
   },
 ];

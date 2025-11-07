@@ -45,11 +45,7 @@ export default function PendingActions() {
   const setStatus = useMutation(api.users.setPendingActionStatus);
   const createRoutine = useAction(api.routine.createRoutine);
 
-  const { data } = useQuery(
-    convexQuery(api.users.getPendingActions, {
-      userId: (user?._id as string) || "",
-    })
-  );
+  const { data } = useQuery(convexQuery(api.users.getPendingActions, {}));
 
   console.log(data, "These are the pending actions");
   //   console.log(data, "These are the pending actions");
@@ -108,7 +104,6 @@ export default function PendingActions() {
             open("routine-ready");
             if (user?._id) {
               setStatus({
-                userId: user._id as string,
                 actionId: action.id,
                 status: "completed",
               }).catch(() => {
@@ -138,7 +133,6 @@ export default function PendingActions() {
     close();
     try {
       await setStatus({
-        userId: user._id as string,
         actionId: String((currentAction?.id ?? nextAction?.id) || ""),
         status,
       });
@@ -163,7 +157,6 @@ export default function PendingActions() {
         try {
           await createRoutine({
             productIds: currentAction.data.productsToadd,
-            userId: user._id as string,
           });
           toast.success("Routine created successfully", {
             id: toastId,

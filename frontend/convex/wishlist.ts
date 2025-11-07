@@ -6,8 +6,14 @@ import { mutation, query } from "./_generated/server";
  * Returns the wishlist document id.
  **/
 export const createWishList = mutation({
-  args: { userId: v.string(), productId: v.id("products") },
-  handler: async (ctx, { userId, productId }) => {
+  args: { productId: v.id("products") },
+  handler: async (ctx, { productId }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId) {
+      throw new Error("Authentication required");
+    }
+
     // Check if it already exists (idempotent)
     const existing = await ctx.db
       .query("wishlists")
@@ -32,8 +38,14 @@ export const createWishList = mutation({
  * Returns true if something was deleted, false otherwise.
  */
 export const deleteWishList = mutation({
-  args: { userId: v.string(), productId: v.id("products") },
-  handler: async (ctx, { userId, productId }) => {
+  args: { productId: v.id("products") },
+  handler: async (ctx, { productId }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId) {
+      throw new Error("Authentication required");
+    }
+
     const existing = await ctx.db
       .query("wishlists")
       .withIndex("by_user_product", (q) =>
@@ -53,11 +65,16 @@ export const deleteWishList = mutation({
  * Get all wishlist entries for a user. Includes basic product details for convenience.
  */
 export const getUserWishLists = query({
-  args: { userId: v.string() },
-  handler: async (ctx, { userId }) => {
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required");
+    }
+
     const items = await ctx.db
       .query("wishlists")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .withIndex("by_userId", (q) => q.eq("userId", identity.subject))
       .collect();
 
     // Load products for each wishlist item

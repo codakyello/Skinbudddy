@@ -28,8 +28,7 @@ type ParsedAssistantReply = {
   suggestedActions: string[];
 };
 
-const SUGGESTED_ACTIONS_HEADING_REGEX =
-  /(?:^|\n)Suggested actions\s*:?\s*\n/i;
+const SUGGESTED_ACTIONS_HEADING_REGEX = /(?:^|\n)Suggested actions\s*:?\s*\n/i;
 
 function splitAssistantReply(message: string): ParsedAssistantReply {
   if (typeof message !== "string" || !message.trim().length) {
@@ -62,7 +61,10 @@ function splitAssistantReply(message: string): ParsedAssistantReply {
     break;
   }
 
-  return { main: main.length ? main : normalized.trim(), suggestedActions: suggestions };
+  return {
+    main: main.length ? main : normalized.trim(),
+    suggestedActions: suggestions,
+  };
 }
 
 const AFFIRMATIVE_PHRASES = [
@@ -1131,7 +1133,7 @@ async function handleChatPost(req: NextRequest) {
                 sessionId,
               })
             );
-        }
+          }
 
           const context = await fetchQuery(api.conversation.getContext, {
             sessionId,
@@ -1316,7 +1318,7 @@ async function handleChatPost(req: NextRequest) {
               ? body.model.trim()
               : useOpenAI
                 ? "gpt-4o-mini"
-                : "gemini-2.5-flash-lite";
+                : "gemini-2.5-flash";
           const resolvedTemperature =
             typeof body?.temperature === "number" ? body.temperature : 0.5;
           const maxToolRounds =
@@ -1388,12 +1390,28 @@ async function handleChatPost(req: NextRequest) {
             },
           });
 
-          const assistantMessage = completion.reply;
-          const { main: assistantMain } =
-            splitAssistantReply(assistantMessage);
-          const storedAssistantMessage = assistantMain.trim().length
-            ? assistantMain.trim()
-            : assistantMessage;
+          const assistantMessage = completion.reply ?? "";
+          const { main: assistantMain } = splitAssistantReply(assistantMessage);
+          const trimmedMain = assistantMain.trim();
+          let storedAssistantMessage = trimmedMain;
+          let finalReply = assistantMessage;
+
+          if (!trimmedMain.length) {
+            const fallbackMain =
+              "Got it — I'll take care of that now. If you'd like, I can keep helping with anything else.";
+            storedAssistantMessage = fallbackMain;
+            const trimmedAssistant = assistantMessage.trim();
+
+            finalReply = trimmedAssistant.length
+              ? `${fallbackMain}\n\n${trimmedAssistant}`
+              : fallbackMain;
+          } else {
+            storedAssistantMessage = trimmedMain;
+            finalReply = assistantMessage.trim().length
+              ? assistantMessage
+              : trimmedMain;
+          }
+
           const startSkinTypeQuiz = completion.startSkinTypeQuiz ?? false;
           // many tool outputs in one api iteration or loop
           const toolOutputs = completion.toolOutputs ?? [];
@@ -1463,12 +1481,14 @@ async function handleChatPost(req: NextRequest) {
             );
           }
 
-          if (!startSkinTypeQuiz && storedAssistantMessage.trim().length) {
+          const storedAssistantTrimmed = storedAssistantMessage.trim();
+
+          if (!startSkinTypeQuiz && storedAssistantTrimmed.length) {
             schedule(
               fetchMutation(api.conversation.appendMessage, {
                 sessionId,
                 role: "assistant",
-                content: storedAssistantMessage,
+                content: storedAssistantTrimmed,
               }).then((result) => {
                 if (result?.needsSummary) {
                   return fetchAction(api.conversation.recomputeSummaries, {
@@ -1485,7 +1505,7 @@ async function handleChatPost(req: NextRequest) {
           } else {
             await send({
               type: "final",
-              reply: assistantMessage,
+              reply: finalReply,
               sessionId,
               toolOutputs,
               products,

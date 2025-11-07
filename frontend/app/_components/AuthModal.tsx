@@ -89,9 +89,9 @@ export default function AuthModal() {
           <button onClick={() => signOut()}>Logout</button>
         </div>
       ) : hasAccount ? (
-        <SignIn onClose={close} handleHasAccount={handleHasAccount} />
+        <SignIn onClose={close} onHasAccount={handleHasAccount} />
       ) : (
-        <SignUp onClose={close} handleHasAccount={handleHasAccount} />
+        <SignUp onClose={close} onHasAccount={handleHasAccount} />
       )}
     </Box>
   );
@@ -99,10 +99,10 @@ export default function AuthModal() {
 
 function SignIn({
   onClose,
-  handleHasAccount,
+  onHasAccount,
 }: {
   onClose?: () => void;
-  handleHasAccount?: () => void;
+  onHasAccount?: () => void;
 }) {
   const [errors, setErrors] = useState<FormError>({
     email: "",
@@ -199,12 +199,12 @@ function SignIn({
           }}
         />
 
-        <Box className="flex justify-between text-[#000] text-[1.4rem] mt-[2rem]">
-          <Box className="flex items-center gap-[.8rem]">
+        <Box className="flex justify-end text-[#000] text-[1.4rem] mt-[2rem]">
+          {/* <Box className="flex items-center gap-[.8rem]">
             <CheckBox name="remember-password" id="my-remember-password" />
 
             <label htmlFor="my-remember-password">Remember me</label>
-          </Box>
+          </Box> */}
 
           <Button
             className="text-[1.4rem] text-[#000]"
@@ -273,7 +273,7 @@ function SignIn({
         <Button
           type="outline"
           disabled={isLoading}
-          onClick={handleHasAccount}
+          onClick={onHasAccount}
           className="w-full"
         >
           Register
@@ -285,10 +285,10 @@ function SignIn({
 
 function SignUp({
   onClose,
-  handleHasAccount,
+  onHasAccount,
 }: {
   onClose?: () => void;
-  handleHasAccount?: () => void;
+  onHasAccount?: () => void;
 }) {
   const [errors, setErrors] = useState<FormError>({
     email: "",
@@ -327,9 +327,11 @@ function SignUp({
       });
 
       // 2. Prepare email verification (send magic link)
+      const redirectUrl = "http://localhost:3000";
+
       await signUp.prepareEmailAddressVerification({
         strategy: "email_link",
-        redirectUrl: "http://localhost:3000",
+        redirectUrl,
       });
 
       // 3. Show a form to collect the code from the user, then verify:
@@ -354,7 +356,7 @@ function SignUp({
   };
   return (
     <Box>
-      <Button type="outline" onClick={handleHasAccount} className="w-full ">
+      <Button type="outline" onClick={onHasAccount} className="w-full ">
         Sign In
       </Button>
 

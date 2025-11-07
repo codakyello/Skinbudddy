@@ -31,7 +31,10 @@ function now() {
 }
 
 function tokensFromMessages(messages: Array<{ content: string }>): number {
-  return messages.reduce((total, msg) => total + countTextTokens(msg.content), 0);
+  return messages.reduce(
+    (total, msg) => total + countTextTokens(msg.content),
+    0
+  );
 }
 
 function normalise(text: string): string {
@@ -59,10 +62,7 @@ function jaccard(a: Set<string>, b: Set<string>): number {
   return union ? intersect / union : 0;
 }
 
-async function fetchMessages(
-  db: any,
-  sessionId: Id<"conversationSessions">
-) {
+async function fetchMessages(db: any, sessionId: Id<"conversationSessions">) {
   return await db
     .query("conversationMessages")
     .withIndex("by_sessionId_index", (q: any) => q.eq("sessionId", sessionId))
@@ -156,7 +156,9 @@ async function generateSummaryText(
       typeof contentCandidate === "string" && contentCandidate.trim().length
         ? contentCandidate.trim()
         : undefined;
-    return content || truncated.slice(0, Math.min(truncated.length, maxTokens * 4));
+    return (
+      content || truncated.slice(0, Math.min(truncated.length, maxTokens * 4))
+    );
   } catch (error) {
     console.warn("summary generation failed", error);
     return truncated.slice(0, Math.min(truncated.length, maxTokens * 4));
@@ -164,10 +166,11 @@ async function generateSummaryText(
 }
 export const createSession = mutation({
   args: {
-    userId: v.optional(v.string()),
     config: v.optional(v.any()),
   },
-  handler: async (ctx, { userId, config }) => {
+  handler: async (ctx, { config }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
     const nowTs = now();
     const sessionId = await ctx.db.insert("conversationSessions", {
       userId,
@@ -407,7 +410,14 @@ export const applySummaries = internalMutation({
       midStart,
       recentStart - 1
     );
-    await upsertSummaryRecord(ctx, sessionId, "historical", historicalSummary, 0, midStart - 1);
+    await upsertSummaryRecord(
+      ctx,
+      sessionId,
+      "historical",
+      historicalSummary,
+      0,
+      midStart - 1
+    );
   },
 });
 
@@ -434,7 +444,10 @@ export const getContext = query({
     const pinnedSet = new Set<Id<"conversationMessages">>(
       session.pinnedMessageIds ?? []
     );
-    const recentStart = Math.max(0, messages.length - config.recentMessageCount);
+    const recentStart = Math.max(
+      0,
+      messages.length - config.recentMessageCount
+    );
 
     const includedRecent = messages.slice(recentStart);
     const includedRecentIds = new Set<Id<"conversationMessages">>(
@@ -463,7 +476,9 @@ export const getContext = query({
       });
     }
 
-    const pinnedMessages = messages.filter((msg: any) => pinnedSet.has(msg._id));
+    const pinnedMessages = messages.filter((msg: any) =>
+      pinnedSet.has(msg._id)
+    );
     pinnedMessages.sort((a: any, b: any) => a.index - b.index);
     const pinnedIds = new Set<Id<"conversationMessages">>(
       pinnedMessages.map((msg: any) => msg._id)
@@ -497,10 +512,11 @@ export const getContext = query({
         msg,
         score: jaccard(lastUserTokens, tokenise(msg.content)),
       }))
-      .filter((item: ScoredMessage) => item.score >= config.semanticSimilarityThreshold)
-      .sort(
-        (a: ScoredMessage, b: ScoredMessage) => b.score - a.score
+      .filter(
+        (item: ScoredMessage) =>
+          item.score >= config.semanticSimilarityThreshold
       )
+      .sort((a: ScoredMessage, b: ScoredMessage) => b.score - a.score)
       .slice(0, config.semanticCandidateLimit)
       .map((item: ScoredMessage) => item.msg);
 
@@ -533,7 +549,11 @@ export const getContext = query({
     let totalTokens = assembled.reduce((total, item) => total + item.tokens, 0);
     if (totalTokens > config.maxContextTokens) {
       // Trim oldest recent messages first.
-      for (let i = assembled.length - 1; i >= 0 && totalTokens > config.maxContextTokens; i--) {
+      for (
+        let i = assembled.length - 1;
+        i >= 0 && totalTokens > config.maxContextTokens;
+        i--
+      ) {
         const item = assembled[i];
         if (item.category !== "recent") continue;
         assembled.splice(i, 1);
@@ -573,6 +593,8 @@ export const resetSession = mutation({
       .query("conversationSummaries")
       .withIndex("by_sessionId", (q: any) => q.eq("sessionId", sessionId))
       .collect();
-    await Promise.all(summaries.map((record: any) => ctx.db.delete(record._id)));
+    await Promise.all(
+      summaries.map((record: any) => ctx.db.delete(record._id))
+    );
   },
 });

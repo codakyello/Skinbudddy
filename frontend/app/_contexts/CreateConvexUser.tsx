@@ -11,8 +11,13 @@ import { useUser as useClerkUser } from "@clerk/clerk-react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { User as AppUser } from "../_utils/types";
+import { convexClient } from "@/convex/convex";
+import { GUEST_TOKEN_STORAGE_KEY } from "@/app/_lib/guestAuth";
 
-type UserState = Omit<Partial<AppUser>, "_id"> & { _id?: string; image?: string };
+type UserState = Omit<Partial<AppUser>, "_id"> & {
+  _id?: string;
+  image?: string;
+};
 
 const GUEST_ID_KEY = "convex_guest_id";
 
@@ -40,6 +45,26 @@ export default function ConvexUserProvider({
   const [user, setConvexUser] = useState<UserState>({});
   const [state, setState] = useState(false);
 
+  async function generateGuestToken(guestId: string): Promise<string | null> {
+    const response = await fetch("/api/auth/guest-token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ guestId }),
+    });
+
+    if (response.ok) {
+      const data = (await response.json()) as { token?: string };
+      const token = data.token;
+      if (token) {
+        localStorage.setItem(GUEST_TOKEN_STORAGE_KEY, token);
+      }
+      return token ?? null;
+    }
+    return null;
+  }
+
   function triggerRerender() {
     console.log(state);
     setState((prev) => !prev);
@@ -54,31 +79,74 @@ export default function ConvexUserProvider({
         if (!guestId) {
           guestId = generateGuestId();
           localStorage.setItem(GUEST_ID_KEY, guestId);
-
-          await createUser({ userId: guestId, email: "" });
         }
 
         if (guestId) {
+          try {
+            const storedToken = localStorage.getItem(GUEST_TOKEN_STORAGE_KEY);
+            let token = storedToken;
+
+            if (!token) {
+              token = (await generateGuestToken(guestId)) ?? "";
+            }
+
+            if (token) {
+              console.log("Setting Convex auth token", token.slice(0, 12));
+              convexClient.setAuth(async () => token as string);
+
+              try {
+                await createUser({});
+              } catch (err) {
+                console.error("Failed to create guest user", err);
+                convexClient.setAuth(async () => null);
+                localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
+
+                try {
+                  const refreshedToken = await generateGuestToken(guestId);
+                  if (refreshedToken) {
+                    localStorage.setItem(
+                      GUEST_TOKEN_STORAGE_KEY,
+                      refreshedToken
+                    );
+                    convexClient.setAuth(async () => refreshedToken);
+                    await createUser({});
+                  }
+                } catch (retryError) {
+                  console.error("Retrying guest auth failed", retryError);
+                }
+              }
+            } else {
+              convexClient.setAuth(async () => null);
+            }
+          } catch (error) {
+            console.error("Failed to initialize guest auth", error);
+            convexClient.setAuth(async () => null);
+          }
+
           setConvexUser({ _id: guestId, name: "Guest" });
         }
+        // user is signed in and has a clerk user id
+        // create a new user with the clerk user id for first time users
       } else if (clerkUser?.id) {
         const email = clerkUser.emailAddresses?.[0]?.emailAddress;
         const name = clerkUser.fullName || clerkUser.username || undefined;
         const imageUrl = clerkUser.imageUrl || undefined;
 
         await createUser({
-          userId: clerkUser.id,
           email,
           name,
           imageUrl,
-          clerkId: clerkUser.id,
+          authType: "clerk",
         });
 
         const guestId = localStorage.getItem(GUEST_ID_KEY);
         if (guestId) {
-          await transferGuestData({ guestId, userId: clerkUser.id });
+          await transferGuestData({ guestId });
           localStorage.removeItem(GUEST_ID_KEY);
         }
+
+        localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
+        convexClient.setAuth(async () => null);
 
         setConvexUser({
           _id: clerkUser.id,
@@ -96,7 +164,6 @@ export default function ConvexUserProvider({
     if (!isSignedIn || !clerkUser) {
       const guestId = localStorage.getItem(GUEST_ID_KEY);
       if (!guestId && user._id) {
-        console.log("ran here");
         localStorage.setItem(GUEST_ID_KEY, user._id);
       }
     }

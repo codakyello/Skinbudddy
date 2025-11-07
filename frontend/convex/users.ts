@@ -1,30 +1,45 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { resolveSkinConcern, resolveSkinType } from "../shared/skinMappings";
+import { AuthType } from "./schema";
 
 export const createUser = mutation({
   args: {
-    userId: v.string(),
     email: v.optional(v.string()),
     name: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
-    clerkId: v.optional(v.string()),
+    authType: v.optional(AuthType),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    console.log(identity, "This is the identity object");
+
+    const userId = identity?.subject;
+    console.log(userId, "This is the user id either clerk user id or guest id");
+
+    if (!userId) {
+      return {
+        success: false,
+        statusCode: 401,
+        message: "Authentication required",
+      } as const;
+    }
+
     // Check if user already exists (prevent duplicates)
     const existing = await ctx.db
       .query("users")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
       .first();
 
     if (existing) return existing;
 
     const newUser = await ctx.db.insert("users", {
-      clerkId: args.clerkId,
-      userId: args.userId,
+      userId, // this is the clerk user id or guest id
       email: args.email,
       name: args.name,
       createdAt: Date.now(),
       hasUsedRecommender: false,
+      authType: args.authType ?? "anon",
     });
 
     return newUser;
@@ -34,9 +49,14 @@ export const createUser = mutation({
 export const transferGuestDataToUser = mutation({
   args: {
     guestId: v.string(),
-    userId: v.string(),
   },
-  handler: async (ctx, { guestId, userId }) => {
+  handler: async (ctx, { guestId }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId) {
+      throw new Error("Authentication required");
+    }
+
     //1 Transfer cart items
     const guestCartItems = await ctx.db
       .query("carts")
@@ -86,10 +106,12 @@ export const transferGuestDataToUser = mutation({
 
 // Get pending actions for a user by external userId
 export const getPendingActions = query({
-  args: { userId: v.string() },
-  handler: async (ctx, { userId }) => {
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
     if (!userId)
-      return { success: false, actions: [], statusCode: 400 } as const;
+      return { success: false, actions: [], statusCode: 401 } as const;
 
     const user = await ctx.db
       .query("users")
@@ -118,7 +140,6 @@ export const getPendingActions = query({
 // Update the status of a specific pending action identified by action id
 export const setPendingActionStatus = mutation({
   args: {
-    userId: v.string(),
     actionId: v.string(),
     status: v.union(
       v.literal("pending"),
@@ -126,7 +147,16 @@ export const setPendingActionStatus = mutation({
       v.literal("dismissed")
     ),
   },
-  handler: async (ctx, { userId, actionId, status }) => {
+  handler: async (ctx, { actionId, status }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId)
+      return {
+        success: false,
+        statusCode: 401,
+        message: "Authentication required",
+      } as const;
+
     const user = await ctx.db
       .query("users")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -158,18 +188,20 @@ export const setPendingActionStatus = mutation({
 });
 
 export const getUser = query({
-  args: { userId: v.string() },
-  handler: async (ctx, { userId }) => {
-    if (!userId)
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
       return {
         success: false,
-        statusCode: 400,
-        message: "userId is required",
+        statusCode: 401,
+        message: "Authentication required",
       } as const;
+    }
 
     const user = await ctx.db
       .query("users")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .withIndex("by_userId", (q) => q.eq("userId", identity.subject))
       .first();
 
     if (!user)
@@ -180,5 +212,138 @@ export const getUser = query({
       } as const;
 
     return { success: true, user } as const;
+  },
+});
+
+export const isAnonGuest = query({
+  args: {
+    userId: v.string(),
+  },
+  handler: async (ctx, { userId }) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+
+    if (!user) return false;
+    return user.authType === "anon";
+  },
+});
+
+export const saveSkinProfile = mutation({
+  args: {
+    skinType: v.optional(v.string()),
+    skinConcerns: v.optional(v.array(v.string())),
+    ingredientSensitivities: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return {
+        success: false,
+        statusCode: 401,
+        message: "Authentication required",
+      } as const;
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", identity.subject))
+      .first();
+
+    if (!user) {
+      return {
+        success: false,
+        statusCode: 404,
+        message: "User not found",
+      } as const;
+    }
+
+    const normalizeStringArray = (input?: string[]): string[] | undefined => {
+      if (!Array.isArray(input)) return undefined;
+      const unique = new Set<string>();
+      input.forEach((value) => {
+        if (typeof value !== "string") return;
+        const trimmed = value.trim();
+        if (!trimmed.length) return;
+        unique.add(trimmed.toLowerCase());
+      });
+      return unique.size ? Array.from(unique) : undefined;
+    };
+
+    const normalizeSkinConcerns = (input?: string[]): string[] | undefined => {
+      if (!Array.isArray(input)) return undefined;
+      const canonicalConcerns = input
+        .map((value) => {
+          if (typeof value !== "string") return null;
+          const trimmed = value.trim();
+          if (!trimmed.length) return null;
+          const resolved = resolveSkinConcern(trimmed);
+          return resolved ?? trimmed.toLowerCase();
+        })
+        .filter((value): value is string => Boolean(value));
+      const unique = Array.from(new Set(canonicalConcerns));
+      return unique.length ? unique : undefined;
+    };
+
+    const nextSkinProfile = {
+      ...(typeof (user as any)?.skinProfile === "object"
+        ? ((user as any).skinProfile as Record<string, unknown>)
+        : {}),
+    } as Record<string, unknown>;
+
+    let didChange = false;
+
+    if (Object.prototype.hasOwnProperty.call(args, "skinType")) {
+      const raw = args.skinType;
+      if (typeof raw === "string" && raw.trim().length) {
+        const resolved = resolveSkinType(raw);
+        nextSkinProfile.skinType = (resolved ?? raw.trim()).toLowerCase();
+      } else {
+        delete nextSkinProfile.skinType;
+      }
+      didChange = true;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(args, "skinConcerns")) {
+      const normalizedConcerns = normalizeSkinConcerns(args.skinConcerns);
+      if (normalizedConcerns && normalizedConcerns.length) {
+        nextSkinProfile.skinConcerns = normalizedConcerns;
+      } else {
+        delete nextSkinProfile.skinConcerns;
+      }
+      didChange = true;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(args, "ingredientSensitivities")) {
+      const normalizedSensitivities = normalizeStringArray(
+        args.ingredientSensitivities
+      );
+      if (normalizedSensitivities && normalizedSensitivities.length) {
+        nextSkinProfile.ingredientSensitivities = normalizedSensitivities;
+      } else {
+        delete nextSkinProfile.ingredientSensitivities;
+      }
+      didChange = true;
+    }
+
+    if (!didChange) {
+      return {
+        success: true,
+        skinProfile: (user as any)?.skinProfile ?? null,
+        unchanged: true,
+      } as const;
+    }
+
+    nextSkinProfile.updatedAt = Date.now();
+
+    await ctx.db.patch(user._id, {
+      skinProfile: nextSkinProfile,
+    } as any);
+
+    return {
+      success: true,
+      skinProfile: nextSkinProfile,
+    } as const;
   },
 });

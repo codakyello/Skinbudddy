@@ -34,9 +34,9 @@ type GetUserRoutinesResult =
 
 export default function RoutineListPage() {
   const { user } = useUser();
-  const result = useQuery(api.routine.getUserRoutines, {
-    userId: user._id as string,
-  }) as GetUserRoutinesResult | undefined;
+  const result = useQuery(
+    user._id ? api.routine.getUserRoutines : undefined
+  ) as GetUserRoutinesResult | undefined;
 
   if (!user) {
     return (

@@ -155,7 +155,6 @@ export function RoutineSuggestionsModal({
       setAddingId(productId);
       const result = await addToCart({
         sizeId,
-        userId: user._id,
         productId: p._id as Id<"products">,
         quantity: 1,
       });

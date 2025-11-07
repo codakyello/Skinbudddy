@@ -135,10 +135,12 @@ export async function refineProductSelectionWithGemini({
   candidates,
   model,
   userRequest,
+  filterSummary,
 }: {
   candidates: ProductCandidate[];
   model: string;
   userRequest: string;
+  filterSummary?: string;
 }): Promise<{
   products: ProductCandidate[];
   notes?: string;
@@ -153,7 +155,16 @@ export async function refineProductSelectionWithGemini({
   const systemPrompt =
     "You are a meticulous skincare merchandiser. You will select the best matches from the provided candidate list. Only choose from the candidates and never invent new products. Your response must call the selectProducts function.";
 
-  const userPrompt = `User request:\n${userRequest || "(not provided)"}\n\nCandidates (JSON):\n${JSON.stringify(
+  const contextBlocks = [
+    `User request:\n${userRequest && userRequest.trim().length ? userRequest.trim() : "(not provided)"}`,
+  ];
+  if (filterSummary && filterSummary.trim().length) {
+    contextBlocks.push(`Filters applied:\n${filterSummary.trim()}`);
+  }
+
+  const userPrompt = `${contextBlocks.join(
+    "\n\n"
+  )}\n\nCandidates (JSON):\n${JSON.stringify(
     summaries,
     null,
     2

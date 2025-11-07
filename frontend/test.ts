@@ -1,16 +1,32 @@
-// console.log("running");
-import { GoogleGenAI } from "@google/genai";
+// import { generateKeyPair } from "jose";
 
-// The client gets the API key from the environment variable `GEMINI_API_KEY`.
-const ai = new GoogleGenAI({});
+// const { publicKey, privateKey } = await generateKeyPair("RS256");
+// console.log("Private key:", privateKey);
+// console.log("Public key:", publicKey);
 
-async function main() {
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-lite",
-    contents: "Explain how AI works in a few words",
-  });
-  console.log(response.text);
-  console.log("bun ran success");
-}
+import { generateKeyPair, exportPKCS8, exportSPKI, exportJWK } from "jose";
+import { writeFileSync } from "fs";
 
-main();
+// 1. Generate
+const { publicKey, privateKey } = await generateKeyPair("RS256", {
+  extractable: true,
+});
+
+// 2. Export to PEM files (for signing & reference)
+const pkcs8Pem = await exportPKCS8(privateKey); // private key PEM
+const spkiPem = await exportSPKI(publicKey); // public key PEM
+
+writeFileSync("private.pem", pkcs8Pem);
+writeFileSync("public.pem", spkiPem);
+
+console.log("✅ Keys saved as private.pem & public.pem");
+
+// 3. Export public key as JWKS JSON
+const jwk = await exportJWK(publicKey);
+jwk.use = "sig";
+jwk.alg = "RS256";
+jwk.kid = "main-key"; // identifier for the key
+
+const jwks = { keys: [jwk] };
+writeFileSync("jwks.json", JSON.stringify(jwks, null, 2));
+console.log("✅ JWKS saved as jwks.json");

@@ -1,6 +1,6 @@
 // pages/api/index-products.ts (or app/api/index-products/route.ts for App Router)
 import { algoliasearch } from "algoliasearch";
-import { fetchQuery } from "convex/nextjs";
+import { fetchQuery } from "@/ai/convex/client";
 import { api } from "@/convex/_generated/api";
 import { NextResponse } from "next/server";
 

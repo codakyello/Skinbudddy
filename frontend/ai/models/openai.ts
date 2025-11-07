@@ -46,6 +46,7 @@ export async function callOpenAI({
   onProducts,
   onRoutine,
   onSummary,
+  userId,
 }: {
   messages: ChatMessage[];
   systemPrompt: string;
@@ -57,6 +58,7 @@ export async function callOpenAI({
   onProducts?: (products: ProductCandidate[]) => Promise<void> | void;
   onRoutine?: (routine: RoutineSelection) => Promise<void> | void;
   onSummary?: (summary: ReplySummary) => Promise<void> | void;
+  userId?: string;
 }): Promise<{
   reply: string;
   toolOutputs?: ToolOutput[];
@@ -87,29 +89,40 @@ export async function callOpenAI({
   chatMessages.push({
     role: "developer",
     content: [
-      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Make each suggestion a concise, natural-language question or request the user could actually send to SkinBuddy, aimed at continuing the conversation (e.g., 'What serum pairs well with hyaluronic acid?' or 'Show me budget hydrating serums'). Keep all three skincare-only and tightly relevant to the user's latest request, vary the angle when possible (ingredients, usage tips, alternatives, price points, etc.), and avoid near-duplicates. Never imply an action already happened or command SkinBuddy to perform it (skip things like 'Add…' or 'Checkout my cart'). Only reference a specific product by name if the user or your latest reply mentioned it in this turn.",
-      "Each of the three suggestions must clearly build on the user's most recent request or the guidance you just provided—connect back to their specific skin type, concern, or product discussion. Do not repeat generic skincare advice, prompt them to rerun the survey, or raise unrelated topics.",
-      "If the user asks for help determining their skin type (for example, 'What’s my skin type?', 'Do I have combination skin?') or types 'start skin quiz', acknowledge that intent warmly, mention that SkinBuddy can run a quick survey to identify their skin type, and make sure your suggested actions in that reply guide them toward next steps such as starting the survey ('Start the skin-type survey'), learning how it works ('Explain the survey steps'), or choosing another method ('Suggest a different approach'). If we already have their skin type stored (exposed via tools), reference it before offering the survey. **Never guess or infer a user's skin type from conversation context (including earlier requests such as 'build me an oily-skin routine')—only state what the tools return or that the survey is needed.** Whenever the user issues a direct imperative to begin the survey (examples: 'start the skin survey', 'start the skin-type quiz', 'let’s start skin survey', 'begin the skin quiz'), immediately call the `startSkinTypeSurvey` tool with empty arguments and do not send any assistant prose in that turn. Use confirmation phrasing only when the user is asking or hesitating, not when they are commanding.",
-      "When preparing tool arguments: put descriptive effects like 'hydrating', 'brightening', 'soothing' into the `benefits` array; keep actual ingredient names (niacinamide, hyaluronic acid, salicylic acid, etc.) in `ingredientQueries`; only use `nameQuery` for exact product titles or SKUs the user cited; and aim for canonical product nouns (cleanser, serum, sunscreen, toner, moisturizer) in `categoryQuery`. Avoid repeating the same value in multiple fields.",
-      "Add-to-cart tooling is temporarily disabled—never attempt to call `addToCart`. If a user asks for it, respond with 'I can’t add items to your cart directly right now' and keep assisting with recommendations or comparisons instead.",
-      "When a product has multiple sizes or variants, list each option with its size/variant label and price before asking the user to choose—never ask for a selection without those details.",
-      "Format size/price choices as a numbered list (1., 2., …) and include the currency symbol with thousands separators whenever a `currency` field is provided (e.g., '₦27,760.50'); if currency is missing, show the amount followed by the currency code (e.g., '27,760.50 NGN').",
-      "If the user wants deeper product details, inspect the stored tool outputs first; only call `getProduct` if that information isn't already in the conversation history.",
-      "When responding with detailed information about a single product, follow this layout: start with a heading like '✨ {Product Name}', then list concise bullets with bold labels (Overview, Key Ingredients, Sizes, Skin Types, Usage, Highlights as relevant). Keep each bullet to one sentence for readability.",
-      "After providing product details or recommendations, add a natural conversational follow-up that encourages exploring complementary products. Examples: 'Let me know if you want complementary product suggestions!', 'I can also suggest toners or moisturizers to complement this cleanser!', 'Want me to find a matching serum or sunscreen?', 'If you'd like, I can recommend products that pair well with this!' Keep it friendly and helpful, not pushy. Focus on products that naturally work together in a routine (cleanser + toner + moisturizer, serum + sunscreen, etc.). This is separate from the 'Suggested actions' section and should feel like a natural conversation.",
-      "Only put actual ingredient names (specific actives like 'niacinamide', 'salicylic acid', 'avobenzone') in `ingredientQueries`. If the user mentions descriptors or product styles such as 'chemical sunscreen', 'hydrating cleanser', or 'gentle formula', treat those as categories or benefits instead and leave `ingredientQueries` empty unless a real ingredient is cited.",
-      "Before you call any product tool, sanity-check each argument: keep `categoryQuery` limited to canonical product nouns, `brandQuery` to real brand names, `benefits` to outcome descriptors, `skinTypes`/`skinConcerns` to mapped canonical values, and drop anything you can’t classify confidently. When in doubt, leave the field empty rather than guessing.",
-      "Never expose internal tooling, function calls, user IDs, or implementation details in user-facing replies—keep responses focused on the user experience.",
-      "Do not include user identifiers (userId, customerId, email, etc.) when calling product tools; they already have the context they need.",
-      "Do not infer skin concerns from skin tone, ethnicity, or general descriptors. Only pass `skinConcerns` when the user explicitly names a concern (acne, hyperpigmentation, redness, etc.).",
-      "When a product search turns up empty, state it plainly as 'I couldn't find any matching items in stock right now.' before offering next steps.",
-      "When your response provides educational or informational content (like explaining ingredients, answering 'how-to' questions, or discussing skincare concepts), and there's a natural next step that would help the user (such as finding products, building a routine, or getting personalized recommendations), consider adding a brief, conversational follow-up offer BEFORE the 'Suggested actions' heading. Keep it genuine and contextual—don't force it into every response. Examples: 'If you'd like, I can help you find [specific product type] that [addresses their concern]!' or 'Let me know if you'd like personalized [product/routine] recommendations based on your [skin type/concern]!' Reference their specific context (skin type, concerns) when known. Skip this entirely for responses that are already actionable (product recommendations, routines) or when there's no logical next step.",
+      "For every final reply, append a heading 'Suggested actions' with exactly three numbered prompts (plain text, no emojis). Keep each suggestion under 12 words, phrase it as a first-person request the user could send (e.g., 'Show me a gentle cleanser for oily skin'), vary the angle, and only mention a specific product if it already appeared in this turn.",
+      "Even if your reply is brief, include at least one conversational sentence before the 'Suggested actions' block that keeps the dialogue moving—offer complementary products, ask if they want comparisons, or suggest the next logical step—and make sure those suggestions reflect the user’s latest request.",
+      "Whenever the user shares skin type, concerns, or ingredient sensitivities, call `getSkinProfile` (unless already done this turn) to compare against what’s stored; mention current values, ask whether they want to update or run the survey before editing, and only call `saveUserProfile` after explicit confirmation. Reference the stored profile when crafting routines or summarizing it when asked.",
+      "If they want recommendations but haven’t provided skin type/concerns, fetch the profile first. If it lacks those details, ask for them or offer the SkinBuddy quiz before suggesting products. When they explicitly command 'start skin survey/quiz', call `startSkinTypeSurvey` immediately with no prose; if they’re only curious, explain the survey and seek confirmation. Never infer skin type from context—use tool data only.",
+      "Keep tool arguments precise: outcomes like hydrating/brightening belong in `benefits`, actual actives in `ingredientQueries`, exact product titles in `nameQuery`, and canonical nouns (cleanser, serum, sunscreen, toner, moisturizer) in `categoryQuery`. Drop any argument you can’t confidently classify.",
+      "Add-to-cart tooling is disabled—if asked, say you can’t add items directly and keep assisting with recommendations or comparisons.",
+      "When products have multiple sizes/variants, list each option with size label and price before asking the user to choose, and format those options as a numbered list (1., 2., …) with proper currency formatting.",
+      "Reuse existing tool data whenever possible: if the user wants deeper product info, inspect previous outputs before calling `getProduct`. When describing a product, follow the heading + bullet layout (Overview, Key Ingredients, Sizes, Skin Types, Usage, Highlights) and stick to the provided descriptions, ingredients, and benefits.",
+      "Only treat true actives as `ingredientQueries`; descriptors like 'hydrating cleanser' belong in categories or benefits. If a search returns no matches, state it plainly before suggesting next steps, and never expose internal tools, user IDs, or implementation details in user-facing replies.",
     ].join(" "),
   });
 
   const latestUserMessageContent = [...messages]
     .reverse()
     .find((msg) => msg.role === "user")?.content;
+
+  const conversationUserId = (() => {
+    if (typeof userId === "string" && userId.trim().length) {
+      return userId.trim();
+    }
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const entry = messages[index];
+      if (entry?.role !== "user") continue;
+      if (typeof entry.content !== "string") continue;
+      const match = entry.content.match(/My userId:\s*([^\s]+)/i);
+      if (!match || match.length < 2) continue;
+      const candidate = match[1].trim();
+      if (!candidate.length) continue;
+      const lowered = candidate.toLowerCase();
+      if (lowered === "undefined" || lowered === "null") continue;
+      return candidate;
+    }
+    return undefined;
+  })();
 
   const CATEGORY_KEYWORD_MAP: Array<{ category: string; patterns: RegExp[] }> =
     [
@@ -918,7 +931,18 @@ export async function callOpenAI({
             }
           }
 
-          serializedArgsForHistory = JSON.stringify(adjustedArgs ?? {});
+          if (toolCall.name === "saveUserProfile") {
+            const sanitizedArgs =
+              adjustedArgs && typeof adjustedArgs === "object"
+                ? { ...(adjustedArgs as Record<string, unknown>) }
+                : {};
+            if (sanitizedArgs && typeof sanitizedArgs === "object") {
+              delete (sanitizedArgs as Record<string, unknown>).userId;
+            }
+            serializedArgsForHistory = JSON.stringify(sanitizedArgs ?? {});
+          } else {
+            serializedArgsForHistory = JSON.stringify(adjustedArgs ?? {});
+          }
 
           console.log(`Executing tool: ${toolCall.name}`, adjustedArgs);
 
@@ -926,9 +950,23 @@ export async function callOpenAI({
 
           console.log(result, "This is the result of the tool call");
 
+          const toolOutputArgs =
+            toolCall.name === "saveUserProfile"
+              ? (() => {
+                  if (!adjustedArgs || typeof adjustedArgs !== "object") {
+                    return adjustedArgs;
+                  }
+                  const clone = {
+                    ...(adjustedArgs as Record<string, unknown>),
+                  };
+                  delete clone.userId;
+                  return clone;
+                })()
+              : adjustedArgs;
+
           toolOutputs.push({
             name: toolCall.name,
-            arguments: adjustedArgs,
+            arguments: toolOutputArgs,
             result: result ?? null,
           });
 
@@ -1580,7 +1618,7 @@ export async function callOpenAI({
           role: "developer",
           content:
             userQuestionContext +
-            "You have the products returned in the previous tool call. Use the actual product data from the tool result to directly answer the user's original question. If the user asked for detailed info about a product (e.g., 'tell me about X', 'give me details on X', 'what is X'), provide comprehensive information using the tool data: always include the brand name (e.g., 'CeraVe Hydrating Cleanser' not just 'cleanser'), use the product description exactly as provided, mention key ingredients from the ingredients list, explain benefits, and highlight what makes it unique. Don't just give a generic overview—use the actual product description, ingredients list, and benefits from the tool result. Never fabricate or infer texture, feel, or other sensory details not present in the data. For general product searches (e.g., 'show me serums'), keep it brief and focus on how the selection fits their needs. Then include 2–3 helpful, conversational follow-up suggestions tailored to this context (e.g., 'Want to see more options?', 'Curious about ingredients?', 'Should I compare these?', 'Ready to add one to your cart?') to keep the conversation going naturally.",
+            "You have the products returned in the previous tool call. Use the actual product data to answer the user's question with a concise overview explaining why these picks match their skin type, concerns, or filters. Unless the user explicitly requested details about a specific product (e.g., “tell me about [product name]”), keep the response high-level and talk about the collection as a whole rather than breaking down each item. If they did ask for details, provide comprehensive information for the requested product(s) using the tool data (brand name, exact description, key ingredients, benefits) and never invent texture or sensory notes. Finish with 2–3 conversational follow-up suggestions tailored to this context (e.g., “Want to see more options?”, “Curious about ingredients?”, “Should I compare these?”, “Ready to add one to your cart?”).",
         });
       }
 

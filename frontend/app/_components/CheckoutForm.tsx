@@ -218,7 +218,6 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
     try {
       setIsInitiating(true);
       const res = await createOrder({
-        userId: user._id as string,
         email,
         phone,
         address: fullAddress || streetAddress,
@@ -251,7 +250,6 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId,
-          userId: user._id,
           email,
           amount: totalAmount,
           phone: phone.replace(/^\+?/, ""), // basic normalization
@@ -302,7 +300,6 @@ export function CheckoutForm({ userDetail }: { userDetail?: User }) {
     try {
       setIsGenerating(true);
       const res = await createOrder({
-        userId: user._id as string,
         orderType: "pay_for_me",
         email,
         phone,

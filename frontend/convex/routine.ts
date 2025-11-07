@@ -41,15 +41,23 @@ export const createRoutine = action({
     productIds: v.array(v.id("products")),
     skinConcerns: v.optional(v.array(SkinConcern)),
     skinType: v.optional(SkinType),
-    userId: v.string(),
     pendingActionId: v.optional(v.string()),
     orderId: v.optional(v.id("orders")),
   },
   handler: async (
     ctx,
-    { productIds, skinConcerns, skinType, userId, pendingActionId, orderId }
+    { productIds, skinConcerns, skinType, pendingActionId, orderId }
   ) => {
     try {
+      const identity = await ctx.auth.getUserIdentity();
+      const userId = identity?.subject;
+
+      if (!userId)
+        return {
+          success: false,
+          message: "User is not logged in",
+        } as const;
+
       const envGeminiKey =
         typeof (ctx as any)?.env?.get === "function"
           ? (ctx as any).env.get("GEMINI_API_KEY")
@@ -97,18 +105,9 @@ export const createRoutine = action({
       //       )
       //     : [];
 
-      if (!userId)
-        return {
-          success: false,
-          message: "User is not logged in",
-        };
-
-      const userRecs = userId
-        ? await ctx.runQuery(
-            internalAny.recommendations.getUserRecommendations,
-            { userId }
-          )
-        : [];
+      const userRecs = await ctx.runQuery(
+        internalAny.recommendations.getUserRecommendations
+      );
 
       //   if (userRecs)
       //     return {
@@ -571,22 +570,19 @@ export const createRoutine = action({
 // protected by auth,
 // then we check if the user requesting the routine actually owns the routines
 export const getUserRoutines = query({
-  args: { userId: v.string() },
-  handler: async (ctx, { userId }) => {
-    // const identity = (ctx as any).auth?.getUserIdentity
-    //   ? await (ctx as any).auth.getUserIdentity()
-    //   : null;
-    // const externalUserId = identity?.subject ?? identity?.tokenIdentifier;
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
 
-    if (!userId)
+    if (!identity)
       return {
         success: false,
-        message: "You must be logged in to get routines",
+        message: "Authentication required",
       };
 
     const routines = await ctx.db
       .query("routines")
-      .withIndex("by_userId", (obj) => obj.eq("userId", userId))
+      .withIndex("by_userId", (obj) => obj.eq("userId", identity.subject))
       .collect();
 
     return {
@@ -648,24 +644,17 @@ export const getUserRoutines = query({
 
 // Returns a single routine with steps populated with product objects
 export const getUserRoutine = query({
-  args: { routineId: v.id("routines"), userId: v.string() },
-  handler: async (ctx, { routineId, userId }) => {
-    // const identity = (ctx as any).auth?.getUserIdentity
-    //   ? await (ctx as any).auth.getUserIdentity()
-    //   : null;
-    // const externalUserId = identity?.subject ?? identity?.tokenIdentifier;
-
-    // if (!externalUserId)
-    //   return {
-    //     success: false,
-    //     message: "You must be logged in to get routine",
-    //   } as const;
+  args: { routineId: v.id("routines") },
+  handler: async (ctx, { routineId }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
 
     if (!userId)
       return {
         success: false,
-        message: "You must be logged in to get routines",
-      };
+        message: "Authentication required",
+        statusCode: 401,
+      } as const;
 
     const routine = await ctx.db.get(routineId);
     if (!routine)

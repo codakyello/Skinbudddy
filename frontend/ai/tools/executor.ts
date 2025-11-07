@@ -1,6 +1,6 @@
 // src/ai/tools/executor.ts
 
-import { fetchMutation, fetchQuery } from "convex/nextjs";
+import { fetchMutation, fetchQuery } from "../convex/client";
 import { api } from "../../convex/_generated/api";
 
 export async function executeTool(
@@ -11,42 +11,34 @@ export async function executeTool(
 
   switch (toolName) {
     case "getUserCart":
-      return await fetchQuery(api.cart.getUserCart, {
-        userId: toolInput.userId,
-      });
+      return await fetchQuery(api.cart.getUserCart, {});
 
-    /*
-    case "addToCart":
+  /*
+  case "addToCart":
       return await fetchMutation(api.cart.createCart, {
-        userId: toolInput.userId,
         productId: toolInput.productId,
         sizeId: toolInput.sizeId,
         quantity: toolInput.quantity,
       });
-    */
+  */
 
     case "updateCartQuantity":
       return await fetchMutation(api.cart.updateCartQuantity, {
         cartId: toolInput.cartId,
         quantity: toolInput.quantity,
-        userId: toolInput.userId,
       });
 
     case "removeFromCart":
       return await fetchMutation(api.cart.removeFromCart, {
         cartId: toolInput.cartId,
-        userId: toolInput.userId,
       });
 
     case "clearCart":
-      return await fetchMutation(api.cart.clearCart, {
-        userId: toolInput.userId,
-      });
+      return await fetchMutation(api.cart.clearCart, {});
 
     // working fine
     case "bulkAddCartItems":
       return await fetchMutation(api.cart.bulkAddCartItems, {
-        userId: toolInput.userId,
         items: toolInput.items,
       });
 
@@ -64,19 +56,16 @@ export async function executeTool(
       });
 
     case "getUserRoutines":
-      return await fetchQuery(api.routine.getUserRoutines, {
-        userId: toolInput.userId,
-      });
+      return await fetchQuery(api.routine.getUserRoutines, {});
 
     case "getUserRoutine":
       return await fetchQuery(api.routine.getUserRoutine, {
         routineId: toolInput.routineId,
-        userId: toolInput.userId,
       });
 
     // working fine
     case "getAllBrands":
-      return await fetchQuery(api.brands.getAllBrands);
+      return await fetchQuery(api.brands.getAllBrands, {});
 
     // working fine
     case "getAllBrandProducts":

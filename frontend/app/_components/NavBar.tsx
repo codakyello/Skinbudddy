@@ -23,11 +23,10 @@ const nav = [
 
 export default function NavBar() {
   // const { isSticky } = useNavSticky();
-  const { user } = useUser();
 
-  // Ensure a string is passed to the hook even before user is ready
-  const userId = user?._id ?? "";
-  const { cart } = useUserCart(userId);
+  const { cart } = useUserCart();
+
+  console.log(cart, "cart");
   // Fetch routines to optionally show direct link to latest
 
   const totalCartItems = cart.reduce<number>(
@@ -201,7 +200,7 @@ export default function NavBar() {
       </Box>
 
       <ModalWindow
-        listenCapturing={false}
+        listenCapturing={true}
         bgClassName="bg-[var(--color-modal-bg)] z-[9999]"
         name="user"
         position="right"

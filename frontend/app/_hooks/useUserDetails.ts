@@ -5,10 +5,18 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { User } from "@/app/_utils/types";
 
-export default function useUserDetails(userId: string) {
-  const { data, isPending, error } = useQuery(
-    convexQuery(api.users.getUser, { userId })
-  );
+export default function useUserDetails(userId?: string | null) {
+  const canQuery =
+    typeof userId === "string" &&
+    userId.trim().length > 0 &&
+    !userId.startsWith("guest_");
+
+  const baseQuery = convexQuery(api.users.getUser);
+  const { data, isPending, error } = useQuery({
+    ...baseQuery,
+    queryKey: [...baseQuery.queryKey, userId ?? ""],
+    enabled: canQuery,
+  });
 
   const user = data?.user as User | undefined;
 

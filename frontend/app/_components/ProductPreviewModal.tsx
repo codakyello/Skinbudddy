@@ -60,7 +60,6 @@ export function ProductPreviewModal({
       setIsAdding(true);
       const result = await addToCart({
         sizeId: selectedSize.id,
-        userId: user._id,
         productId: product._id as Id<"products">,
         quantity,
       });

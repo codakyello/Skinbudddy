@@ -13,6 +13,7 @@ import {
   sanitizeToolResultForModel,
   sentenceCase,
   toTitleCase,
+  toUniqueStrings,
 } from "../utils";
 import { mapDescriptorsToBenefits } from "../../shared/skinMappings";
 import { toolSpecs, getToolByName } from "../tools/localTools";
@@ -32,18 +33,34 @@ import {
   generateReplySummaryWithGemini,
   refineProductSelectionWithGemini,
 } from "../gemini/utils";
+
+type SearchProductsArgs = {
+  categoryQuery?: string;
+  nameQuery?: string;
+  brandQuery?: string;
+  skinTypes?: string[];
+  skinConcerns?: string[];
+  ingredientQueries?: string[];
+  ingredientsToAvoid?: string[];
+  hasAlcohol?: boolean;
+  hasFragrance?: boolean;
+  benefits?: string[];
+  minPrice?: number;
+  maxPrice?: number;
+};
 console.log("lets check if we are updating");
 export async function callGemini({
   messages,
   systemPrompt,
-  model = "gemini-2.5-flash-lite",
-  temperature = 0.5,
+  model = "gemini-2.5-flash",
+  temperature = 0.3,
   useTools = true,
   maxToolRounds = 4, // prevent runaway loops
   onToken,
   onProducts,
   onRoutine,
   onSummary,
+  userId,
 }: {
   messages: ChatMessage[];
   systemPrompt: string;
@@ -55,6 +72,7 @@ export async function callGemini({
   onProducts?: (products: ProductCandidate[]) => Promise<void> | void;
   onRoutine?: (routine: RoutineSelection) => Promise<void> | void;
   onSummary?: (summary: ReplySummary) => Promise<void> | void;
+  userId?: string;
 }): Promise<{
   reply: string;
   toolOutputs?: ToolOutput[];
@@ -86,25 +104,20 @@ export async function callGemini({
   chatMessages.push({
     role: "developer",
     content: [
-      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Phrase each suggestion as a first-person request the user could send to SkinBuddy—start with verbs like 'Recommend', 'Show me', 'Help me', or 'Explain'. Avoid asking the user questions such as 'What is your skin type?'; these suggestions should read like commands or requests directed at SkinBuddy (e.g., 'Recommend a brightening serum for uneven tone', 'Help me pick a gentle cleanser for sensitive skin'). Cap each suggestion at 12 words. Keep all three skincare-only and tightly relevant to the user's latest request, vary the angle when possible (ingredients, usage tips, alternatives, price points, etc.), and avoid near-duplicates. Never imply an action already happened or command SkinBuddy to perform it (skip things like 'Add…' or 'Checkout my cart'). Only reference a specific product by name if the user or your latest reply mentioned it in this turn.",
-      "Each of the three suggestions must clearly build on the user's most recent request or the guidance you just provided—connect back to their specific skin type, concern, or product discussion. Do not repeat generic skincare advice, prompt them to rerun the survey, or raise unrelated topics.",
-      "Before calling `searchProductsByQuery` or `getProduct`, scan earlier tool outputs in this conversation for the specific product facts you plan to mention. Reuse that data when it's already present, but if the most recent search turned up no matches, always run a fresh lookup instead of relying on the empty result.",
-      "Never fabricate identifiers for tools. If you do not have a valid productId, sizeId, or other required argument from prior tool results, call a lookup tool to retrieve it or ask the user for clarifying input like the product name or size they want—not the internal id. Do not guess identifiers or reuse placeholders from memory.",
-      "If the user asks for help determining their skin type (for example, 'What’s my skin type?', 'Do I have combination skin?') or types 'start skin quiz', acknowledge that intent warmly, mention that SkinBuddy can run a quick survey to identify their skin type, and make sure your suggested actions in that reply guide them toward next steps such as starting the survey ('Start the skin-type survey'), learning how it works ('Explain the survey steps'), or choosing another method ('Suggest a different approach'). If we already have their skin type stored (exposed via tools), reference it before offering the survey. **Never guess or infer a user's skin type from conversation context (including earlier requests such as 'build me an oily-skin routine')—only state what the tools return or that the survey is needed.** When the user is curious or tentative and has not issued a direct command (e.g., 'Should I take the skin quiz?', 'Can you help figure out my skin type?'), do not call the `startSkinTypeSurvey` tool; instead, reply in prose that SkinBuddy can help determine their skin type and concerns with a skin quiz and invite them to confirm if they want to start it. If the user asks for a skincare routine or product recommendations but hasn't provided their skin type or concerns, let them know SkinBuddy can help figure those out with the skin quiz before continuing, and ask whether they'd like to take it or share those details manually. Whenever the user issues a direct imperative to begin the survey (examples: 'start the skin survey', 'start the skin-type quiz', 'let’s start skin survey', 'begin the skin quiz'), immediately call the `startSkinTypeSurvey` tool with empty arguments and do not send any assistant prose in that turn. Use confirmation phrasing only when the user is asking or hesitating, not when they are commanding.",
-      "When preparing tool arguments: put descriptive effects like 'hydrating', 'brightening', 'soothing' into the `benefits` array; keep actual ingredient names (niacinamide, hyaluronic acid, salicylic acid, etc.) in `ingredientQueries`; only use `nameQuery` for exact product titles or SKUs the user cited; and aim for canonical product nouns (cleanser, serum, sunscreen, toner, moisturizer) in `categoryQuery`. Avoid repeating the same value in multiple fields.",
+      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Phrase each suggestion as a first-person request the user could send to SkinBuddy—start with verbs like 'Recommend', 'Show me', 'Help me', or 'Explain'. Avoid asking the user questions, keep suggestions 12 words or fewer, vary the angle (ingredients, usage tips, alternatives, price points), and only reference a specific product name if it already appeared in this turn.",
+      "Even for short acknowledgements, include at least one conversational sentence before the 'Suggested actions' block that keeps the dialogue moving (offer complementary products, dig deeper, compare options, etc.).",
+      "Before calling `searchProductsByQuery` or `getProduct`, reuse existing tool data whenever possible; if the latest results were empty, run a fresh lookup instead of reusing the empty set.",
+      "Never fabricate identifiers for tools. If you lack a valid productId/sizeId/etc., ask for clarification or run another lookup instead of guessing.",
+      "Product recommendation readiness: when the user wants product suggestions but hasn’t given skin type/concerns this turn, call `getSkinProfile` first (unless you already have a fresh result). If the stored profile lacks both fields, ask for those details or offer the SkinBuddy quiz before recommending products.",
+      "Skin-type survey rules: if the user explicitly commands 'start skin survey/quiz', immediately call `startSkinTypeSurvey` with empty args and send no prose. If they’re only curious or hesitant, describe the survey and ask if they want to begin. Never infer skin type from context—only use tool data.",
+      "When preparing tool arguments, keep each field precise: outcome adjectives (hydrating, brightening) go in `benefits`, true ingredients in `ingredientQueries`, exact product names in `nameQuery`, and canonical nouns (cleanser, serum, sunscreen, toner, moisturizer) in `categoryQuery`.",
     ].join(" "),
   });
 
   chatMessages.push({
     role: "developer",
     content:
-      "No matter how short the reply is—including clarifying questions or quick acknowledgments—always finish with the heading 'Suggested actions' followed by exactly three numbered, skincare-relevant suggestions.",
-  });
-
-  chatMessages.push({
-    role: "developer",
-    content:
-      "When your response provides educational or informational content (like explaining ingredients, answering 'how-to' questions, or discussing skincare concepts), and there's a natural next step that would help the user (such as finding products, building a routine, or getting personalized recommendations), consider adding a brief, conversational follow-up offer BEFORE the 'Suggested actions' heading. Keep it genuine and contextual—don't force it into every response. Examples: 'If you'd like, I can help you find [specific product type] that [addresses their concern]!' or 'Let me know if you'd like personalized [product/routine] recommendations based on your [skin type/concern]!' Reference their specific context (skin type, concerns) when known. Skip this entirely for responses that are already actionable (product recommendations, routines) or when there's no logical next step.",
+      "When the user shares new skin type, concerns, or ingredient sensitivities, call `getSkinProfile` (unless already done this turn) to compare with stored data. Mention what’s currently saved, ask if they want to update or run the survey before editing, and only call `saveUserProfile` after explicit confirmation. Use the stored profile when crafting routines or suggestions; if a field is missing, say so instead of guessing, and summarize the profile if they ask for it.",
   });
 
   chatMessages.push({
@@ -437,8 +450,11 @@ export async function callGemini({
       sizeValue?: number;
     }>
   >();
+  const aggregatedProducts: ProductCandidate[] = [];
+  const aggregatedFilters: SearchProductsArgs[] = [];
   let pendingAddToCart = false;
   let pendingAddToCartReminderSent = false;
+  const refinementNotes: string[] = [];
 
   const extractString = (value: unknown): string | undefined => {
     if (typeof value !== "string") return undefined;
@@ -620,6 +636,155 @@ export async function callGemini({
     });
   };
 
+  const toStringList = (input: unknown): string[] => {
+    if (Array.isArray(input)) {
+      return input
+        .map((entry) => (typeof entry === "string" ? entry.trim() : null))
+        .filter((entry): entry is string => Boolean(entry));
+    }
+    if (typeof input === "string" && input.trim().length) {
+      return [input.trim()];
+    }
+    return [];
+  };
+
+  const humanizeFilterValue = (value: string): string => {
+    const spaced = value.replace(/[_-]/g, " ").replace(/\s+/g, " ").trim();
+    return toTitleCase(spaced);
+  };
+
+  const buildFilterSummary = (
+    filters: Record<string, unknown> | null | undefined,
+    args: {
+      categoryQuery?: string;
+      nameQuery?: string;
+      brandQuery?: string;
+      skinTypes?: string[];
+      skinConcerns?: string[];
+      ingredientQueries?: string[];
+      ingredientsToAvoid?: string[];
+      benefits?: string[];
+      minPrice?: number;
+      maxPrice?: number;
+      hasAlcohol?: boolean;
+      hasFragrance?: boolean;
+    }
+  ): string => {
+    const parts: string[] = [];
+    const filterObject =
+      filters && typeof filters === "object" ? filters : undefined;
+
+    const appendList = (label: string, value?: unknown) => {
+      const list = toStringList(value);
+      if (list.length) {
+        parts.push(
+          `${label}: ${list
+            .map((entry) => humanizeFilterValue(entry))
+            .join(", ")}`
+        );
+      }
+    };
+
+    const resolveNumber = (
+      primary: unknown,
+      fallback?: number
+    ): number | undefined => {
+      if (typeof primary === "number" && Number.isFinite(primary)) {
+        return primary;
+      }
+      if (typeof fallback === "number" && Number.isFinite(fallback)) {
+        return fallback;
+      }
+      return undefined;
+    };
+
+    appendList(
+      "Categories",
+      filterObject?.["categorySlugs"] ??
+        (args.categoryQuery ? [args.categoryQuery] : undefined)
+    );
+    appendList(
+      "Brands",
+      filterObject?.["brandSlugs"] ??
+        (args.brandQuery ? [args.brandQuery] : undefined)
+    );
+    appendList("Skin types", filterObject?.["skinTypes"] ?? args.skinTypes);
+    appendList(
+      "Skin concerns",
+      filterObject?.["skinConcerns"] ?? args.skinConcerns
+    );
+    appendList(
+      "Focus ingredients",
+      filterObject?.["ingredientQueries"] ?? args.ingredientQueries
+    );
+    appendList(
+      "Avoid ingredients",
+      filterObject?.["ingredientsToAvoid"] ?? args.ingredientsToAvoid
+    );
+    appendList("Benefits", filterObject?.["benefits"] ?? args.benefits);
+
+    const resolvedNameQuery =
+      (typeof filterObject?.["nameQuery"] === "string"
+        ? filterObject?.["nameQuery"]
+        : args.nameQuery) ?? undefined;
+    if (resolvedNameQuery) {
+      parts.push(`Keyword: ${humanizeFilterValue(resolvedNameQuery)}`);
+    }
+
+    const resolvedMinPrice = resolveNumber(
+      filterObject?.["minPrice"],
+      args.minPrice
+    );
+    const resolvedMaxPrice = resolveNumber(
+      filterObject?.["maxPrice"],
+      args.maxPrice
+    );
+    if (resolvedMinPrice !== undefined || resolvedMaxPrice !== undefined) {
+      if (resolvedMinPrice !== undefined && resolvedMaxPrice !== undefined) {
+        parts.push(
+          `Price: ${resolvedMinPrice.toLocaleString()} – ${resolvedMaxPrice.toLocaleString()}`
+        );
+      } else if (resolvedMinPrice !== undefined) {
+        parts.push(`Price: ≥ ${resolvedMinPrice.toLocaleString()}`);
+      } else if (resolvedMaxPrice !== undefined) {
+        parts.push(`Price: ≤ ${resolvedMaxPrice.toLocaleString()}`);
+      }
+    }
+
+    const resolvedFragrance =
+      typeof filterObject?.["hasFragrance"] === "boolean"
+        ? (filterObject?.["hasFragrance"] as boolean)
+        : args.hasFragrance;
+    if (resolvedFragrance === true) {
+      parts.push("Fragrance allowed");
+    } else if (resolvedFragrance === false) {
+      parts.push("Fragrance-free only");
+    }
+
+    const resolvedAlcohol =
+      typeof filterObject?.["hasAlcohol"] === "boolean"
+        ? (filterObject?.["hasAlcohol"] as boolean)
+        : args.hasAlcohol;
+    if (resolvedAlcohol === true) {
+      parts.push("Alcohol allowed");
+    } else if (resolvedAlcohol === false) {
+      parts.push("Alcohol-free only");
+    }
+
+    return parts.length ? parts.map((part) => `- ${part}`).join("\n") : "";
+  };
+
+  const formatCategoryLabel = (categories: string[]): string | undefined => {
+    const list = categories
+      .map((value) => value.trim())
+      .filter((value) => value.length)
+      .map((value) => toTitleCase(value));
+    if (!list.length) return undefined;
+    if (list.length === 1) return list[0];
+    if (list.length === 2) return `${list[0]} & ${list[1]}`;
+    return `${list[0]}, ${list[1]} & more`;
+  };
+
   const hydrateKnownCatalogFromHistory = (): void => {
     for (const entry of messages) {
       if (entry.role !== "tool") continue;
@@ -689,6 +854,25 @@ export async function callGemini({
   // messages.push({ role: "user", content: userMessage });
 
   hydrateKnownCatalogFromHistory();
+
+  const conversationUserId = (() => {
+    if (typeof userId === "string" && userId.trim().length) {
+      return userId.trim();
+    }
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const entry = messages[index];
+      if (entry?.role !== "user") continue;
+      if (typeof entry.content !== "string") continue;
+      const match = entry.content.match(/My userId:\s*([^\s]+)/i);
+      if (!match || match.length < 2) continue;
+      const candidate = match[1].trim();
+      if (!candidate.length) continue;
+      const lowered = candidate.toLowerCase();
+      if (lowered === "undefined" || lowered === "null") continue;
+      return candidate;
+    }
+    return undefined;
+  })();
 
   const latestUserMessageIndex = (() => {
     for (let index = messages.length - 1; index >= 0; index--) {
@@ -1021,6 +1205,11 @@ export async function callGemini({
       config: requestConfig,
     } as Record<string, unknown>;
 
+    // console.log(contents, "This is the contents of the request payload");
+    // console.log(
+    //   requestConfig.systemInstruction?.parts,
+    //   "This is the system instruction parts of the request payload"
+    // );
     const extractText = (response: any): string => {
       if (!response) return "";
       if (typeof response.text === "string" && response.text.length) {
@@ -1844,7 +2033,18 @@ export async function callGemini({
             }
           }
 
-          serializedArgsForHistory = JSON.stringify(adjustedArgs ?? {});
+          if (toolCall.name === "saveUserProfile") {
+            const sanitizedArgs =
+              adjustedArgs && typeof adjustedArgs === "object"
+                ? { ...(adjustedArgs as Record<string, unknown>) }
+                : {};
+            if (sanitizedArgs && typeof sanitizedArgs === "object") {
+              delete (sanitizedArgs as Record<string, unknown>).userId;
+            }
+            serializedArgsForHistory = JSON.stringify(sanitizedArgs ?? {});
+          } else {
+            serializedArgsForHistory = JSON.stringify(adjustedArgs ?? {});
+          }
 
           console.log(`Executing tool: ${toolCall.name}`, adjustedArgs);
 
@@ -1852,9 +2052,23 @@ export async function callGemini({
 
           console.log(result, "This is the result of the tool call");
 
+          const toolOutputArgs =
+            toolCall.name === "saveUserProfile"
+              ? (() => {
+                  if (!adjustedArgs || typeof adjustedArgs !== "object") {
+                    return adjustedArgs;
+                  }
+                  const clone = {
+                    ...(adjustedArgs as Record<string, unknown>),
+                  };
+                  delete clone.userId;
+                  return clone;
+                })()
+              : adjustedArgs;
+
           toolOutputs.push({
             name: toolCall.name,
-            arguments: adjustedArgs,
+            arguments: toolOutputArgs,
             result: result ?? null,
           });
           if (toolCall.name === "addToCart") {
@@ -1873,6 +2087,7 @@ export async function callGemini({
                 ? {}
                 : { value: sanitizedResult };
 
+          const toolMessageIndex = chatMessages.length;
           chatMessages.push({
             role: "tool",
             tool_call_id: callId,
@@ -1886,6 +2101,74 @@ export async function callGemini({
               role: "developer",
               content: normalizationSummary,
             });
+          }
+
+          if (toolCall.name === "searchProductsByQuery") {
+            const resultRecord =
+              result && typeof result === "object"
+                ? (result as Record<string, unknown>)
+                : null;
+            const rawProducts = Array.isArray(resultRecord?.products)
+              ? (resultRecord!.products as ProductCandidate[])
+              : [];
+            if (rawProducts.length) {
+              const searchArgsRecord =
+                adjustedArgs && typeof adjustedArgs === "object"
+                  ? (adjustedArgs as SearchProductsArgs)
+                  : {};
+              const filterSummary = buildFilterSummary(
+                (resultRecord?.filters as
+                  | Record<string, unknown>
+                  | undefined) ?? undefined,
+                searchArgsRecord
+              );
+              let refinedProducts = rawProducts;
+              try {
+                const refinement = await refineProductSelectionWithGemini({
+                  candidates: rawProducts,
+                  model,
+                  userRequest: latestUserMessageContent?.trim() ?? "",
+                  filterSummary,
+                });
+                if (refinement?.products?.length) {
+                  refinedProducts = refinement.products;
+                }
+                if (
+                  typeof refinement?.notes === "string" &&
+                  refinement.notes.trim().length
+                ) {
+                  refinementNotes.push(refinement.notes.trim());
+                }
+              } catch (error) {
+                console.error("Error refining product selection:", error);
+              }
+
+              aggregatedFilters.push(searchArgsRecord);
+              aggregatedProducts.push(...refinedProducts);
+              registerProductCollection(refinedProducts);
+
+              const updatedResult = resultRecord
+                ? { ...resultRecord, products: refinedProducts }
+                : { products: refinedProducts };
+
+              toolOutputs[toolOutputs.length - 1].result = updatedResult;
+
+              const refinedSanitized = sanitizeToolResultForModel(
+                toolCall.name,
+                updatedResult
+              );
+              const normalizedRefined =
+                refinedSanitized && typeof refinedSanitized === "object"
+                  ? refinedSanitized
+                  : refinedSanitized === undefined
+                    ? {}
+                    : { value: refinedSanitized };
+
+              if (chatMessages[toolMessageIndex]) {
+                chatMessages[toolMessageIndex].content =
+                  JSON.stringify(normalizedRefined);
+              }
+            }
           }
 
           if (toolCall.name === "startSkinTypeSurvey") {
@@ -2293,38 +2576,16 @@ export async function callGemini({
       }
 
       const productsArray =
-        toolOutputs.length > 0 ? normalizeProductsFromOutputs(toolOutputs) : [];
-      if (productsArray.length) {
+        aggregatedProducts.length > 0
+          ? aggregatedProducts
+          : toolOutputs.length > 0
+            ? (normalizeProductsFromOutputs(toolOutputs) as ProductCandidate[])
+            : [];
+      if (productsArray.length && aggregatedProducts.length === 0) {
         registerProductCollection(productsArray as ProductCandidate[]);
       }
 
-      // for products array in tool call
       if (productsArray.length) {
-        let refinedProductsResult: {
-          products: ProductCandidate[];
-          notes?: string;
-        } | null = null;
-
-        // pass in the product to llm to refine
-
-        try {
-          refinedProductsResult = await refineProductSelectionWithGemini({
-            candidates: productsArray as ProductCandidate[],
-            model,
-            userRequest: latestUserMessageContent ?? "",
-          });
-        } catch (error) {
-          console.error("Error refining product selection:", error);
-        }
-
-        const selectedProducts = refinedProductsResult?.products?.length
-          ? refinedProductsResult.products
-          : (productsArray as ProductCandidate[]);
-        const streamingProducts = selectedProducts.length
-          ? selectedProducts
-          : (productsArray as ProductCandidate[]);
-        registerProductCollection(streamingProducts);
-
         if (pendingAddToCart && !pendingAddToCartReminderSent) {
           chatMessages.push({
             role: "developer",
@@ -2334,50 +2595,61 @@ export async function callGemini({
           pendingAddToCartReminderSent = true;
         }
 
-        const searchArgs =
-          (latestSearchOutput?.arguments as {
-            categoryQuery?: string;
-            nameQuery?: string;
-            brandQuery?: string;
-            skinTypes?: string[];
-            skinConcerns?: string[];
-            ingredientQueries?: string[];
-            hasAlcohol?: boolean;
-            hasFragrance?: boolean;
-            benefits?: string[];
-          }) ?? {};
-        const category =
-          typeof searchArgs.categoryQuery === "string"
-            ? searchArgs.categoryQuery
-            : undefined;
+        const streamingProducts = productsArray as ProductCandidate[];
+        const filterSources = aggregatedFilters.length
+          ? aggregatedFilters
+          : [(latestSearchOutput?.arguments as SearchProductsArgs) ?? {}];
+
+        const rawSkinTypes = toUniqueStrings(
+          filterSources.flatMap((filter) => filter.skinTypes ?? [])
+        );
+        const rawSkinConcerns = toUniqueStrings(
+          filterSources.flatMap((filter) => filter.skinConcerns ?? [])
+        );
+        const rawIngredientQueries = toUniqueStrings(
+          filterSources.flatMap((filter) => filter.ingredientQueries ?? [])
+        ).slice(0, 2);
+        const rawBenefits = toUniqueStrings(
+          filterSources.flatMap((filter) => filter.benefits ?? [])
+        ).slice(0, 2);
+        const nameQueryCandidates = toUniqueStrings(
+          filterSources
+            .map((filter) => filter.nameQuery)
+            .filter(
+              (value): value is string =>
+                typeof value === "string" && value.trim().length > 0
+            )
+        );
+        const brandCandidates = toUniqueStrings(
+          filterSources
+            .map((filter) => filter.brandQuery)
+            .filter(
+              (value): value is string =>
+                typeof value === "string" && value.trim().length > 0
+            )
+        );
+        const categoryCandidates = toUniqueStrings(
+          filterSources
+            .map((filter) => filter.categoryQuery)
+            .filter(
+              (value): value is string =>
+                typeof value === "string" && value.trim().length > 0
+            )
+        );
+        const topProductMetadata =
+          extractProductMetadataForSummary(streamingProducts);
+        const fallbackCategories = toUniqueStrings(
+          topProductMetadata
+            .map((meta) => meta.category)
+            .filter((value): value is string => Boolean(value))
+        );
+        const categoryLabel = formatCategoryLabel(
+          categoryCandidates.length ? categoryCandidates : fallbackCategories
+        );
         const nameQuery =
-          typeof searchArgs.nameQuery === "string"
-            ? searchArgs.nameQuery.trim()
-            : undefined;
+          nameQueryCandidates.length === 1 ? nameQueryCandidates[0] : undefined;
         const brandQuery =
-          typeof searchArgs.brandQuery === "string"
-            ? searchArgs.brandQuery
-            : undefined;
-        const rawSkinTypes = Array.isArray(searchArgs.skinTypes)
-          ? searchArgs.skinTypes.filter(
-              (entry): entry is string => typeof entry === "string"
-            )
-          : [];
-        const rawSkinConcerns = Array.isArray(searchArgs.skinConcerns)
-          ? searchArgs.skinConcerns.filter(
-              (entry): entry is string => typeof entry === "string"
-            )
-          : [];
-        const rawIngredientQueries = Array.isArray(searchArgs.ingredientQueries)
-          ? searchArgs.ingredientQueries.filter(
-              (entry): entry is string => typeof entry === "string"
-            )
-          : [];
-        const rawBenefits = Array.isArray(searchArgs.benefits)
-          ? searchArgs.benefits.filter(
-              (entry): entry is string => typeof entry === "string"
-            )
-          : [];
+          brandCandidates.length === 1 ? brandCandidates[0] : undefined;
 
         const derivedSkinTypes = new Set<string>();
         const derivedBenefits = new Set<string>();
@@ -2423,7 +2695,9 @@ export async function callGemini({
         const normalizedConcerns = rawSkinConcerns
           .map((concern) => toTitleCase(concern))
           .filter(Boolean);
-        const normalizedCategory = category ? toTitleCase(category) : undefined;
+        const normalizedCategory = categoryLabel
+          ? toTitleCase(categoryLabel)
+          : undefined;
         const normalizedBrand = brandQuery
           ? toTitleCase(brandQuery)
           : undefined;
@@ -2453,10 +2727,9 @@ export async function callGemini({
           ? toTitleCase(nameQuery)
           : undefined;
 
-        const selectionNote =
-          typeof refinedProductsResult?.notes === "string"
-            ? refinedProductsResult.notes
-            : undefined;
+        const selectionNote = refinementNotes.length
+          ? refinementNotes[refinementNotes.length - 1]
+          : undefined;
 
         const productIcon = "🛍️";
         const {
@@ -2507,7 +2780,7 @@ export async function callGemini({
             brand: normalizedBrand,
             nameQuery: nameQuery ?? undefined,
           },
-          topProducts: extractProductMetadataForSummary(streamingProducts),
+          topProducts: topProductMetadata,
           notes: selectionNote,
           iconSuggestion: productIcon,
           headlineHint: summaryHeadline,
@@ -2554,12 +2827,15 @@ export async function callGemini({
           });
         }
 
-        if (refinedProductsResult?.notes) {
+        const aggregatedNotes = refinementNotes
+          .map((note) => note.trim())
+          .filter((note) => note.length);
+        if (aggregatedNotes.length) {
           chatMessages.push({
             role: "developer",
             content:
               "Additional selection note (do not quote verbatim, use for context only): " +
-              refinedProductsResult.notes,
+              aggregatedNotes.join(" | "),
           });
         }
 
@@ -2572,7 +2848,7 @@ export async function callGemini({
           role: "developer",
           content:
             userQuestionContext +
-            "You have the products returned in the previous tool call. Use the actual product data from the tool result to directly answer the user's original question. If the user asked for detailed info about a product (e.g., 'tell me about X', 'give me details on X', 'what is X'), provide comprehensive information using the tool data: always include the brand name (e.g., 'CeraVe Hydrating Cleanser' not just 'cleanser'), use the product description exactly as provided, mention key ingredients from the ingredients list, explain benefits, and highlight what makes it unique. Don't just give a generic overview—use the actual product description, ingredients list, and benefits from the tool result. Never fabricate or infer texture, feel, or other sensory details not present in the data. For general product searches (e.g., 'show me serums'), keep it brief and focus on how the selection fits their needs. Then include 2–3 helpful, conversational follow-up suggestions tailored to this context (e.g., 'Want to see more options?', 'Curious about ingredients?', 'Should I compare these?', 'Ready to add one to your cart?') to keep the conversation going naturally.",
+            "You have the products returned in the previous tool call. Use the actual product data to answer the user's original question with a concise overview that explains why this selection fits their skin type, concerns, or stated filters. Unless the user explicitly asked for details about a specific product (for example, “tell me about [product name]”), keep the reply high-level—reference the products collectively without listing each one. If they did request details, provide comprehensive information for the requested item(s) using the tool data (brand name, exact description, key ingredients, benefits) and never invent texture or sensory notes. Finish with 2–3 helpful, conversational follow-up suggestions tailored to this context (e.g., “Want to see more options?”, “Curious about ingredients?”, “Should I compare these?”, “Ready to add one to your cart?”).",
         });
       }
 

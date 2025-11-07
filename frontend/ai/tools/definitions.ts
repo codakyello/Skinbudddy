@@ -4,17 +4,11 @@ export const TOOL_DEFINITIONS = {
   getUserCart: {
     name: "getUserCart",
     description:
-      "Retrieves all cart items for a specific user, including product details, pricing, size information, stock availability, and associated categories.",
+      "Retrieves all cart items for the current user, including product details, pricing, size information, stock availability, and associated categories.",
     input_schema: {
       type: "object",
-      properties: {
-        userId: {
-          type: "string",
-          description:
-            "The unique identifier of the user whose cart items should be retrieved",
-        },
-      },
-      required: ["userId"],
+      properties: {},
+      required: [],
     },
   },
 
@@ -27,10 +21,6 @@ export const TOOL_DEFINITIONS = {
       type: "object",
       additionalProperties: false,
       properties: {
-        userId: {
-          type: "string",
-          description: "The unique identifier of the user adding to cart.",
-        },
         productId: {
           type: "string",
           description: "The unique identifier of the product to add.",
@@ -47,7 +37,7 @@ export const TOOL_DEFINITIONS = {
             "Desired quantity. If the item exists and this value is greater than the current cart quantity, the server treats it as an absolute set; otherwise it adds incrementally. Stock is validated in both cases.",
         },
       },
-      required: ["userId", "productId", "sizeId", "quantity"],
+      required: ["productId", "sizeId", "quantity"],
     },
   },
   */
@@ -67,12 +57,8 @@ export const TOOL_DEFINITIONS = {
           type: "number",
           description: "The new quantity for the cart item",
         },
-        userId: {
-          type: "string",
-          description: "The unique identifier of the user adding to cart.",
-        },
       },
-      required: ["cartId", "quantity", "userId"],
+      required: ["cartId", "quantity"],
     },
   },
 
@@ -86,12 +72,8 @@ export const TOOL_DEFINITIONS = {
           type: "string",
           description: "The unique identifier of the cart item to remove",
         },
-        userId: {
-          type: "string",
-          description: "The unique identifier of the user adding to cart.",
-        },
       },
-      required: ["cartId", "userId"],
+      required: ["cartId"],
     },
   },
 
@@ -100,14 +82,8 @@ export const TOOL_DEFINITIONS = {
     description: "Removes all items from a user's cart.",
     input_schema: {
       type: "object",
-      properties: {
-        userId: {
-          type: "string",
-          description:
-            "The unique identifier of the user whose cart should be cleared",
-        },
-      },
-      required: ["userId"],
+      properties: {},
+      required: [],
     },
   },
 
@@ -118,10 +94,6 @@ export const TOOL_DEFINITIONS = {
     input_schema: {
       type: "object",
       properties: {
-        userId: {
-          type: "string",
-          description: "The unique identifier of the user",
-        },
         items: {
           type: "array",
           items: {
@@ -145,7 +117,7 @@ export const TOOL_DEFINITIONS = {
           },
         },
       },
-      required: ["userId", "items"],
+      required: ["items"],
     },
   },
 
@@ -210,16 +182,11 @@ export const TOOL_DEFINITIONS = {
   getUserRoutines: {
     name: "getUserRoutines",
     description:
-      "Retrieves all skincare/beauty routines created by a specific user.",
+      "Retrieves all skincare/beauty routines created by the current user.",
     input_schema: {
       type: "object",
-      properties: {
-        userId: {
-          type: "string",
-          description: "The unique identifier of the user",
-        },
-      },
-      required: ["userId"],
+      properties: {},
+      required: [],
     },
   },
 
@@ -234,12 +201,19 @@ export const TOOL_DEFINITIONS = {
           type: "string",
           description: "The unique identifier of the routine to retrieve",
         },
-        userId: {
-          type: "string",
-          description: "The unique identifier of the user (for authorization)",
-        },
       },
-      required: ["routineId", "userId"],
+      required: ["routineId"],
+    },
+  },
+
+  getSkinProfile: {
+    name: "getSkinProfile",
+    description:
+      "Fetch the signed-in user's saved skin profile (skin type, concerns, sensitivities). Use when a user asks about their own skin type or profile.",
+    input_schema: {
+      type: "object",
+      properties: {},
+      required: [],
     },
   },
 

@@ -81,7 +81,6 @@ const OrderType = v.union(v.literal("normal"), v.literal("pay_for_me"));
 
 export const createOrder = mutation({
   args: {
-    userId: v.string(),
     address: v.string(),
     city: v.string(),
     state: v.string(),
@@ -101,7 +100,6 @@ export const createOrder = mutation({
   handler: async (
     ctx,
     {
-      userId,
       address,
       additionalAddress,
       fullAddress,
@@ -119,6 +117,16 @@ export const createOrder = mutation({
       createRoutine,
     }
   ) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId) {
+      return {
+        success: false,
+        message: "Authentication required",
+        statusCode: 401,
+      } as const;
+    }
+
     try {
       const cartItems = await ctx.db
         .query("carts")
@@ -287,9 +295,18 @@ export const createOrderReference = mutation({
   args: {
     orderId: v.id("orders"),
     reference: v.string(),
-    userId: v.string(),
   },
-  handler: async (ctx, { orderId, reference, userId }) => {
+  handler: async (ctx, { orderId, reference }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity?.subject;
+    if (!userId) {
+      return {
+        success: false,
+        message: "Authentication required",
+        statusCode: 401,
+      } as const;
+    }
+
     try {
       const order = await ctx.db.get(orderId);
       if (!order) {
