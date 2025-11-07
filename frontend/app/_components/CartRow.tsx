@@ -14,7 +14,6 @@ import { useUser } from "../_contexts/CreateConvexUser";
 
 export default function CartRow({ item }: { item: Cart }) {
   const [isUpdating, setIsUpdating] = useState(false);
-  const { user } = useUser();
   const [isDeleting, setIsDeleting] = useState(false);
   const updateCartQuantity = useMutation(api.cart.updateCartQuantity);
   const removeFromCart = useMutation(api.cart.removeFromCart);

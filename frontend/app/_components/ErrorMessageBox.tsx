@@ -38,7 +38,7 @@ export function ErrorMessageBox({
             Something went wrong
           </h3>
           <p className="text-[1.4rem] text-[#6b7280] leading-[1.6] mb-[1.6rem]">
-            We couldn't process your request. Please try again.
+            We couldn&apos;t process your request. Please try again.
           </p>
 
           {/* Retry Button */}

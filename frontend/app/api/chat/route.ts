@@ -9,19 +9,18 @@ import {
 import { callGemini } from "@/ai/models/gemini";
 import { api } from "@/convex/_generated/api";
 import { DEFAULT_SYSTEM_PROMPT } from "@/ai/utils";
-import { getGeminiClient } from "@/ai/gemini/client";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { ChatMessage } from "@/ai/types";
 
-type SkinProfileClassification = {
-  intent: "profile_update" | "profile_reference" | "none";
-  skinTypes: string[];
-  skinConcerns: string[];
-  confidence: number;
-};
+// type SkinProfileClassification = {
+//   intent: "profile_update" | "profile_reference" | "none";
+//   skinTypes: string[];
+//   skinConcerns: string[];
+//   confidence: number;
+// };
 
-const SKIN_PROFILE_CLASSIFIER_MODEL =
-  process.env.SKIN_PROFILE_CLASSIFIER_MODEL ?? "gemini-1.5-flash";
+// const SKIN_PROFILE_CLASSIFIER_MODEL =
+//   process.env.SKIN_PROFILE_CLASSIFIER_MODEL ?? "gemini-1.5-flash";
 
 type ParsedAssistantReply = {
   main: string;
@@ -268,136 +267,136 @@ function augmentMessagesWithAffirmationNote(
   return normalized;
 }
 
-async function classifySkinProfileIntent(
-  input: string
-): Promise<SkinProfileClassification | null> {
-  if (typeof input !== "string" || !input.trim().length) return null;
-  try {
-    const client = getGeminiClient();
-    const response = await client.models.generateContent({
-      model: SKIN_PROFILE_CLASSIFIER_MODEL,
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: [
-                "Classify the following message.",
-                "Determine if the speaker is declaring new skin type or concern information that should update a stored skincare profile (intent: profile_update),",
-                "simply referencing their existing profile without requesting changes (intent: profile_reference),",
-                "or not discussing their profile at all (intent: none).",
-                "Extract any skin type mentions (oily, dry, combination, sensitive, normal, acne-prone, mature, etc.) and skin concerns (acne, redness, hyperpigmentation, sensitivity, dryness, texture, dullness, pores, fine lines, oiliness, eczema, psoriasis, congestion, etc.).",
-                "If unsure, choose intent 'none'.",
-                `Message: """${input.trim()}"""`,
-              ].join(" "),
-            },
-          ],
-        },
-      ],
-      config: {
-        systemInstruction: {
-          role: "system",
-          parts: [
-            {
-              text: "You output JSON describing whether the user intends to update their saved skin profile. Reply with JSON only, no narration.",
-            },
-          ],
-        },
-        temperature: 0,
-        responseMimeType: "application/json",
-        responseJsonSchema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            intent: {
-              type: "string",
-              enum: ["profile_update", "profile_reference", "none"],
-            },
-            skinTypes: {
-              type: "array",
-              items: { type: "string" },
-              default: [],
-            },
-            skinConcerns: {
-              type: "array",
-              items: { type: "string" },
-              default: [],
-            },
-            confidence: {
-              type: "number",
-              minimum: 0,
-              maximum: 1,
-              default: 0,
-            },
-          },
-          required: ["intent", "skinTypes", "skinConcerns"],
-        },
-      },
-    });
+// async function classifySkinProfileIntent(
+//   input: string
+// ): Promise<SkinProfileClassification | null> {
+//   if (typeof input !== "string" || !input.trim().length) return null;
+//   try {
+//     const client = getGeminiClient();
+//     const response = await client.models.generateContent({
+//       model: SKIN_PROFILE_CLASSIFIER_MODEL,
+//       contents: [
+//         {
+//           role: "user",
+//           parts: [
+//             {
+//               text: [
+//                 "Classify the following message.",
+//                 "Determine if the speaker is declaring new skin type or concern information that should update a stored skincare profile (intent: profile_update),",
+//                 "simply referencing their existing profile without requesting changes (intent: profile_reference),",
+//                 "or not discussing their profile at all (intent: none).",
+//                 "Extract any skin type mentions (oily, dry, combination, sensitive, normal, acne-prone, mature, etc.) and skin concerns (acne, redness, hyperpigmentation, sensitivity, dryness, texture, dullness, pores, fine lines, oiliness, eczema, psoriasis, congestion, etc.).",
+//                 "If unsure, choose intent 'none'.",
+//                 `Message: """${input.trim()}"""`,
+//               ].join(" "),
+//             },
+//           ],
+//         },
+//       ],
+//       config: {
+//         systemInstruction: {
+//           role: "system",
+//           parts: [
+//             {
+//               text: "You output JSON describing whether the user intends to update their saved skin profile. Reply with JSON only, no narration.",
+//             },
+//           ],
+//         },
+//         temperature: 0,
+//         responseMimeType: "application/json",
+//         responseJsonSchema: {
+//           type: "object",
+//           additionalProperties: false,
+//           properties: {
+//             intent: {
+//               type: "string",
+//               enum: ["profile_update", "profile_reference", "none"],
+//             },
+//             skinTypes: {
+//               type: "array",
+//               items: { type: "string" },
+//               default: [],
+//             },
+//             skinConcerns: {
+//               type: "array",
+//               items: { type: "string" },
+//               default: [],
+//             },
+//             confidence: {
+//               type: "number",
+//               minimum: 0,
+//               maximum: 1,
+//               default: 0,
+//             },
+//           },
+//           required: ["intent", "skinTypes", "skinConcerns"],
+//         },
+//       },
+//     });
 
-    const toRecord = (value: unknown): Record<string, unknown> | null =>
-      value && typeof value === "object"
-        ? (value as Record<string, unknown>)
-        : null;
+//     const toRecord = (value: unknown): Record<string, unknown> | null =>
+//       value && typeof value === "object"
+//         ? (value as Record<string, unknown>)
+//         : null;
 
-    const extractText = (value: unknown): string | null => {
-      const record = toRecord(value);
-      if (!record) return null;
-      const direct = record.text;
-      if (typeof direct === "string" && direct.trim().length) {
-        return direct.trim();
-      }
-      const responseNode = toRecord(record.response);
-      const responseText = responseNode?.text;
-      if (typeof responseText === "string" && responseText.trim().length) {
-        return responseText.trim();
-      }
-      const candidates = record.candidates;
-      if (Array.isArray(candidates)) {
-        for (const candidate of candidates) {
-          const candidateRecord = toRecord(candidate);
-          const contentNode = toRecord(candidateRecord?.content);
-          const parts = contentNode?.parts;
-          if (Array.isArray(parts)) {
-            for (const part of parts) {
-              const partRecord = toRecord(part);
-              const partText = partRecord?.text;
-              if (typeof partText === "string" && partText.trim().length) {
-                return partText.trim();
-              }
-            }
-          }
-        }
-      }
-      return null;
-    };
+//     const extractText = (value: unknown): string | null => {
+//       const record = toRecord(value);
+//       if (!record) return null;
+//       const direct = record.text;
+//       if (typeof direct === "string" && direct.trim().length) {
+//         return direct.trim();
+//       }
+//       const responseNode = toRecord(record.response);
+//       const responseText = responseNode?.text;
+//       if (typeof responseText === "string" && responseText.trim().length) {
+//         return responseText.trim();
+//       }
+//       const candidates = record.candidates;
+//       if (Array.isArray(candidates)) {
+//         for (const candidate of candidates) {
+//           const candidateRecord = toRecord(candidate);
+//           const contentNode = toRecord(candidateRecord?.content);
+//           const parts = contentNode?.parts;
+//           if (Array.isArray(parts)) {
+//             for (const part of parts) {
+//               const partRecord = toRecord(part);
+//               const partText = partRecord?.text;
+//               if (typeof partText === "string" && partText.trim().length) {
+//                 return partText.trim();
+//               }
+//             }
+//           }
+//         }
+//       }
+//       return null;
+//     };
 
-    const rawContent = extractText(response);
-    if (!rawContent) return null;
+//     const rawContent = extractText(response);
+//     if (!rawContent) return null;
 
-    const sanitized = rawContent.replace(/```(?:json)?|```/gi, "").trim();
-    if (!sanitized.length) return null;
+//     const sanitized = rawContent.replace(/```(?:json)?|```/gi, "").trim();
+//     if (!sanitized.length) return null;
 
-    const parsed = JSON.parse(sanitized);
-    if (
-      parsed &&
-      typeof parsed.intent === "string" &&
-      Array.isArray(parsed.skinTypes) &&
-      Array.isArray(parsed.skinConcerns)
-    ) {
-      return {
-        intent: parsed.intent,
-        skinTypes: parsed.skinTypes,
-        skinConcerns: parsed.skinConcerns,
-        confidence:
-          typeof parsed.confidence === "number" ? parsed.confidence : 0,
-      };
-    }
-  } catch (error) {
-    console.warn("Skin profile intent classification failed:", error);
-  }
-  return null;
-}
+//     const parsed = JSON.parse(sanitized);
+//     if (
+//       parsed &&
+//       typeof parsed.intent === "string" &&
+//       Array.isArray(parsed.skinTypes) &&
+//       Array.isArray(parsed.skinConcerns)
+//     ) {
+//       return {
+//         intent: parsed.intent,
+//         skinTypes: parsed.skinTypes,
+//         skinConcerns: parsed.skinConcerns,
+//         confidence:
+//           typeof parsed.confidence === "number" ? parsed.confidence : 0,
+//       };
+//     }
+//   } catch (error) {
+//     console.warn("Skin profile intent classification failed:", error);
+//   }
+//   return null;
+// }
 
 export async function POST(req: NextRequest) {
   const authSession = await auth();
@@ -1029,7 +1028,7 @@ async function handleChatPost(req: NextRequest) {
             throw new Error("Missing `message` in request body");
           }
 
-          let viewerUser: Record<string, unknown> | null = null;
+          // let viewerUser: Record<string, unknown> | null = null;
           // try {
           //   const viewerResult = await fetchQuery(api.users.getUser, {});
           //   if (viewerResult?.success && viewerResult.user) {

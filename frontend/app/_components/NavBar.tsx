@@ -5,7 +5,6 @@ import CartModal from "./CartModal";
 import AuthModal from "./AuthModal";
 import Link from "next/link";
 import useUserCart, { CartEntry } from "../_hooks/useUserCart";
-import { useUser } from "../_contexts/CreateConvexUser";
 // import Logo from "./Logo";
 import NavModal from "./NavModal";
 import Search from "./Search";
