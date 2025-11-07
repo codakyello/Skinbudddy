@@ -86,6 +86,8 @@ export default function ConvexUserProvider({
             const storedToken = localStorage.getItem(GUEST_TOKEN_STORAGE_KEY);
             let token = storedToken;
 
+            // failing here because the user is not created yet
+            // we are generating userId cleint side, use the userId to generate the token and then pass in the token
             if (!token) {
               token = (await generateGuestToken(guestId)) ?? "";
             }
@@ -101,6 +103,7 @@ export default function ConvexUserProvider({
                 convexClient.setAuth(async () => null);
                 localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
 
+                // try again for expired token
                 try {
                   const refreshedToken = await generateGuestToken(guestId);
                   if (refreshedToken) {

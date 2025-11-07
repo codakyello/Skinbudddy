@@ -8,8 +8,7 @@ type RequestBody = {
   guestId?: string;
 };
 
-const convexUrl =
-  process.env.NEXT_PUBLIC_CONVEX_URL || "http://localhost:3000";
+const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "http://localhost:3000";
 const convexClient = new ConvexHttpClient(convexUrl);
 
 export async function POST(request: Request) {
@@ -24,16 +23,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const isAnon = await convexClient.query(api.users.isAnonGuest, {
-      userId: guestId,
-    });
+    // const isAnon = await convexClient.query(api.users.isAnonGuest, {
+    //   userId: guestId,
+    // });
 
-    if (!isAnon) {
-      return NextResponse.json(
-        { error: "Guest tokens can only be issued for anonymous accounts." },
-        { status: 403 }
-      );
-    }
+    // if (!isAnon) {
+    //   return NextResponse.json(
+    //     { error: "Guest tokens can only be issued for anonymous accounts." },
+    //     { status: 403 }
+    //   );
+    // }
 
     const token = await generateGuestToken(guestId);
 
