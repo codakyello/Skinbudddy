@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { ConvexHttpClient } from "convex/browser";
-import { api } from "@/convex/_generated/api";
 import { GUEST_COOKIE_NAME } from "@/app/_lib/guestAuth";
 import { generateGuestToken } from "@/app/_lib/guestAuth.server";
 
@@ -8,8 +6,8 @@ type RequestBody = {
   guestId?: string;
 };
 
-const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "http://localhost:3000";
-const convexClient = new ConvexHttpClient(convexUrl);
+// const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "http://localhost:3000";
+// const convexClient = new ConvexHttpClient(convexUrl);
 
 export async function POST(request: Request) {
   try {
