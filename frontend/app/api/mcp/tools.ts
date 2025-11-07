@@ -2,7 +2,7 @@ import z from "zod";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 // import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { fetchMutation, fetchQuery } from "convex/nextjs";
+import { fetchMutation, fetchQuery } from "@/ai/convex/client";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   resolveSkinConcern,
@@ -307,15 +307,11 @@ export function registerTools(server: McpServer) {
   server.tool(
     "getUserCart",
     "Retrieves all cart items for a specific user, including product details, pricing, size information, stock availability, and associated categories.",
-    {
-      userId: z.string().describe("The unique identifier of the user"),
-    },
-    async ({ userId }) => {
+    z.object({}),
+    async () => {
       try {
         const api = await getApi();
-        const result = await fetchQuery(api.cart.getUserCart, {
-          userId,
-        });
+        const result = await fetchQuery(api.cart.getUserCart, {});
         return ok(result);
       } catch (e: unknown) {
         return fail((e as Error)?.message || "Failed to get user cart");
@@ -327,16 +323,14 @@ export function registerTools(server: McpServer) {
     "addToCart",
     "Adds a product (with a specific size) to a user's cart. Validates stock and merges with existing items per server rules.",
     {
-      userId: z.string().describe("User ID"),
       productId: z.string().describe("Product ID"),
       sizeId: z.string().describe("Product size/variant ID"),
       quantity: z.number().min(1).describe("Desired quantity (>=1)"),
     },
-    async ({ userId, productId, sizeId, quantity }) => {
+    async ({ productId, sizeId, quantity }) => {
       try {
         const api = await getApi();
         const result = await fetchMutation(api.cart.createCart, {
-          userId,
           productId: productId as Id<"products">,
           sizeId,
           quantity,
@@ -355,15 +349,13 @@ export function registerTools(server: McpServer) {
     {
       cartId: z.string().describe("Cart item ID"),
       quantity: z.number().min(1).describe("New quantity (>=1)"),
-      userId: z.string().describe("User ID"),
     },
-    async ({ cartId, quantity, userId }) => {
+    async ({ cartId, quantity }) => {
       try {
         const api = await getApi();
         const result = await fetchMutation(api.cart.updateCartQuantity, {
           cartId: cartId as Id<"carts">,
           quantity,
-          userId,
         });
         return ok(result);
       } catch (e: unknown) {
@@ -377,14 +369,12 @@ export function registerTools(server: McpServer) {
     "Removes a specific item from the user's cart by its cart ID.",
     {
       cartId: z.string().describe("Cart item ID"),
-      userId: z.string().describe("User ID"),
     },
-    async ({ cartId, userId }) => {
+    async ({ cartId }) => {
       try {
         const api = await getApi();
         const result = await fetchMutation(api.cart.removeFromCart, {
           cartId: cartId as Id<"carts">,
-          userId,
         });
         return ok(result);
       } catch (e: unknown) {
@@ -396,15 +386,11 @@ export function registerTools(server: McpServer) {
   server.tool(
     "clearCart",
     "Removes all items from a user's cart.",
-    {
-      userId: z.string().describe("User ID"),
-    },
-    async ({ userId }) => {
+    z.object({}),
+    async () => {
       try {
         const api = await getApi();
-        const result = await fetchMutation(api.cart.clearCart, {
-          userId,
-        });
+        const result = await fetchMutation(api.cart.clearCart, {});
         return ok(result);
       } catch (e: unknown) {
         return fail((e as Error)?.message || "Failed to clear cart");
@@ -473,15 +459,11 @@ export function registerTools(server: McpServer) {
   server.tool(
     "getUserRoutines",
     "Retrieves all skincare/beauty routines created by a specific user.",
-    {
-      userId: z.string().describe("User ID"),
-    },
-    async ({ userId }) => {
+    z.object({}),
+    async () => {
       try {
         const api = await getApi();
-        const result = await fetchQuery(api.routine.getUserRoutines, {
-          userId,
-        });
+        const result = await fetchQuery(api.routine.getUserRoutines, {});
         return ok(result);
       } catch (e: unknown) {
         return fail((e as Error)?.message || "Failed to get user routines");
@@ -494,18 +476,82 @@ export function registerTools(server: McpServer) {
     "Retrieves a specific routine by its ID with full details including populated product information.",
     {
       routineId: z.string().describe("Routine ID"),
-      userId: z.string().describe("User ID (authorization)"),
     },
-    async ({ routineId, userId }) => {
+    async ({ routineId }) => {
       try {
         const api = await getApi();
         const result = await fetchQuery(api.routine.getUserRoutine, {
           routineId: routineId as Id<"routines">,
-          userId,
         });
         return ok(result);
       } catch (e: unknown) {
         return fail((e as Error)?.message || "Failed to get routine");
+      }
+    }
+  );
+
+  server.tool(
+    "getSkinProfile",
+    "Fetch the signed-in user's saved skin profile (skin type, concerns, ingredient sensitivities).",
+    {},
+    async () => {
+      try {
+        const api = await getApi();
+        const response = await fetchQuery(api.users.getUser, {});
+        const userRecord = response?.success
+          ? (response.user as unknown)
+          : null;
+        const skinProfile =
+          userRecord &&
+          typeof userRecord === "object" &&
+          "skinProfile" in userRecord &&
+          userRecord.skinProfile &&
+          typeof (userRecord as Record<string, unknown>).skinProfile ===
+            "object"
+            ? ((userRecord as Record<string, unknown>).skinProfile as Record<
+                string,
+                unknown
+              >)
+            : null;
+
+        if (!skinProfile) {
+          return ok({
+            success: false,
+            skinProfile: null,
+            quizCallToAction:
+              "We haven't saved your skin profile yet. SkinBuddy can walk you through a quick quiz to discover it whenever you're ready.",
+          });
+        }
+
+        const toStringArray = (value: unknown): string[] | undefined =>
+          Array.isArray(value)
+            ? value
+                .map((entry) =>
+                  typeof entry === "string" && entry.trim().length
+                    ? entry.trim().toLowerCase()
+                    : null
+                )
+                .filter((entry): entry is string => Boolean(entry))
+            : undefined;
+
+        const normalizedProfile = {
+          skinType:
+            typeof skinProfile.skinType === "string"
+              ? skinProfile.skinType
+              : undefined,
+          skinConcerns: toStringArray(skinProfile.skinConcerns),
+          ingredientSensitivities: toStringArray(
+            skinProfile.ingredientSensitivities
+          ),
+          updatedAt:
+            typeof skinProfile.updatedAt === "number"
+              ? skinProfile.updatedAt
+              : undefined,
+        };
+
+        return ok({ success: true, skinProfile: normalizedProfile });
+      } catch (e: unknown) {
+        return fail((e as Error)?.message || "Failed to load skin profile");
       }
     }
   );
@@ -517,7 +563,7 @@ export function registerTools(server: McpServer) {
     async () => {
       try {
         const api = await getApi();
-        const result = await fetchQuery(api.brands.getAllBrands);
+        const result = await fetchQuery(api.brands.getAllBrands, {});
         return ok(result);
       } catch (e: unknown) {
         return fail((e as Error)?.message || "Failed to get brands");

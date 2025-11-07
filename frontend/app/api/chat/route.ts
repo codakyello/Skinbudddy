@@ -1,12 +1,418 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchAction, fetchMutation, fetchQuery } from "convex/nextjs";
-import { api } from "@/convex/_generated/api";
-import { callOpenAI } from "@/ai/models/openai";
+import { auth } from "@clerk/nextjs/server";
+import {
+  fetchAction,
+  fetchMutation,
+  fetchQuery,
+  runWithConvexAuthToken,
+} from "@/ai/convex/client";
 import { callGemini } from "@/ai/models/gemini";
+import { api } from "@/convex/_generated/api";
 import { DEFAULT_SYSTEM_PROMPT } from "@/ai/utils";
+import { getGeminiClient } from "@/ai/gemini/client";
 import type { Id } from "@/convex/_generated/dataModel";
+import type { ChatMessage } from "@/ai/types";
+
+type SkinProfileClassification = {
+  intent: "profile_update" | "profile_reference" | "none";
+  skinTypes: string[];
+  skinConcerns: string[];
+  confidence: number;
+};
+
+const SKIN_PROFILE_CLASSIFIER_MODEL =
+  process.env.SKIN_PROFILE_CLASSIFIER_MODEL ?? "gemini-1.5-flash";
+
+type ParsedAssistantReply = {
+  main: string;
+  suggestedActions: string[];
+};
+
+const SUGGESTED_ACTIONS_HEADING_REGEX =
+  /(?:^|\n)Suggested actions\s*:?\s*\n/i;
+
+function splitAssistantReply(message: string): ParsedAssistantReply {
+  if (typeof message !== "string" || !message.trim().length) {
+    return { main: message ?? "", suggestedActions: [] };
+  }
+
+  const normalized = message.replace(/\r\n/g, "\n");
+  const headingMatch = SUGGESTED_ACTIONS_HEADING_REGEX.exec(normalized);
+
+  if (!headingMatch) {
+    return { main: normalized, suggestedActions: [] };
+  }
+
+  const main = normalized.slice(0, headingMatch.index).trimEnd();
+
+  const remaining = normalized.slice(
+    headingMatch.index + headingMatch[0].length
+  );
+  const suggestions: string[] = [];
+
+  for (const line of remaining.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.length) continue;
+    const bulletMatch = trimmed.match(/^\d+\.\s*(.+)$/);
+    if (bulletMatch) {
+      suggestions.push(bulletMatch[1].trim());
+      continue;
+    }
+    // Stop once we hit content that no longer looks like a numbered suggestion.
+    break;
+  }
+
+  return { main: main.length ? main : normalized.trim(), suggestedActions: suggestions };
+}
+
+const AFFIRMATIVE_PHRASES = [
+  "ok",
+  "okay",
+  "ok thanks",
+  "ok thank you",
+  "sure",
+  "yes",
+  "yep",
+  "yeah",
+  "yup",
+  "absolutely",
+  "definitely",
+  "of course",
+  "sounds good",
+  "sounds great",
+  "that works",
+  "works for me",
+  "let's do it",
+  "lets do it",
+  "let's go",
+  "lets go",
+  "do it",
+  "do that",
+  "go ahead",
+  "please do",
+  "please proceed",
+  "make it happen",
+  "go for it",
+  "i'm in",
+  "i am in",
+  "i'm ready",
+  "i am ready",
+  "great",
+  "cool",
+  "perfect",
+  "love it",
+  "sounds perfect",
+  "sounds good to me",
+  "sounds great to me",
+  "alright",
+  "all right",
+  "okay yes",
+  "okay yes let's do it",
+  "okay lets do it",
+  "yes let's do it",
+  "yes lets do it",
+  "yes please",
+  "yes please do",
+  "yes go ahead",
+  "ok go ahead",
+  "okay go ahead",
+  "ok let's do it",
+  "ok lets do it",
+  "sounds good, do it",
+  "do it please",
+  "please do it",
+];
+
+const AFFIRMATIVE_TOKENS = new Set([
+  "ok",
+  "okay",
+  "okey",
+  "sure",
+  "yes",
+  "yep",
+  "yeah",
+  "yup",
+  "absolutely",
+  "definitely",
+  "course",
+  "of",
+  "course",
+  "sounds",
+  "good",
+  "great",
+  "that",
+  "works",
+  "works",
+  "for",
+  "me",
+  "let's",
+  "lets",
+  "do",
+  "it",
+  "go",
+  "ahead",
+  "please",
+  "proceed",
+  "make",
+  "happen",
+  "go",
+  "for",
+  "i'm",
+  "im",
+  "i",
+  "am",
+  "in",
+  "ready",
+  "cool",
+  "perfect",
+  "love",
+  "love",
+  "it",
+  "sounds",
+  "perfect",
+  "alright",
+  "all",
+  "right",
+  "yess",
+]);
+
+function normaliseAffirmation(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[\u2019']/g, "'")
+    .replace(/[^a-z0-9'\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isAffirmativeAcknowledgement(text: string): boolean {
+  if (typeof text !== "string") return false;
+  const trimmed = text.trim();
+  if (!trimmed.length) return false;
+  if (trimmed.length > 80) return false;
+
+  const normalized = normaliseAffirmation(trimmed);
+  if (!normalized.length) return false;
+
+  if (AFFIRMATIVE_PHRASES.includes(normalized)) return true;
+
+  const tokens = normalized.split(" ");
+  if (!tokens.length) return false;
+
+  return tokens.every((token) => AFFIRMATIVE_TOKENS.has(token));
+}
+
+function coerceRole(value: string): ChatMessage["role"] {
+  switch (value) {
+    case "user":
+    case "assistant":
+    case "system":
+    case "tool":
+    case "developer":
+      return value;
+    default:
+      return "system";
+  }
+}
+
+function augmentMessagesWithAffirmationNote(
+  messages: Array<{ role: string; content: string }>
+): ChatMessage[] {
+  if (!Array.isArray(messages) || !messages.length) {
+    return [];
+  }
+
+  const normalized: ChatMessage[] = messages.map((entry) => ({
+    role: coerceRole(entry.role),
+    content: typeof entry.content === "string" ? entry.content : "",
+  }));
+
+  const last = normalized[normalized.length - 1];
+
+  if (!last || last.role !== "user") {
+    return normalized;
+  }
+
+  if (!isAffirmativeAcknowledgement(last.content)) {
+    return normalized;
+  }
+
+  const previousAssistant = [...normalized]
+    .reverse()
+    .find((entry) => entry.role === "assistant");
+
+  if (!previousAssistant) {
+    return normalized;
+  }
+
+  const acceptedMessage = previousAssistant.content.trim();
+  const confirmation = last.content.trim();
+
+  const note = [
+    "System note: The user just gave a brief affirmative response acknowledging the assistant's previous suggestion.",
+    `User reply: "${confirmation}"`,
+    acceptedMessage.length
+      ? `Treat this as explicit approval to proceed with the assistant's previous guidance: ${acceptedMessage}`
+      : "Proceed with the assistant's previously suggested course of action.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  normalized.push({
+    role: "system",
+    content: note,
+  });
+
+  return normalized;
+}
+
+async function classifySkinProfileIntent(
+  input: string
+): Promise<SkinProfileClassification | null> {
+  if (typeof input !== "string" || !input.trim().length) return null;
+  try {
+    const client = getGeminiClient();
+    const response = await client.models.generateContent({
+      model: SKIN_PROFILE_CLASSIFIER_MODEL,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: [
+                "Classify the following message.",
+                "Determine if the speaker is declaring new skin type or concern information that should update a stored skincare profile (intent: profile_update),",
+                "simply referencing their existing profile without requesting changes (intent: profile_reference),",
+                "or not discussing their profile at all (intent: none).",
+                "Extract any skin type mentions (oily, dry, combination, sensitive, normal, acne-prone, mature, etc.) and skin concerns (acne, redness, hyperpigmentation, sensitivity, dryness, texture, dullness, pores, fine lines, oiliness, eczema, psoriasis, congestion, etc.).",
+                "If unsure, choose intent 'none'.",
+                `Message: """${input.trim()}"""`,
+              ].join(" "),
+            },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction: {
+          role: "system",
+          parts: [
+            {
+              text: "You output JSON describing whether the user intends to update their saved skin profile. Reply with JSON only, no narration.",
+            },
+          ],
+        },
+        temperature: 0,
+        responseMimeType: "application/json",
+        responseJsonSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            intent: {
+              type: "string",
+              enum: ["profile_update", "profile_reference", "none"],
+            },
+            skinTypes: {
+              type: "array",
+              items: { type: "string" },
+              default: [],
+            },
+            skinConcerns: {
+              type: "array",
+              items: { type: "string" },
+              default: [],
+            },
+            confidence: {
+              type: "number",
+              minimum: 0,
+              maximum: 1,
+              default: 0,
+            },
+          },
+          required: ["intent", "skinTypes", "skinConcerns"],
+        },
+      },
+    });
+
+    const toRecord = (value: unknown): Record<string, unknown> | null =>
+      value && typeof value === "object"
+        ? (value as Record<string, unknown>)
+        : null;
+
+    const extractText = (value: unknown): string | null => {
+      const record = toRecord(value);
+      if (!record) return null;
+      const direct = record.text;
+      if (typeof direct === "string" && direct.trim().length) {
+        return direct.trim();
+      }
+      const responseNode = toRecord(record.response);
+      const responseText = responseNode?.text;
+      if (typeof responseText === "string" && responseText.trim().length) {
+        return responseText.trim();
+      }
+      const candidates = record.candidates;
+      if (Array.isArray(candidates)) {
+        for (const candidate of candidates) {
+          const candidateRecord = toRecord(candidate);
+          const contentNode = toRecord(candidateRecord?.content);
+          const parts = contentNode?.parts;
+          if (Array.isArray(parts)) {
+            for (const part of parts) {
+              const partRecord = toRecord(part);
+              const partText = partRecord?.text;
+              if (typeof partText === "string" && partText.trim().length) {
+                return partText.trim();
+              }
+            }
+          }
+        }
+      }
+      return null;
+    };
+
+    const rawContent = extractText(response);
+    if (!rawContent) return null;
+
+    const sanitized = rawContent.replace(/```(?:json)?|```/gi, "").trim();
+    if (!sanitized.length) return null;
+
+    const parsed = JSON.parse(sanitized);
+    if (
+      parsed &&
+      typeof parsed.intent === "string" &&
+      Array.isArray(parsed.skinTypes) &&
+      Array.isArray(parsed.skinConcerns)
+    ) {
+      return {
+        intent: parsed.intent,
+        skinTypes: parsed.skinTypes,
+        skinConcerns: parsed.skinConcerns,
+        confidence:
+          typeof parsed.confidence === "number" ? parsed.confidence : 0,
+      };
+    }
+  } catch (error) {
+    console.warn("Skin profile intent classification failed:", error);
+  }
+  return null;
+}
 
 export async function POST(req: NextRequest) {
+  const authSession = await auth();
+  const convexToken = await authSession
+    .getToken({ template: "convex" })
+    .catch(() => null);
+  const guestToken = req.cookies.get("guest_token")?.value ?? null;
+
+  // console.log(guestToken, "This is the guest token");
+  // console.log(convexToken, "This is the convex token");
+
+  const token = convexToken ?? guestToken;
+
+  return runWithConvexAuthToken(token, () => handleChatPost(req));
+}
+
+async function handleChatPost(req: NextRequest) {
   console.log("we are in chat endpoint");
   const body = await req.json();
 
@@ -216,7 +622,8 @@ export async function POST(req: NextRequest) {
               typeof brandRaw === "string"
                 ? brandRaw
                 : brandRaw && typeof brandRaw === "object"
-                  ? typeof (brandRaw as Record<string, unknown>).name === "string"
+                  ? typeof (brandRaw as Record<string, unknown>).name ===
+                    "string"
                     ? ((brandRaw as Record<string, unknown>).name as string)
                     : undefined
                   : undefined;
@@ -614,16 +1021,25 @@ export async function POST(req: NextRequest) {
 
       (async () => {
         try {
-          const {
-            message,
-            sessionId: incomingSessionId,
-            userId,
-            config,
-          } = body;
+          const { message, sessionId: incomingSessionId, config } = body;
 
           if (!message || typeof message !== "string") {
             throw new Error("Missing `message` in request body");
           }
+
+          let viewerUser: Record<string, unknown> | null = null;
+          // try {
+          //   const viewerResult = await fetchQuery(api.users.getUser, {});
+          //   if (viewerResult?.success && viewerResult.user) {
+          //     viewerUser = viewerResult.user as Record<string, unknown>;
+          //     const candidate = viewerResult.user.userId;
+          //     if (typeof candidate === "string" && candidate.trim().length) {
+          //       userId = candidate.trim();
+          //     }
+          //   }
+          // } catch (error) {
+          //   console.warn("Failed to resolve viewer identity", error);
+          // }
 
           let sessionId: Id<"conversationSessions">;
 
@@ -633,7 +1049,6 @@ export async function POST(req: NextRequest) {
             const created = await fetchMutation(
               api.conversation.createSession,
               {
-                userId: userId ?? undefined,
                 config: config ?? undefined,
               }
             );
@@ -647,6 +1062,10 @@ export async function POST(req: NextRequest) {
             : message;
 
           let quizInstruction: string | null = null;
+
+          // const skinIntentClassification = !isQuizResults
+          //   ? await classifySkinProfileIntent(sanitizedMessage)
+          //   : null;
 
           if (isQuizResults) {
             try {
@@ -695,7 +1114,7 @@ export async function POST(req: NextRequest) {
           const appendRole = isQuizResults ? "system" : "user";
           const contentToStore = isQuizResults
             ? (quizInstruction ?? sanitizedMessage)
-            : sanitizedMessage + ` My userId: ${userId}`;
+            : sanitizedMessage;
 
           const appendUser = await fetchMutation(
             api.conversation.appendMessage,
@@ -712,10 +1131,172 @@ export async function POST(req: NextRequest) {
                 sessionId,
               })
             );
-          }
+        }
 
           const context = await fetchQuery(api.conversation.getContext, {
             sessionId,
+          });
+
+          const conversationMessages = augmentMessagesWithAffirmationNote(
+            context.messages
+          );
+
+          // if (userId) {
+          //   try {
+          //     const profile =
+          //       viewerUser &&
+          //       typeof viewerUser === "object" &&
+          //       "skinProfile" in viewerUser &&
+          //       viewerUser.skinProfile &&
+          //       typeof (viewerUser as Record<string, unknown>).skinProfile ===
+          //         "object"
+          //         ? ((viewerUser as Record<string, unknown>).skinProfile as {
+          //             skinType?: string;
+          //             skinConcerns?: string[];
+          //             ingredientSensitivities?: string[];
+          //             updatedAt?: number;
+          //           })
+          //         : null;
+
+          //     if (profile) {
+          //       const normalizeDisplay = (value: string): string =>
+          //         value
+          //           .split(/[\s_-]+/)
+          //           .filter(Boolean)
+          //           .map(
+          //             (part) =>
+          //               part.charAt(0).toUpperCase() +
+          //               part.slice(1).toLowerCase()
+          //           )
+          //           .join(" ");
+
+          //       const joinDisplayList = (
+          //         values?: string[]
+          //       ): string | undefined => {
+          //         if (!Array.isArray(values) || !values.length)
+          //           return undefined;
+          //         const formatted = values
+          //           .map((entry) =>
+          //             typeof entry === "string" && entry.trim().length
+          //               ? normalizeDisplay(entry.trim())
+          //               : null
+          //           )
+          //           .filter((entry): entry is string => Boolean(entry));
+          //         return formatted.length ? formatted.join(", ") : undefined;
+          //       };
+
+          //       const parts: string[] = [];
+          //       if (typeof profile.skinType === "string") {
+          //         parts.push(
+          //           `Skin type – ${normalizeDisplay(profile.skinType)}`
+          //         );
+          //       }
+          //       const concernsText = joinDisplayList(profile.skinConcerns);
+          //       if (concernsText) {
+          //         parts.push(`Skin concerns – ${concernsText}`);
+          //       }
+          //       const sensitivitiesText = joinDisplayList(
+          //         profile.ingredientSensitivities
+          //       );
+          //       if (sensitivitiesText) {
+          //         parts.push(`Ingredient sensitivities – ${sensitivitiesText}`);
+          //       }
+
+          //       if (parts.length) {
+          //         const updatedAt =
+          //           typeof profile.updatedAt === "number"
+          //             ? new Date(profile.updatedAt).toISOString()
+          //             : null;
+          //         const timeline = updatedAt
+          //           ? ` (last updated ${updatedAt})`
+          //           : "";
+          //         const skinProfileContent =
+          //           `This is user's skin profile: ${parts.join(" | ")}${timeline}. ` +
+          //           "Use these details automatically in routines and product suggestions, and mention them when helpful.";
+
+          //         context.messages.unshift({
+          //           role: "system",
+          //           content: skinProfileContent,
+          //         });
+          //       }
+          //     }
+          //   } catch (error) {
+          //     console.warn("Failed to load skin profile", error);
+          //   }
+          // }
+
+          // if (
+          //   skinIntentClassification &&
+          //   skinIntentClassification.intent === "profile_update" &&
+          //   (skinIntentClassification.skinTypes.length > 0 ||
+          //     skinIntentClassification.skinConcerns.length > 0)
+          // ) {
+          //   const storedProfile =
+          //     viewerUser &&
+          //     typeof viewerUser === "object" &&
+          //     "skinProfile" in viewerUser &&
+          //     viewerUser.skinProfile &&
+          //     typeof (viewerUser as Record<string, unknown>).skinProfile ===
+          //       "object"
+          //       ? ((viewerUser as Record<string, unknown>)
+          //           .skinProfile as Record<string, unknown>)
+          //       : null;
+
+          //   const storedSkinType =
+          //     typeof storedProfile?.skinType === "string"
+          //       ? storedProfile.skinType
+          //       : null;
+          //   const storedConcernsArray = Array.isArray(
+          //     storedProfile?.skinConcerns
+          //   )
+          //     ? (storedProfile?.skinConcerns as string[])
+          //     : [];
+          //   const storedConcerns =
+          //     storedConcernsArray.length > 0
+          //       ? storedConcernsArray.join(", ")
+          //       : null;
+
+          //   const mentionedTypes = skinIntentClassification.skinTypes.length
+          //     ? skinIntentClassification.skinTypes.join(", ")
+          //     : "none";
+          //   const mentionedConcerns = skinIntentClassification.skinConcerns
+          //     .length
+          //     ? skinIntentClassification.skinConcerns.join(", ")
+          //     : "none";
+
+          //   const comparisonInstruction = [
+          //     "Skin profile update intent detected in the latest user message.",
+          //     `Mentioned skin type(s): ${mentionedTypes}.`,
+          //     `Mentioned skin concern(s): ${mentionedConcerns}.`,
+          //     `Stored skin type: ${storedSkinType ?? "not set"}.`,
+          //     `Stored skin concerns: ${storedConcerns ?? "not set"}.`,
+          //     'Before responding, call the "getSkinProfile" tool (unless you have already called it in this turn) to retrieve the saved profile for comparison.',
+          //     "After retrieving it, compare the stored values to what the user just shared. If they match, acknowledge that the profile already reflects it. If they differ, ask the user if they want to update their profile or run a survey/analysis before making any changes.",
+          //     'Do not call "saveUserProfile" unless the user explicitly confirms they want the update.',
+          //   ].join(" ");
+
+          //   context.messages.unshift({
+          //     role: "system",
+          //     content: comparisonInstruction,
+          //   });
+          // }
+
+          context.messages.unshift({
+            role: "system",
+            content:
+              'When the user shares new skin type details, skin concerns, or ingredient sensitivities, first call "getSkinProfile" (unless you already have a fresh result in this turn) to retrieve the stored profile so you can compare. Then acknowledge what they said, mention the recorded values if relevant, and ask whether they would like to update their saved profile or run a survey. Only call the "saveUserProfile" tool after they explicitly confirm the change; skip the tool if they do not confirm or if nothing new needs to be stored.',
+          });
+
+          context.messages.unshift({
+            role: "system",
+            content:
+              'Skin profile lookup rule: when the user asks about their own skin type, skin profile, or skin concerns (questions like "what is my skin type?" or "what is my skin profile?"), call "getSkinProfile" before answering. If the tool returns no saved profile, explain we haven\'t captured it yet and invite them to take the SkinBuddy quiz—offer to run "startSkinTypeSurvey" if they want to start it.',
+          });
+
+          context.messages.unshift({
+            role: "system",
+            content:
+              'Product recommendation rule: when the user asks for product recommendations but does not provide their skin type or skin concerns in the latest message, first call "getSkinProfile" (unless you already called it in this turn). If the tool returns no stored profile—or it lacks both skin type and concern details—pause and ask the user for that information, offering to start the SkinBuddy quiz before recommending products.',
           });
 
           console.log(context, "This is conversation history");
@@ -744,8 +1325,8 @@ export async function POST(req: NextRequest) {
               : 4;
           const useTools = body?.useTools === false ? false : true;
 
-          const completion = await (useOpenAI ? callOpenAI : callGemini)({
-            messages: context.messages,
+          const completion = await callGemini({
+            messages: conversationMessages,
             systemPrompt: DEFAULT_SYSTEM_PROMPT,
             model: requestedModel,
             temperature: resolvedTemperature,
@@ -808,6 +1389,11 @@ export async function POST(req: NextRequest) {
           });
 
           const assistantMessage = completion.reply;
+          const { main: assistantMain } =
+            splitAssistantReply(assistantMessage);
+          const storedAssistantMessage = assistantMain.trim().length
+            ? assistantMain.trim()
+            : assistantMessage;
           const startSkinTypeQuiz = completion.startSkinTypeQuiz ?? false;
           // many tool outputs in one api iteration or loop
           const toolOutputs = completion.toolOutputs ?? [];
@@ -877,12 +1463,12 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          if (!startSkinTypeQuiz && assistantMessage.trim().length) {
+          if (!startSkinTypeQuiz && storedAssistantMessage.trim().length) {
             schedule(
               fetchMutation(api.conversation.appendMessage, {
                 sessionId,
                 role: "assistant",
-                content: assistantMessage,
+                content: storedAssistantMessage,
               }).then((result) => {
                 if (result?.needsSummary) {
                   return fetchAction(api.conversation.recomputeSummaries, {
