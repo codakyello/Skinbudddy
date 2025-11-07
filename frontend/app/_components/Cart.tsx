@@ -1,6 +1,5 @@
 "use client";
 import { Box } from "@chakra-ui/react";
-import { useUser } from "../_contexts/CreateConvexUser";
 import useUserCart, { CartEntry } from "../_hooks/useUserCart";
 import useTabs, { Tab, TabHeader, TabWindow } from "./Tabs";
 import CartTable from "./CartTable";
@@ -16,13 +15,15 @@ const tabs = [
 ];
 
 export default function Cart() {
-  const { user } = useUser();
-  const { cart, isPending, error } = useUserCart(user._id as string);
-  const totalPrice = (cart ?? []).reduce<number>((acc: number, item: CartEntry) => {
-    const itemTotal = (item.product?.price ?? 0) * (item.quantity ?? 0);
-    return acc + itemTotal;
-  }, 0);
-  const { user: userDetail } = useUserDetails(user._id as string);
+  const { cart, isPending, error } = useUserCart();
+  const totalPrice = (cart ?? []).reduce<number>(
+    (acc: number, item: CartEntry) => {
+      const itemTotal = (item.product?.price ?? 0) * (item.quantity ?? 0);
+      return acc + itemTotal;
+    },
+    0
+  );
+  const { userDetail } = useUserDetails();
   const { handleTabClick } = useTabs();
 
   // error state the same as empty state

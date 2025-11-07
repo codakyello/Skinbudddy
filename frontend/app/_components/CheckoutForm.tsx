@@ -17,14 +17,12 @@ import {
 import { FormRow } from "./FormRow";
 import { RoutineSuggestionsModal } from "./RoutineSuggestionsModal";
 import CheckBox from "./CheckBox";
-import { useUser } from "../_contexts/CreateConvexUser";
 
 export function CheckoutForm({ userDetail }: { userDetail?: User }) {
   const createOrder = useMutation(api.order.createOrder);
   const [isInitiating, setIsInitiating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const { user } = useUser();
-  const { cart } = useUserCart(user._id as string);
+  const { cart } = useUserCart();
   const [errors, setErrors] = useState<FormError>({});
   const selectedProductIds = useMemo(() => {
     return (cart || [])

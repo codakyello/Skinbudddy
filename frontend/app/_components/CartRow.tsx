@@ -10,7 +10,6 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Minus, Plus, X } from "lucide-react";
 import AppError from "../_utils/appError";
-import { useUser } from "../_contexts/CreateConvexUser";
 
 export default function CartRow({ item }: { item: Cart }) {
   const [isUpdating, setIsUpdating] = useState(false);

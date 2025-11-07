@@ -28,15 +28,13 @@ type RoutineSummary = {
   steps?: RoutineStep[];
 };
 
-type GetUserRoutinesResult =
-  | { success: true; routines: RoutineSummary[] }
-  | { success: false; message: string };
+// type GetUserRoutinesResult =
+//   | { success: true; routines: RoutineSummary[] }
+//   | { success: false; message: string };
 
 export default function RoutineListPage() {
   const { user } = useUser();
-  const result = useQuery(
-    user._id ? api.routine.getUserRoutines : undefined
-  ) as GetUserRoutinesResult | undefined;
+  const result = useQuery(api.routine.getUserRoutines);
 
   if (!user) {
     return (
@@ -58,7 +56,10 @@ export default function RoutineListPage() {
     );
   }
 
-  const routines: RoutineSummary[] = result && result.success ? result.routines : [];
+  const routines: RoutineSummary[] =
+    result && result.success && Array.isArray(result.routines)
+      ? (result.routines as RoutineSummary[])
+      : [];
 
   return (
     <div className="max-w-4xl mx-auto p-6">

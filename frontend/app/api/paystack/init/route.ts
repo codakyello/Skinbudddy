@@ -63,9 +63,10 @@ export async function POST(req: NextRequest) {
     const { authorization_url, reference } = paystackData.data;
 
     // Call Convex mutation to update the order with Paystack reference
-    const { getToken } = auth();
-    const clerkToken =
-      getToken ? await getToken({ template: "convex" }) : null;
+    const authSession = await auth();
+    const clerkToken = authSession.getToken
+      ? await authSession.getToken({ template: "convex" })
+      : null;
     const guestToken = req.cookies.get(GUEST_COOKIE_NAME)?.value ?? null;
 
     if (!clerkToken && !guestToken) {

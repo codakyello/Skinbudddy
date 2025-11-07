@@ -2,7 +2,6 @@
 import { Box } from "@chakra-ui/react";
 import ClipLoader from "react-spinners/ClipLoader";
 import useUserCart, { CartEntry } from "../_hooks/useUserCart";
-import { useUser } from "../_contexts/CreateConvexUser";
 import { X, Minus, Plus } from "lucide-react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -30,8 +29,7 @@ import { IoCloseOutline } from "react-icons/io5";
 // ];
 
 export default function CartModal({ onClose }: { onClose?: () => void }) {
-  const { user } = useUser();
-  const { cart, isPending } = useUserCart(user._id as string);
+  const { cart, isPending } = useUserCart();
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const updateCartQuantity = useMutation(api.cart.updateCartQuantity);

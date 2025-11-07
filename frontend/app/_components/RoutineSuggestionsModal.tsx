@@ -1,7 +1,6 @@
 "use client";
 import { Box } from "@chakra-ui/react";
 import { IoCloseOutline } from "react-icons/io5";
-import { useUser } from "../_contexts/CreateConvexUser";
 import useUserCart, { CartEntry } from "../_hooks/useUserCart";
 import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -45,8 +44,7 @@ export function RoutineSuggestionsModal({
   onClose?: () => void;
   handleSkip?: () => void;
 }) {
-  const { user } = useUser();
-  const { cart } = useUserCart(user._id as string);
+  const { cart } = useUserCart();
   // Build a stable list of selected product IDs from the cart
   const selectedProductIds = useMemo<Id<"products">[]>(() => {
     return cart
@@ -149,8 +147,7 @@ export function RoutineSuggestionsModal({
     try {
       const productId = String(p?._id ?? "");
       const sizeId = resolveSelectedSizeId(p);
-      if (!user?._id)
-        throw new AppError("Please sign in to add items to your cart.");
+
       if (!productId || !sizeId) throw new AppError("Size unavailable");
       setAddingId(productId);
       const result = await addToCart({
