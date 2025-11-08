@@ -1046,11 +1046,10 @@ export async function callGemini({
     );
     developerInstructionParts.push(
       [
-        "After providing product details or recommendations, add a natural conversational follow-up that encourages exploring complementary products.",
-        "Examples: 'Let me know if you want complementary product suggestions!', 'I can also suggest toners or moisturizers to complement this cleanser!', 'Want me to find a matching serum or sunscreen?', 'If you'd like, I can recommend products that pair well with this!'",
-        "Keep it friendly and helpful, not pushy.",
-        "Focus on products that naturally work together in a routine (cleanser + toner + moisturizer, serum + sunscreen, etc.).",
-        "This is separate from the 'Suggested actions' section and should feel like a natural conversation.",
+        "After every set of recommendations or product details, include a natural follow-up sentence (outside of the 'Suggested actions' block) that invites the user to keep the conversation going.",
+        "Anchor the follow-up in what they just asked—offer to pull more options, compare sizes, suggest a complementary step, or clarify usage—and treat it as mandatory even if their last message was just 'okay' or 'yes'.",
+        "Keep the tone friendly and specific (e.g., 'Want me to match a toner to these moisturizers?' rather than a generic 'Need anything else?').",
+        "Focus on products that naturally work together in a routine (cleanser + toner + moisturizer, serum + sunscreen, etc.) so the invitation feels purposeful.",
       ].join(" ")
     );
     developerInstructionParts.push(
@@ -2950,7 +2949,9 @@ export async function callGemini({
           role: "developer",
           content:
             userQuestionContext +
-            "You have the products returned in the previous tool call. Use the actual product data to answer the user's original question with a concise overview that explains why this selection fits their skin type, concerns, or stated filters. Unless the user explicitly asked for details about a specific product (for example, “tell me about [product name]”), keep the reply high-level—reference the products collectively without listing each one. If they did request details, provide comprehensive information for the requested item(s) using the tool data (brand name, exact description, key ingredients, benefits) and never invent texture or sensory notes. Finish with 2–3 helpful, conversational follow-up suggestions tailored to this context (e.g., “Want to see more options?”, “Curious about ingredients?”, “Should I compare these?”, “Ready to add one to your cart?”).",
+            // Previous guidance (kept for reference):
+            // "You have the products returned in the previous tool call. Use the actual product data to answer the user's original question with a concise overview that explains why this selection fits their skin type, concerns, or stated filters. Unless the user explicitly asked for details about a specific product (for example, “tell me about [product name]”), keep the reply high-level—reference the products collectively without listing each one. If they did request details, provide comprehensive information for the requested item(s) using the tool data (brand name, exact description, key ingredients, benefits) and never invent texture or sensory notes. Finish with 2–3 helpful, conversational follow-up suggestions tailored to this context (e.g., “Want to see more options?”, “Curious about ingredients?”, “Should I compare these?”, “Ready to add one to your cart?”).",
+            "You have the products returned in the previous tool call. Use the actual product data to answer the user's original question with a concise overview that explains why this selection fits their skin type, concerns, or stated filters. Unless the user explicitly asked for a specific product by name, speak about the collection holistically—do not enumerate or summarize each product one-by-one, and avoid listing more than a single product name in your reply. If they did request details about a particular item, provide comprehensive information for just that item using the tool data (brand name, exact description, key ingredients, benefits) and never invent texture or sensory notes. Finish with 2–3 helpful, conversational follow-up suggestions tailored to this context (e.g., “Want to see more options?”, “Curious about ingredients?”, “Should I compare these?”, “Ready to add one to your cart?”).",
         });
       }
 
