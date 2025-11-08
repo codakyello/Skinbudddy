@@ -9,19 +9,25 @@ import {
   describeBenefits,
   describeSkinTypes,
   extractProductMetadataForSummary,
+  formatPriceRangeLabel,
   generateReplySummaryWithLLM,
   normalizeProductsFromOutputs,
   openai,
+  pickProductIcon,
   refineProductSelection,
   sanitizeToolResultForModel,
   sentenceCase,
   toTitleCase,
 } from "../utils";
-import { mapDescriptorsToBenefits } from "../../shared/skinMappings";
+import {
+  mapDescriptorsToBenefits,
+  resolveSkinType,
+} from "../../shared/skinMappings";
 import { toolSpecs, getToolByName } from "../tools/localTools";
 import {
   ChatMessage,
   ProductCandidate,
+  ProductSummaryContext,
   ReplySummary,
   RoutineProductOption,
   RoutineSelection,
@@ -55,7 +61,10 @@ export async function callOpenAI({
   useTools?: boolean;
   maxToolRounds?: number;
   onToken?: (chunk: string) => Promise<void> | void;
-  onProducts?: (products: ProductCandidate[]) => Promise<void> | void;
+  onProducts?: (
+    products: ProductCandidate[],
+    context?: ProductSummaryContext | null
+  ) => Promise<void> | void;
   onRoutine?: (routine: RoutineSelection) => Promise<void> | void;
   onSummary?: (summary: ReplySummary) => Promise<void> | void;
   userId?: string;
@@ -91,6 +100,7 @@ export async function callOpenAI({
     content: [
       "For every final reply, append a heading 'Suggested actions' with exactly three numbered prompts (plain text, no emojis). Keep each suggestion under 12 words, phrase it as a first-person request the user could send (e.g., 'Show me a gentle cleanser for oily skin'), vary the angle, and only mention a specific product if it already appeared in this turn.",
       "Even if your reply is brief, include at least one conversational sentence before the 'Suggested actions' block that keeps the dialogue moving—offer complementary products, ask if they want comparisons, or suggest the next logical step—and make sure those suggestions reflect the user’s latest request.",
+      "Open every reply with a calm, matter-of-fact statement (e.g., 'Here are a few moisturizers...'); avoid celebratory or hypey openers like 'Great news!' unless the user explicitly expresses excitement.",
       "Whenever the user shares skin type, concerns, or ingredient sensitivities, call `getSkinProfile` (unless already done this turn) to compare against what’s stored; mention current values, ask whether they want to update or run the survey before editing, and only call `saveUserProfile` after explicit confirmation. Reference the stored profile when crafting routines or summarizing it when asked.",
       "If they want recommendations but haven’t provided skin type/concerns, fetch the profile first. If it lacks those details, ask for them or offer the SkinBuddy quiz before suggesting products. When they explicitly command 'start skin survey/quiz', call `startSkinTypeSurvey` immediately with no prose; if they’re only curious, explain the survey and seek confirmation. Never infer skin type from context—use tool data only.",
       "Keep tool arguments precise: outcomes like hydrating/brightening belong in `benefits`, actual actives in `ingredientQueries`, exact product titles in `nameQuery`, and canonical nouns (cleanser, serum, sunscreen, toner, moisturizer) in `categoryQuery`. Drop any argument you can’t confidently classify.",
@@ -483,7 +493,8 @@ export async function callOpenAI({
   };
 
   const streamProductsIfNeeded = async (
-    products: ProductCandidate[]
+    products: ProductCandidate[],
+    context?: ProductSummaryContext | null
   ): Promise<void> => {
     if (!onProducts || !products.length) return;
     const signature = JSON.stringify(
@@ -505,7 +516,7 @@ export async function callOpenAI({
     if (signature === lastStreamedProductsSignature) return;
     lastStreamedProductsSignature = signature;
     try {
-      await onProducts(products);
+      await onProducts(products, context);
     } catch (error) {
       console.error("Product streaming callback failed:", error);
     }
@@ -674,6 +685,27 @@ export async function callOpenAI({
             }
 
             const benefitAccumulator = new Set<string>();
+            const userMessageTokens =
+              typeof latestUserMessageContent === "string"
+                ? tokenizeDescriptor(latestUserMessageContent)
+                : [];
+            const userSkinTypesMentioned = new Set<
+              ReturnType<typeof resolveSkinType>
+            >();
+            userMessageTokens.forEach((token) => {
+              const resolvedType = resolveSkinType(token);
+              if (resolvedType) {
+                userSkinTypesMentioned.add(resolvedType);
+              }
+            });
+            const userBenefitHints =
+              typeof latestUserMessageContent === "string"
+                ? mapDescriptorsToBenefits([
+                    latestUserMessageContent,
+                    ...userMessageTokens,
+                  ])
+                : { benefits: [] as string[], residual: [] as string[] };
+            const userBenefitSet = new Set(userBenefitHints.benefits);
 
             const existingBenefitsRaw = Array.isArray(argsRecord.benefits)
               ? argsRecord.benefits.filter(
@@ -763,21 +795,23 @@ export async function callOpenAI({
             let mergedBenefits = Array.from(benefitAccumulator);
             if (
               mergedBenefits.length === 0 &&
-              typeof latestUserMessageContent === "string"
+              userBenefitSet.size > 0
             ) {
-              const userTokens = tokenizeDescriptor(latestUserMessageContent);
-              const { benefits: userBenefits } = mapDescriptorsToBenefits([
-                latestUserMessageContent,
-                ...userTokens,
-              ]);
-              userBenefits.forEach((benefit) =>
+              userBenefitSet.forEach((benefit) =>
                 benefitAccumulator.add(benefit)
               );
               mergedBenefits = Array.from(benefitAccumulator);
             }
 
+            const userMentionedSkinType = userSkinTypesMentioned.size > 0;
+            const userMentionedExplicitBenefit = userBenefitSet.size > 0;
+
             if (mergedBenefits.length) {
-              argsRecord.benefits = mergedBenefits;
+              if (!userMentionedExplicitBenefit && userMentionedSkinType) {
+                delete argsRecord.benefits;
+              } else {
+                argsRecord.benefits = mergedBenefits;
+              }
             } else {
               delete argsRecord.benefits;
             }
@@ -1400,6 +1434,8 @@ export async function callOpenAI({
             hasAlcohol?: boolean;
             hasFragrance?: boolean;
             benefits?: string[];
+            minPrice?: number;
+            maxPrice?: number;
           }) ?? {};
         const category =
           typeof searchArgs.categoryQuery === "string"
@@ -1433,6 +1469,17 @@ export async function callOpenAI({
               (entry): entry is string => typeof entry === "string"
             )
           : [];
+        const minPrice =
+          typeof searchArgs.minPrice === "number" &&
+          Number.isFinite(searchArgs.minPrice)
+            ? searchArgs.minPrice
+            : undefined;
+        const maxPrice =
+          typeof searchArgs.maxPrice === "number" &&
+          Number.isFinite(searchArgs.maxPrice)
+            ? searchArgs.maxPrice
+            : undefined;
+        const resolvedPriceLabel = formatPriceRangeLabel(minPrice, maxPrice);
 
         const derivedSkinTypes = new Set<string>();
         const derivedBenefits = new Set<string>();
@@ -1494,10 +1541,12 @@ export async function callOpenAI({
         const ingredientHeadline = ingredientPhraseRaw
           ? sentenceCase(ingredientPhraseRaw)
           : undefined;
-        const effectiveBenefitsRaw = rawBenefits.length
-          ? rawBenefits
-          : Array.from(derivedBenefits);
-        const benefitPhraseRaw = describeBenefits(effectiveBenefitsRaw);
+        const explicitBenefitFilters = rawBenefits;
+        const derivedBenefitList = Array.from(derivedBenefits);
+        const benefitsForIcon = explicitBenefitFilters.length
+          ? explicitBenefitFilters
+          : derivedBenefitList;
+        const benefitPhraseRaw = describeBenefits(explicitBenefitFilters);
         const benefitHeadline = benefitPhraseRaw
           ? sentenceCase(benefitPhraseRaw)
           : undefined;
@@ -1512,8 +1561,6 @@ export async function callOpenAI({
           typeof refinedProductsResult?.notes === "string"
             ? refinedProductsResult.notes
             : undefined;
-
-        const productIcon = "🛍️";
         const {
           headline: summaryHeadline,
           usedAudience,
@@ -1529,6 +1576,10 @@ export async function callOpenAI({
           ingredients: ingredientHeadline,
           benefits: benefitHeadline,
           benefitQualifier,
+          skinTypes: effectiveSkinTypes,
+          skinConcerns: normalizedConcerns,
+          benefitsList: explicitBenefitFilters,
+          priceLabel: resolvedPriceLabel,
         });
 
         const summarySubheading = buildProductSubheading({
@@ -1543,6 +1594,17 @@ export async function callOpenAI({
           usedIngredients,
           usedBenefits,
         });
+
+        const intentHeadline = undefined;
+        const recommendedSource = "filters";
+
+        const productIcon = pickProductIcon({
+          categoryHint: normalizedCategory ?? category,
+          benefits: benefitsForIcon,
+          intentHeadline,
+        });
+
+        const llmHeadline = summaryHeadline;
 
         summaryContext = {
           type: "products",
@@ -1565,12 +1627,14 @@ export async function callOpenAI({
           topProducts: extractProductMetadataForSummary(streamingProducts),
           notes: selectionNote,
           iconSuggestion: productIcon,
-          headlineHint: summaryHeadline,
+          headlineHint: llmHeadline,
+          intentHeadlineHint: intentHeadline,
+          headlineSourceRecommendation: recommendedSource,
           filterDescription: summarySubheading ?? selectionNote,
         };
 
         productSummaryParts = {
-          headline: summaryHeadline,
+          headline: llmHeadline,
           icon: productIcon,
         };
         await streamSummaryIfNeeded();

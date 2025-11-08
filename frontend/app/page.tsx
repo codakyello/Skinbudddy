@@ -21,6 +21,7 @@ import type {
   ChatMessage,
   QuizMessage,
   Message,
+  HeadlineSource,
 } from "@/app/_utils/types";
 import { Box } from "@chakra-ui/react";
 import Modal, { ModalWindow } from "./_components/Modal";
@@ -164,6 +165,66 @@ const createInitialQuizState = (): SkinQuizState => ({
     selected: undefined,
   })),
 });
+
+interface ProductHeaderMeta {
+  headline: string;
+  icon?: string;
+  source?: HeadlineSource;
+}
+
+type ProductHeaderPayload = {
+  headlineHint?: string;
+  intentHeadlineHint?: string;
+  headlineSourceRecommendation?: HeadlineSource;
+  iconSuggestion?: string;
+};
+
+const normalizeHeadlineText = (value?: string | null): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+};
+
+const normalizeIcon = (value?: string | null): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : undefined;
+};
+
+const deriveProductHeader = (
+  payload: ProductHeaderPayload
+): ProductHeaderMeta | null => {
+  const intentHeadline = normalizeHeadlineText(payload.intentHeadlineHint);
+  const filterHeadline = normalizeHeadlineText(payload.headlineHint);
+
+  let headline: string | null = null;
+  let source: HeadlineSource | undefined;
+
+  if (payload.headlineSourceRecommendation === "intent" && intentHeadline) {
+    headline = intentHeadline;
+    source = "intent";
+  } else if (
+    payload.headlineSourceRecommendation === "filters" &&
+    filterHeadline
+  ) {
+    headline = filterHeadline;
+    source = "filters";
+  } else if (filterHeadline) {
+    headline = filterHeadline;
+    source = "filters";
+  } else if (intentHeadline) {
+    headline = intentHeadline;
+    source = "intent";
+  }
+
+  if (!headline) return null;
+
+  return {
+    headline,
+    icon: normalizeIcon(payload.iconSuggestion),
+    source,
+  };
+};
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -325,27 +386,25 @@ export default function ChatPage() {
         </h1>
       ),
       h2: ({ children }) => (
-        <h2 className="text-[1.6rem] leading-[2.4rem] tracking-[-0.64px] font-semibold text-[#1B1F26]">
+        <h2 className="text-[1.6rem] leading-[1.4] tracking-[-0.64px] font-semibold text-[#1B1F26]">
           {children}
         </h2>
       ),
       h3: ({ children }) => (
-        <h3 className="text-[1.5rem]  font-semibold text-[#1B1F26] leading-[2.4rem]">
+        <h3 className="text-[1.5rem]  font-semibold text-[#1B1F26] leading-[1.4]">
           {children}
         </h3>
       ),
       p: ({ children }) => (
-        <p className="text-[1.4rem] leading-[20px] text-[#1B1F26]">
-          {children}
-        </p>
+        <p className="text-[1.4rem] leading-[2] text-[#1B1F26]">{children}</p>
       ),
       ul: ({ children }) => (
-        <ul className="ml-8 list-disc mt space-y-[16px] text-[1.4rem] text-[#1B1F26]">
+        <ul className="ml-8 list-disc leading-[2] mt space-y-[14px] text-[1.4rem] text-[#1B1F26]">
           {children}
         </ul>
       ),
       ol: ({ children }) => (
-        <ol className="ml-8 list-decimal space-y-[16px] text-[1.4rem] text-[#1B1F26]">
+        <ol className="ml-8 list-decimal leading-[2] space-y-[16px] text-[1.4rem] text-[#1B1F26]">
           {children}
         </ol>
       ),
@@ -471,6 +530,8 @@ export default function ChatPage() {
       let finalRoutine: Routine | null = null;
       let finalResultType: string | null = null;
       let finalSummary: MessageSummary | null = null;
+      let lockedHeadline: string | null = null;
+      let lockedIcon: string | null = null;
 
       const processPayload = (line: string) => {
         const trimmed = line.trim();
@@ -486,6 +547,10 @@ export default function ChatPage() {
           routine?: unknown;
           headline?: string;
           summary?: unknown;
+          headlineHint?: string;
+          intentHeadlineHint?: string;
+          headlineSourceRecommendation?: HeadlineSource;
+          iconSuggestion?: string;
         };
 
         if (payload.type === "delta" && typeof payload.token === "string") {
@@ -497,8 +562,16 @@ export default function ChatPage() {
         if (payload.type === "summary" && payload.summary) {
           const normalizedSummary = normalizeSummary(payload.summary);
           if (normalizedSummary) {
-            finalSummary = normalizedSummary;
-            updateAssistant({ summary: normalizedSummary });
+            const resolvedSummary: MessageSummary = {
+              headline: lockedHeadline ?? normalizedSummary.headline,
+              icon:
+                normalizedSummary.icon ??
+                lockedIcon ??
+                finalSummary?.icon ??
+                undefined,
+            };
+            finalSummary = resolvedSummary;
+            updateAssistant({ summary: resolvedSummary });
           }
           return;
         }
@@ -514,6 +587,21 @@ export default function ChatPage() {
               routine: undefined,
               resultType: undefined,
             });
+
+            const headerMeta = deriveProductHeader(payload);
+            if (headerMeta) {
+              lockedHeadline = headerMeta.headline;
+              lockedIcon =
+                headerMeta.icon ?? lockedIcon ?? finalSummary?.icon ?? null;
+              const updatedSummary: MessageSummary = {
+                icon: lockedIcon ?? finalSummary?.icon,
+                headline: lockedHeadline,
+              };
+              finalSummary = updatedSummary;
+              updateAssistant({
+                summary: updatedSummary,
+              });
+            }
           }
           return;
         }
@@ -578,7 +666,15 @@ export default function ChatPage() {
           if (payload.summary) {
             const normalizedSummary = normalizeSummary(payload.summary);
             if (normalizedSummary) {
-              finalSummary = normalizedSummary;
+              const resolvedSummary: MessageSummary = {
+                headline: lockedHeadline ?? normalizedSummary.headline,
+                icon:
+                  normalizedSummary.icon ??
+                  lockedIcon ??
+                  finalSummary?.icon ??
+                  undefined,
+              };
+              finalSummary = resolvedSummary;
             }
           }
           if (typeof payload.sessionId === "string") {
@@ -982,15 +1078,6 @@ export default function ChatPage() {
                                       {markdownSource}
                                     </ReactMarkdown>
                                   ) : null}
-                                  {showTypingIndicator ? (
-                                    <Box className="mt-3 flex items-center gap-4">
-                                      <Box className="flex gap-2">
-                                        <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26]" />
-                                        <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.18s]" />
-                                        <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.36s]" />
-                                      </Box>
-                                    </Box>
-                                  ) : null}
                                   {suggestions.length ? (
                                     <Box className="mt-4 flex flex-col gap-2">
                                       {suggestions.map(
@@ -1027,6 +1114,19 @@ export default function ChatPage() {
                                       )}
                                     </Box>
                                   ) : null}
+                                  <Box
+                                    className={`mt-5 flex items-center gap-4 transition-opacity duration-200 ${
+                                      showTypingIndicator
+                                        ? "opacity-100"
+                                        : "opacity-0"
+                                    }`}
+                                  >
+                                    <Box className="flex gap-2">
+                                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26]" />
+                                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.18s]" />
+                                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#1b1f26] [animation-delay:0.36s]" />
+                                    </Box>
+                                  </Box>
                                 </>
                               );
                             })()}

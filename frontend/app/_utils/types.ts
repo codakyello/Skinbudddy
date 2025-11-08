@@ -172,6 +172,8 @@ export type MessageSummary = {
   headline: string;
 };
 
+export type HeadlineSource = "filters" | "intent";
+
 export type ChatMessage = {
   id: string;
   role: ChatRole;

@@ -7,6 +7,7 @@ import {
   runWithConvexAuthToken,
 } from "@/ai/convex/client";
 import { callGemini } from "@/ai/models/gemini";
+import { callOpenAI } from "@/ai/models/openai";
 import { api } from "@/convex/_generated/api";
 import { DEFAULT_SYSTEM_PROMPT } from "@/ai/utils";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -1302,7 +1303,6 @@ async function handleChatPost(req: NextRequest) {
 
           console.log(context, "This is conversation history");
 
-          // set it to gemini by default
           body.provider = "gemini";
 
           const providerPreference =
@@ -1310,14 +1310,14 @@ async function handleChatPost(req: NextRequest) {
               ? body.provider.toLowerCase()
               : typeof process.env.CHAT_MODEL_PROVIDER === "string"
                 ? process.env.CHAT_MODEL_PROVIDER.toLowerCase()
-                : "gemini";
+                : "openai";
           const useOpenAI = providerPreference === "openai";
           const requestedModel =
             typeof body?.model === "string" && body.model.trim().length
               ? body.model.trim()
               : useOpenAI
                 ? "gpt-4o-mini"
-                : "gemini-2.0-flash";
+                : "gemini-2.5-flash";
           const resolvedTemperature =
             typeof body?.temperature === "number" ? body.temperature : 0.5;
           const maxToolRounds =
@@ -1326,7 +1326,8 @@ async function handleChatPost(req: NextRequest) {
               : 4;
           const useTools = body?.useTools === false ? false : true;
 
-          const completion = await callGemini({
+          const llmCall = useOpenAI ? callOpenAI : callGemini;
+          const completion = await llmCall({
             messages: conversationMessages,
             systemPrompt: DEFAULT_SYSTEM_PROMPT,
             model: requestedModel,

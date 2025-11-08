@@ -9,6 +9,7 @@ import {
   SummaryContext,
   ToolOutput,
   UnknownRecord,
+  HeadlineSource,
 } from "./types";
 import OpenAI from "openai";
 
@@ -148,6 +149,7 @@ DATA CONFIDENCE
 - For product data: always defer to **fresh tool results from the current turn**. Never claim a product exists or dosent or claim stock unless tools confirm it 
   - ❌ WRONG: "You asked about sunscreens earlier and Biore wasn't in those results, so we don't have it."
   - ✅ RIGHT: [calls searchProductsByQuery] "Found it! Here's Biore UV Aqua Rich..."
+- Never recommend, describe, or even name a specific product unless it appeared in the **current turn's tool output**. If you don't have a tool result yet, explain that you need to run a lookup instead of guessing from training data.
 - If a tool fails or data is unavailable, say so plainly without apologizing.
 `;
 
@@ -717,6 +719,99 @@ export const composeAudiencePhrase = (
   return undefined;
 };
 
+const NAIRA_CURRENCY_FORMATTER = new Intl.NumberFormat("en-NG", {
+  style: "currency",
+  currency: "NGN",
+  maximumFractionDigits: 0,
+});
+
+export const formatPriceRangeLabel = (
+  minPrice?: number,
+  maxPrice?: number
+): string | undefined => {
+  const normalizeValue = (value?: number): number | undefined => {
+    if (typeof value !== "number") return undefined;
+    return Number.isFinite(value) && value >= 0 ? value : undefined;
+  };
+
+  const min = normalizeValue(minPrice);
+  const max = normalizeValue(maxPrice);
+
+  const format = (value: number): string =>
+    NAIRA_CURRENCY_FORMATTER.format(Math.round(value));
+
+  if (min != null && max != null) {
+    if (min === max) {
+      return format(min);
+    }
+    return `${format(min)} – ${format(max)}`;
+  }
+  if (min != null) {
+    return `≥ ${format(min)}`;
+  }
+  if (max != null) {
+    return `≤ ${format(max)}`;
+  }
+  return undefined;
+};
+type IconDerivationInput = {
+  categoryHint?: string | null;
+  benefits?: string[];
+  intentHeadline?: string;
+};
+
+const CATEGORY_ICON_MATCHERS: Array<{ pattern: RegExp; icon: string }> = [
+  { pattern: /sun(screen| block)|\bspf\b|uv/i, icon: "🌞" },
+  { pattern: /cleanser|face wash|wash|gel cleanser/i, icon: "🫧" },
+  { pattern: /serum|ampoule|treatment|essence/i, icon: "🧪" },
+  { pattern: /moisturizer|moisturiser|cream|lotion|butter|balm/i, icon: "🧴" },
+  { pattern: /toner|mist/i, icon: "💦" },
+  { pattern: /mask|peel|exfoliat/i, icon: "🎭" },
+  { pattern: /oil control|mattif/i, icon: "🧼" },
+];
+
+const BENEFIT_ICON_LOOKUP: Record<string, string> = {
+  hydrating: "💧",
+  "oil-control": "🧼",
+  "acne-fighting": "🎯",
+  "sun-protection": "🌞",
+  brightening: "✨",
+  soothing: "🌿",
+  repairing: "🛠️",
+  "anti-aging": "⌛",
+  firming: "💪",
+  "tone-evening": "🎨",
+  nourishing: "🥛",
+};
+
+export const pickProductIcon = ({
+  categoryHint,
+  benefits,
+  intentHeadline,
+}: IconDerivationInput): string => {
+  const haystack = [categoryHint, intentHeadline, ...(benefits ?? [])]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  for (const matcher of CATEGORY_ICON_MATCHERS) {
+    if (matcher.pattern.test(haystack)) {
+      return matcher.icon;
+    }
+  }
+
+  if (benefits && benefits.length) {
+    for (const benefit of benefits) {
+      const normalized = benefit.toLowerCase();
+      if (BENEFIT_ICON_LOOKUP[normalized]) {
+        return BENEFIT_ICON_LOOKUP[normalized];
+      }
+    }
+  }
+
+  return "🛍️";
+};
+
 export const buildProductHeadline = ({
   productCount,
   category,
@@ -725,77 +820,209 @@ export const buildProductHeadline = ({
   nameQuery,
   ingredients,
   benefits,
+  benefitQualifier,
+  skinTypes,
+  skinConcerns,
+  benefitsList,
+  priceLabel,
 }: ProductHeadlineInput): ProductHeadlineResult => {
   const descriptor =
     productCount >= 5 ? "Top" : productCount >= 3 ? "Curated" : "Featured";
+
+  const normalizeString = (value?: string | null): string | undefined => {
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : undefined;
+  };
+
+  const normalizedCategory = normalizeString(category);
+  const normalizedAudience = normalizeString(audience);
+  const normalizedBrand = normalizeString(brand);
+  const normalizedNameQuery = normalizeString(nameQuery);
+  const normalizedIngredients = normalizeString(ingredients);
+  const normalizedBenefitFocus =
+    normalizeString(benefitQualifier) ?? normalizeString(benefits);
+  const normalizedPriceLabel = normalizeString(priceLabel);
+
+  const resolvedSkinTypes = Array.isArray(skinTypes)
+    ? skinTypes
+        .map((value) =>
+          typeof value === "string" ? value.trim() : ""
+        )
+        .filter((value) => value.length)
+    : [];
+  const resolvedSkinConcerns = Array.isArray(skinConcerns)
+    ? skinConcerns
+        .map((value) =>
+          typeof value === "string" ? value.trim() : ""
+        )
+        .filter((value) => value.length)
+    : [];
+  const resolvedBenefitsList = Array.isArray(benefitsList)
+    ? Array.from(
+        new Set(
+          benefitsList
+            .map((value) =>
+              typeof value === "string" ? value.trim().toLowerCase() : ""
+            )
+            .filter((value) => value.length)
+        )
+      ).slice(0, 3)
+    : [];
+
   let headline = "";
   let usedAudience = false;
   let usedBrand = false;
   let usedIngredients = false;
   let usedBenefits = false;
 
-  if (category) {
+  if (normalizedCategory) {
     const categoryLabel =
-      category.endsWith("s") || category.endsWith("S")
-        ? category
-        : `${category}s`;
-    const normalizedAudience = audience?.trim() || undefined;
-    const normalizedBenefits = benefits?.trim() || undefined;
-    const normalizedIngredients = ingredients?.trim() || undefined;
+      normalizedCategory.endsWith("s") || normalizedCategory.endsWith("S")
+        ? normalizedCategory
+        : `${normalizedCategory}s`;
+    headline = `${descriptor} ${categoryLabel}`;
+  }
 
-    const hasAudience = Boolean(normalizedAudience);
-    const hasBenefits = Boolean(normalizedBenefits);
-
-    // Prioritize explicit user filters (ingredients, audience) over derived benefits.
-    if (normalizedIngredients) {
-      // More natural phrasing: "Salicylic acid cleansers" instead of "Top cleansers with salicylic acid"
-      headline = `${normalizedIngredients} ${categoryLabel.toLowerCase()}`;
-      usedIngredients = true;
-    } else if (brand) {
-      headline = `${descriptor} ${categoryLabel} from ${brand}`;
-      usedBrand = true;
-    } else if (hasAudience) {
-      headline = `${descriptor} ${categoryLabel} for ${normalizedAudience}`;
-      usedAudience = true;
-    } else if (hasBenefits) {
-      headline = `${descriptor} ${categoryLabel} for ${normalizedBenefits}`;
-      usedBenefits = true;
-    } else {
-      headline = `${descriptor} ${categoryLabel}`;
-    }
-  } else if (brand) {
+  if (!headline && normalizedBrand) {
     headline =
-      productCount > 1 ? `${brand} Favorites` : `Featured ${brand} Pick`;
+      productCount > 1
+        ? `${normalizedBrand} Favorites`
+        : `Featured ${normalizedBrand} Pick`;
     usedBrand = true;
-    if (audience) {
-      headline = `${headline} for ${audience}`;
-      usedAudience = true;
-    }
-  } else if (nameQuery) {
-    headline = `Results for "${nameQuery}"`;
-  } else if (ingredients) {
-    headline = `Products with ${ingredients}`;
+  }
+
+  if (!headline && normalizedNameQuery) {
+    headline = `Results for "${normalizedNameQuery}"`;
+  }
+
+  if (!headline && normalizedIngredients) {
+    headline = `Products with ${normalizedIngredients}`;
     usedIngredients = true;
-  } else if (benefits) {
+  }
+
+  if (!headline && normalizedBenefitFocus) {
     headline =
       productCount > 1
-        ? `${descriptor} Picks for ${benefits}`
-        : `Featured Pick for ${benefits}`;
+        ? `${descriptor} Picks for ${normalizedBenefitFocus}`
+        : `Featured Pick for ${normalizedBenefitFocus}`;
     usedBenefits = true;
-  } else if (audience) {
+  }
+
+  if (!headline && normalizedAudience) {
     headline =
       productCount > 1
-        ? `Product Picks for ${audience}`
-        : `Featured Pick for ${audience}`;
+        ? `Product Picks for ${normalizedAudience}`
+        : `Featured Pick for ${normalizedAudience}`;
     usedAudience = true;
-  } else {
+  }
+
+  if (!headline) {
     headline =
       productCount > 1
         ? "Product Recommendations for You"
         : "Featured Product Pick";
   }
 
-  return { headline, usedAudience, usedBrand, usedIngredients, usedBenefits };
+  const qualifier =
+    normalizedIngredients && !usedIngredients
+      ? { text: `with ${normalizedIngredients}`, type: "ingredients" as const }
+      : normalizedAudience && !usedAudience
+        ? { text: `for ${normalizedAudience}`, type: "audience" as const }
+        : normalizedBenefitFocus && !usedBenefits
+          ? { text: `for ${normalizedBenefitFocus}`, type: "benefits" as const }
+          : null;
+
+  if (qualifier) {
+    headline = `${headline} ${qualifier.text}`.trim();
+    if (qualifier.type === "ingredients") usedIngredients = true;
+    if (qualifier.type === "audience") usedAudience = true;
+    if (qualifier.type === "benefits") usedBenefits = true;
+  }
+
+  const tags: string[] = [];
+  const seenTags = new Set<string>();
+
+  const pushTag = (
+    rawLabel?: string,
+    marks?: {
+      audience?: boolean;
+      brand?: boolean;
+      ingredients?: boolean;
+      benefits?: boolean;
+    }
+  ) => {
+    if (!rawLabel) return;
+    const trimmed = rawLabel.replace(/\s+/g, " ").trim();
+    if (!trimmed.length) return;
+    const formatted = sentenceCase(trimmed);
+    const key = formatted.toLowerCase();
+    if (seenTags.has(key)) return;
+    seenTags.add(key);
+    tags.push(formatted);
+    if (marks?.audience) usedAudience = true;
+    if (marks?.brand) usedBrand = true;
+    if (marks?.ingredients) usedIngredients = true;
+    if (marks?.benefits) usedBenefits = true;
+  };
+
+  const appendFocus = (label: string): string => {
+    const trimmed = label.trim();
+    if (!trimmed.length) return trimmed;
+    const lower = trimmed.toLowerCase();
+    if (lower.endsWith("focus") || lower.includes("concern")) {
+      return trimmed;
+    }
+    return `${trimmed} focus`;
+  };
+
+  if (!usedAudience) {
+    if (normalizedAudience) {
+      pushTag(normalizedAudience, { audience: true });
+    } else {
+      const skinTag = describeSkinTypes(resolvedSkinTypes);
+      if (skinTag) {
+        pushTag(skinTag, { audience: true });
+      }
+      const concernTag = describeConcerns(resolvedSkinConcerns);
+      if (concernTag) {
+        pushTag(concernTag, { audience: true });
+      }
+    }
+  }
+
+  if (!usedIngredients && normalizedIngredients) {
+    pushTag(appendFocus(normalizedIngredients), { ingredients: true });
+  }
+
+  if (!usedBenefits) {
+    const benefitsTagSource = resolvedBenefitsList.length
+      ? describeBenefits(resolvedBenefitsList)
+      : normalizedBenefitFocus;
+    if (benefitsTagSource) {
+      pushTag(appendFocus(benefitsTagSource), { benefits: true });
+    }
+  }
+
+  if (!usedBrand && normalizedBrand && normalizedCategory) {
+    pushTag(`${normalizedBrand} picks`, { brand: true });
+  }
+
+  if (normalizedPriceLabel) {
+    pushTag(normalizedPriceLabel);
+  }
+
+  if (tags.length) {
+    headline = `${headline} · ${tags.join(" · ")}`;
+  }
+
+  return {
+    headline: headline.trim(),
+    usedAudience,
+    usedBrand,
+    usedIngredients,
+    usedBenefits,
+  };
 };
 
 export const buildProductSubheading = ({
@@ -928,6 +1155,15 @@ export async function generateReplySummaryWithLLM({
       : undefined;
   const filterDescription =
     context?.type === "products" ? context.filterDescription : undefined;
+  const intentHeadlineHint =
+    context?.type === "products" &&
+    typeof context.intentHeadlineHint === "string"
+      ? context.intentHeadlineHint
+      : null;
+  const preferIntentHeadline =
+    context?.type === "products" &&
+    context.headlineSourceRecommendation === "intent" &&
+    intentHeadlineHint;
 
   const routineGuidance =
     context?.type === "routine"
@@ -944,10 +1180,18 @@ export async function generateReplySummaryWithLLM({
   const productGuidance =
     context?.type === "products"
       ? [
-          `Begin the headline with "Here are the products I found" and immediately append the provided filterDescription${filterDescription ? ' exactly as written (it already begins with wording like "including category cleanser")' : " or, if missing, summarize the most relevant filters (category, skin type, concerns, actives, brand)"}.`,
-          "Keep the headline brief and action-oriented.",
-          "Reiterate the key filters inside the headline and invite the user to take next steps like comparing or learning more.",
-        ].join(" ")
+          preferIntentHeadline
+            ? `Use the user's prompt "${intentHeadlineHint}" to anchor the headline. Rewrite it into a polished, declarative title (no quotes, no commands) so it feels like a curated collection name.`
+            : filterDescription
+              ? `Let the headline spotlight the key filters (${filterDescription}), mentioning the category or benefit mix so the user instantly understands what these products address.`
+              : "If no filters are supplied, reference the dominant category or benefit from the context to craft a clear, inviting headline.",
+          filterDescription && preferIntentHeadline
+            ? "You can weave in the filter details if they clarify the intent, but keep the user's ask as the focal point."
+            : "",
+          "Headlines must stay between 3–10 words, action-oriented, and free of emojis.",
+        ]
+          .filter(Boolean)
+          .join(" ")
       : "";
 
   const contextualInstructions = [routineGuidance, productGuidance]

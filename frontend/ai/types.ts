@@ -7,6 +7,10 @@ export type ProductHeadlineInput = {
   ingredients?: string;
   benefits?: string;
   benefitQualifier?: string;
+  skinTypes?: string[];
+  skinConcerns?: string[];
+  benefitsList?: string[];
+  priceLabel?: string;
 };
 
 export type ProductHeadlineResult = {
@@ -52,6 +56,8 @@ export type ReplySummary = {
   headline: string;
 };
 
+export type HeadlineSource = "filters" | "intent";
+
 export type RoutineSummaryContext = {
   type: "routine";
   stepCount: number;
@@ -83,6 +89,8 @@ export type ProductSummaryContext = {
   notes?: string;
   iconSuggestion?: string;
   headlineHint?: string;
+  intentHeadlineHint?: string;
+  headlineSourceRecommendation?: HeadlineSource;
   filterDescription?: string;
 };
 

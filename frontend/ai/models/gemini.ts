@@ -8,8 +8,8 @@ import {
   describeIngredients,
   describeBenefits,
   describeSkinTypes,
-  deriveIntentHeadlineHint,
   extractProductMetadataForSummary,
+  formatPriceRangeLabel,
   normalizeProductsFromOutputs,
   pickProductIcon,
   sanitizeToolResultForModel,
@@ -53,6 +53,7 @@ type SearchProductsArgs = {
   benefits?: string[];
   minPrice?: number;
   maxPrice?: number;
+  priceLabel?: string;
 };
 console.log("lets check if we are updating");
 export async function callGemini({
@@ -115,6 +116,7 @@ export async function callGemini({
     content: [
       "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Phrase each suggestion as a first-person request the user could send to SkinBuddy—start with verbs like 'Recommend', 'Show me', 'Help me', or 'Explain'. Avoid asking the user questions, keep suggestions 12 words or fewer, vary the angle (ingredients, usage tips, alternatives, price points), and only reference a specific product name if it already appeared in this turn.",
       "Even for short acknowledgements, include at least one conversational sentence before the 'Suggested actions' block that keeps the dialogue moving (offer complementary products, dig deeper, compare options, etc.).",
+      "Use a calm, confident tone at the start of each reply—skip hypey intros like 'Great news!' or 'Awesome!'; open with a straightforward statement of what you found instead.",
       "Before calling `searchProductsByQuery` or `getProduct`, reuse existing tool data whenever possible; if the latest results were empty, run a fresh lookup instead of reusing the empty set.",
       "Never fabricate identifiers for tools. If you lack a valid productId/sizeId/etc., ask for clarification or run another lookup instead of guessing.",
       "Product recommendation readiness: when the user wants product suggestions but hasn’t given skin type/concerns this turn, call `getSkinProfile` first (unless you already have a fresh result). If the stored profile lacks both fields, ask for those details or offer the SkinBuddy quiz before recommending products.",
@@ -139,11 +141,35 @@ export async function callGemini({
     [
       {
         category: "serum",
-        patterns: buildKeywordPatterns(["serum", "serums"]),
+        patterns: buildKeywordPatterns([
+          "serum",
+          "serums",
+          "face serum",
+          "ampoule",
+          "ampoules",
+          "essence",
+          "treatment serum",
+          "face oil",
+          "glow oil",
+          "treatment oil",
+          "spot serum",
+        ]),
       },
       {
         category: "cleanser",
-        patterns: buildKeywordPatterns(["cleanser", "cleansers", "face wash"]),
+        patterns: buildKeywordPatterns([
+          "cleanser",
+          "cleansers",
+          "face wash",
+          "facewash",
+          "facial wash",
+          "cleansing gel",
+          "cleansing foam",
+          "foam cleanser",
+          "gel cleanser",
+          "micellar cleanser",
+          "washing gel",
+        ]),
       },
       {
         category: "moisturizer",
@@ -154,11 +180,35 @@ export async function callGemini({
           "moisturizers",
           "face cream",
           "hydrating cream",
+          "cream",
+          "creams",
+          "creme",
+          "cremes",
+          "lotion",
+          "lotions",
+          "body lotion",
+          "ltions",
+          "moisturizing lotion",
+          "moisturizing gel",
+          "gel cream",
+          "water cream",
+          "hydrating lotion",
+          "body cream",
+          "skin food",
+          "toning cream",
         ]),
       },
       {
         category: "toner",
-        patterns: buildKeywordPatterns(["toner", "toners"]),
+        patterns: buildKeywordPatterns([
+          "toner",
+          "toners",
+          "skin toner",
+          "facial toner",
+          "facial mist",
+          "face mist",
+          "essence toner",
+        ]),
       },
       {
         category: "sunscreen",
@@ -167,11 +217,27 @@ export async function callGemini({
           "sun screen",
           "sunblock",
           "spf",
+          "sun cream",
+          "suncream",
+          "uv protector",
+          "uv shield",
+          "sun guard",
+          "sun gel",
         ]),
       },
       {
         category: "mask",
-        patterns: buildKeywordPatterns(["mask", "masks", "sheet mask"]),
+        patterns: buildKeywordPatterns([
+          "mask",
+          "masks",
+          "sheet mask",
+          "sheet masks",
+          "mud mask",
+          "clay mask",
+          "overnight mask",
+          "sleeping mask",
+          "peel off mask",
+        ]),
       },
       {
         category: "exfoliant",
@@ -179,6 +245,12 @@ export async function callGemini({
           "exfoliant",
           "exfoliator",
           "chemical peel",
+          "peel",
+          "resurfacer",
+          "scrub",
+          "facial scrub",
+          "polish",
+          "brightening scrub",
         ]),
       },
     ];
@@ -204,85 +276,19 @@ export async function callGemini({
       .replace(/\s+/g, " ")
       .trim();
 
+  /*
+  // Original paragraph-formatting logic (temporarily disabled):
   const formatBodyWithParagraphs = (body: string): string => {
-    if (!body.trim().length) return "";
-    if (/\n\s*\n/.test(body)) return body;
-    if (/(?:^|\n)\s*(?:[-*•●◦▪]|\d+\.)\s/.test(body)) return body;
-    if (/(?:^|\n)\s*#{1,6}\s/.test(body)) return body;
-
-    const normalized = body.replace(/\s+/g, " ").trim();
-    if (!normalized.length) return body;
-
-    const sentences = normalized
-      .split(/(?<=[.?!])\s+(?=[A-Z0-9])/)
-      .map((sentence) => sentence.trim())
-      .filter((sentence) => sentence.length > 0);
-
-    if (sentences.length <= 1) {
-      return body;
-    }
-
-    const shouldSplit =
-      sentences.length >= 3 ||
-      (sentences.length >= 2 && normalized.length >= 160);
-    if (!shouldSplit) {
-      return body;
-    }
-
-    const paragraphs: string[] = [];
-    let currentSentences: string[] = [];
-
-    for (const sentence of sentences) {
-      currentSentences.push(sentence);
-      const joined = currentSentences.join(" ");
-      const sentenceQuotaReached =
-        currentSentences.length >= 2 || joined.length >= 220;
-      if (sentenceQuotaReached) {
-        paragraphs.push(joined);
-        currentSentences = [];
-      }
-    }
-
-    if (currentSentences.length) {
-      paragraphs.push(currentSentences.join(" "));
-    }
-
-    return paragraphs.join("\n\n");
+    ...
   };
 
   const applyParagraphStructure = (input: string): string => {
-    if (!input.trim().length) return input.trim();
-
-    const lines = input.split(/\r?\n/);
-    let suggestedActionsIndex = -1;
-
-    for (let index = 0; index < lines.length; index++) {
-      const normalized = normalizeHeaderValue(lines[index]);
-      if (normalized === "suggested actions") {
-        suggestedActionsIndex = index;
-        break;
-      }
-    }
-
-    const bodyLines =
-      suggestedActionsIndex === -1
-        ? lines
-        : lines.slice(0, suggestedActionsIndex);
-    const footerLines =
-      suggestedActionsIndex === -1 ? [] : lines.slice(suggestedActionsIndex);
-
-    const body = bodyLines.join("\n").trim();
-    const formattedBody = formatBodyWithParagraphs(body);
-    const footer = footerLines.join("\n").trim();
-
-    if (!footer.length) {
-      return formattedBody;
-    }
-    if (!formattedBody.length) {
-      return footer;
-    }
-    return `${formattedBody}\n\n${footer}`;
+    ...
   };
+  */
+
+  const formatBodyWithParagraphs = (body: string): string => body;
+  const applyParagraphStructure = (input: string): string => input.trim();
 
   const ROUTINE_KEYWORDS = [
     "routine",
@@ -678,7 +684,12 @@ export async function callGemini({
       hasAlcohol?: boolean;
       hasFragrance?: boolean;
     }
-  ): string => {
+  ): {
+    summary: string;
+    priceLabel?: string;
+    minPrice?: number;
+    maxPrice?: number;
+  } => {
     const parts: string[] = [];
     const filterObject =
       filters && typeof filters === "object" ? filters : undefined;
@@ -748,16 +759,12 @@ export async function callGemini({
       filterObject?.["maxPrice"],
       args.maxPrice
     );
-    if (resolvedMinPrice !== undefined || resolvedMaxPrice !== undefined) {
-      if (resolvedMinPrice !== undefined && resolvedMaxPrice !== undefined) {
-        parts.push(
-          `Price: ${resolvedMinPrice.toLocaleString()} – ${resolvedMaxPrice.toLocaleString()}`
-        );
-      } else if (resolvedMinPrice !== undefined) {
-        parts.push(`Price: ≥ ${resolvedMinPrice.toLocaleString()}`);
-      } else if (resolvedMaxPrice !== undefined) {
-        parts.push(`Price: ≤ ${resolvedMaxPrice.toLocaleString()}`);
-      }
+    const priceLabel = formatPriceRangeLabel(
+      resolvedMinPrice,
+      resolvedMaxPrice
+    );
+    if (priceLabel) {
+      parts.push(`Price: ${priceLabel}`);
     }
 
     const resolvedFragrance =
@@ -780,7 +787,16 @@ export async function callGemini({
       parts.push("Alcohol-free only");
     }
 
-    return parts.length ? parts.map((part) => `- ${part}`).join("\n") : "";
+    const summary = parts.length
+      ? parts.map((part) => `- ${part}`).join("\n")
+      : "";
+
+    return {
+      summary,
+      priceLabel,
+      minPrice: resolvedMinPrice,
+      maxPrice: resolvedMaxPrice,
+    };
   };
 
   const formatCategoryLabel = (categories: string[]): string | undefined => {
@@ -2150,12 +2166,16 @@ export async function callGemini({
                 adjustedArgs && typeof adjustedArgs === "object"
                   ? (adjustedArgs as SearchProductsArgs)
                   : {};
-              const filterSummary = buildFilterSummary(
-                (resultRecord?.filters as
-                  | Record<string, unknown>
-                  | undefined) ?? undefined,
-                searchArgsRecord
-              );
+              const { summary: filterSummary, priceLabel: filterPriceLabel } =
+                buildFilterSummary(
+                  (resultRecord?.filters as
+                    | Record<string, unknown>
+                    | undefined) ?? undefined,
+                  searchArgsRecord
+                );
+              if (filterPriceLabel) {
+                searchArgsRecord.priceLabel = filterPriceLabel;
+              }
               let refinedProducts = rawProducts;
               try {
                 const refinement = await refineProductSelectionWithGemini({
@@ -2747,10 +2767,40 @@ export async function callGemini({
         const ingredientHeadline = ingredientPhraseRaw
           ? sentenceCase(ingredientPhraseRaw)
           : undefined;
-        const effectiveBenefitsRaw = rawBenefits.length
-          ? rawBenefits
-          : Array.from(derivedBenefits);
-        const benefitPhraseRaw = describeBenefits(effectiveBenefitsRaw);
+        const explicitBenefitFilters = rawBenefits;
+        const derivedBenefitList = Array.from(derivedBenefits);
+        const benefitsForIcon = explicitBenefitFilters.length
+          ? explicitBenefitFilters
+          : derivedBenefitList;
+        const priceLabelCandidates = filterSources
+          .map((filter) => filter.priceLabel)
+          .filter(
+            (label): label is string =>
+              typeof label === "string" && label.trim().length > 0
+          );
+        const aggregatedMinPrices = filterSources
+          .map((filter) => filter.minPrice)
+          .filter(
+            (value): value is number =>
+              typeof value === "number" && Number.isFinite(value)
+          );
+        const aggregatedMaxPrices = filterSources
+          .map((filter) => filter.maxPrice)
+          .filter(
+            (value): value is number =>
+              typeof value === "number" && Number.isFinite(value)
+          );
+        const resolvedPriceLabel =
+          priceLabelCandidates.at(-1) ??
+          formatPriceRangeLabel(
+            aggregatedMinPrices.length
+              ? Math.min(...aggregatedMinPrices)
+              : undefined,
+            aggregatedMaxPrices.length
+              ? Math.max(...aggregatedMaxPrices)
+              : undefined
+          );
+        const benefitPhraseRaw = describeBenefits(explicitBenefitFilters);
         const benefitHeadline = benefitPhraseRaw
           ? sentenceCase(benefitPhraseRaw)
           : undefined;
@@ -2779,6 +2829,10 @@ export async function callGemini({
           ingredients: ingredientHeadline,
           benefits: benefitHeadline,
           benefitQualifier,
+          skinTypes: effectiveSkinTypes,
+          skinConcerns: normalizedConcerns,
+          benefitsList: explicitBenefitFilters,
+          priceLabel: resolvedPriceLabel,
         });
 
         const summarySubheading = buildProductSubheading({
@@ -2794,18 +2848,16 @@ export async function callGemini({
           usedBenefits,
         });
 
-        const { intentHeadline, recommendedSource } = deriveIntentHeadlineHint({
-          prompt: latestUserMessageContent,
-          filterHeadline: summaryHeadline,
-          categoryHint: normalizedCategory ?? categoryLabel ?? null,
-          benefitHints: effectiveBenefitsRaw,
-        });
+        const intentHeadline = undefined;
+        const recommendedSource = "filters";
 
         const productIcon = pickProductIcon({
           categoryHint: normalizedCategory ?? categoryLabel,
-          benefits: effectiveBenefitsRaw,
+          benefits: benefitsForIcon,
           intentHeadline,
         });
+
+        const llmHeadline = summaryHeadline;
 
         summaryContext = {
           type: "products",
@@ -2828,14 +2880,14 @@ export async function callGemini({
           topProducts: topProductMetadata,
           notes: selectionNote,
           iconSuggestion: productIcon,
-          headlineHint: summaryHeadline,
+          headlineHint: llmHeadline,
           intentHeadlineHint: intentHeadline,
           headlineSourceRecommendation: recommendedSource,
           filterDescription: summarySubheading ?? selectionNote,
         };
 
         productSummaryParts = {
-          headline: summaryHeadline,
+          headline: llmHeadline,
           icon: productIcon,
         };
         await streamSummaryIfNeeded();

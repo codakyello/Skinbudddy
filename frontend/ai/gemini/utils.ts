@@ -47,6 +47,15 @@ export async function generateReplySummaryWithGemini({
       : undefined;
   const filterDescription =
     context?.type === "products" ? context.filterDescription : undefined;
+  const intentHeadlineHint =
+    context?.type === "products" &&
+    typeof context.intentHeadlineHint === "string"
+      ? context.intentHeadlineHint
+      : null;
+  const preferIntentHeadline =
+    context?.type === "products" &&
+    context.headlineSourceRecommendation === "intent" &&
+    intentHeadlineHint;
 
   const routineGuidance =
     context?.type === "routine"
@@ -63,10 +72,18 @@ export async function generateReplySummaryWithGemini({
   const productGuidance =
     context?.type === "products"
       ? [
-          `Begin the headline with "Here are the products I found" and immediately append the provided filterDescription${filterDescription ? ' exactly as written (it already begins with wording like "including category cleanser")' : " or, if missing, summarize the most relevant filters (category, skin type, concerns, actives, brand)"}.`,
-          "Keep the headline brief and action-oriented.",
-          "Reiterate the key filters inside the headline and invite the user to take next steps like comparing or learning more.",
-        ].join(" ")
+          preferIntentHeadline
+            ? `Use the user's request "${intentHeadlineHint}" as the blueprint for the headline—paraphrase it into a polished title that sounds like a section heading, not a verbatim command.`
+            : filterDescription
+              ? `Let the headline highlight the core filters (${filterDescription}); mention the category or benefit so the user immediately knows what the set covers.`
+              : "Reference the product category or standout benefits from the context to craft a clear headline even if the user was vague.",
+          filterDescription && preferIntentHeadline
+            ? "You may weave in the filter details if it sharpens the meaning, but keep the user intent front and center."
+            : "",
+          "Keep the headline brief (3–10 words), inviting, and action-oriented.",
+        ]
+          .filter(Boolean)
+          .join(" ")
       : "";
 
   const contextualInstructions = [routineGuidance, productGuidance]
