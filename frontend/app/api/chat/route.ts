@@ -1317,7 +1317,7 @@ async function handleChatPost(req: NextRequest) {
               ? body.model.trim()
               : useOpenAI
                 ? "gpt-4o-mini"
-                : "gemini-2.5-flash";
+                : "gemini-2.0-flash";
           const resolvedTemperature =
             typeof body?.temperature === "number" ? body.temperature : 0.5;
           const maxToolRounds =
@@ -1344,7 +1344,7 @@ async function handleChatPost(req: NextRequest) {
               streamedSummarySignature = signature;
               await send({ type: "summary", summary: summaryChunk });
             },
-            onProducts: async (productsChunk) => {
+            onProducts: async (productsChunk, productsContext) => {
               if (!Array.isArray(productsChunk) || !productsChunk.length)
                 return;
               const sanitized = sanitizeProducts(productsChunk);
@@ -1368,7 +1368,25 @@ async function handleChatPost(req: NextRequest) {
               );
               if (signature === streamedProductSignature) return;
               streamedProductSignature = signature;
-              await send({ type: "products", products: productsChunk });
+              const contextPayload =
+                productsContext && productsContext.type === "products"
+                  ? {
+                      headlineHint: productsContext.headlineHint,
+                      intentHeadlineHint: productsContext.intentHeadlineHint,
+                      headlineSourceRecommendation:
+                        productsContext.headlineSourceRecommendation,
+                      iconSuggestion: productsContext.iconSuggestion,
+                    }
+                  : undefined;
+              await send({
+                type: "products",
+                products: productsChunk,
+                headlineHint: contextPayload?.headlineHint,
+                intentHeadlineHint: contextPayload?.intentHeadlineHint,
+                headlineSourceRecommendation:
+                  contextPayload?.headlineSourceRecommendation,
+                iconSuggestion: contextPayload?.iconSuggestion,
+              });
             },
             onRoutine: async (routineChunk) => {
               const sanitized = sanitizeRoutine(routineChunk);
@@ -1419,6 +1437,8 @@ async function handleChatPost(req: NextRequest) {
           const resultType = completion.resultType;
           const routine = completion.routine;
           const summary = completion.summary;
+
+          storedAssistantMessage = trimmedMain;
 
           // const persistToolOutputs = toolOutputs.filter((output) => {
           //   return (

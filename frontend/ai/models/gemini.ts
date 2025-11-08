@@ -8,18 +8,24 @@ import {
   describeIngredients,
   describeBenefits,
   describeSkinTypes,
+  deriveIntentHeadlineHint,
   extractProductMetadataForSummary,
   normalizeProductsFromOutputs,
+  pickProductIcon,
   sanitizeToolResultForModel,
   sentenceCase,
   toTitleCase,
   toUniqueStrings,
 } from "../utils";
-import { mapDescriptorsToBenefits } from "../../shared/skinMappings";
+import {
+  mapDescriptorsToBenefits,
+  resolveSkinType,
+} from "../../shared/skinMappings";
 import { toolSpecs, getToolByName } from "../tools/localTools";
 import {
   ChatMessage,
   ProductCandidate,
+  ProductSummaryContext,
   ReplySummary,
   RoutineProductOption,
   RoutineSelection,
@@ -69,7 +75,10 @@ export async function callGemini({
   useTools?: boolean;
   maxToolRounds?: number;
   onToken?: (chunk: string) => Promise<void> | void;
-  onProducts?: (products: ProductCandidate[]) => Promise<void> | void;
+  onProducts?: (
+    products: ProductCandidate[],
+    context?: ProductSummaryContext | null
+  ) => Promise<void> | void;
   onRoutine?: (routine: RoutineSelection) => Promise<void> | void;
   onSummary?: (summary: ReplySummary) => Promise<void> | void;
   userId?: string;
@@ -1417,7 +1426,8 @@ export async function callGemini({
   };
 
   const streamProductsIfNeeded = async (
-    products: ProductCandidate[]
+    products: ProductCandidate[],
+    context?: ProductSummaryContext | null
   ): Promise<void> => {
     if (!onProducts || !products.length) return;
     const signature = JSON.stringify(
@@ -1439,7 +1449,7 @@ export async function callGemini({
     if (signature === lastStreamedProductsSignature) return;
     lastStreamedProductsSignature = signature;
     try {
-      await onProducts(products);
+      await onProducts(products, context);
     } catch (error) {
       console.error("Product streaming callback failed:", error);
     }
@@ -1730,6 +1740,28 @@ export async function callGemini({
             const benefitAccumulator = new Set<string>();
             let bestsellerHintRequested = false;
 
+            const userMessageTokens =
+              typeof latestUserMessageContent === "string"
+                ? tokenizeDescriptor(latestUserMessageContent)
+                : [];
+            const userSkinTypesMentioned = new Set<
+              ReturnType<typeof resolveSkinType>
+            >();
+            userMessageTokens.forEach((token) => {
+              const resolvedType = resolveSkinType(token);
+              if (resolvedType) {
+                userSkinTypesMentioned.add(resolvedType);
+              }
+            });
+            const userBenefitHints =
+              typeof latestUserMessageContent === "string"
+                ? mapDescriptorsToBenefits([
+                    latestUserMessageContent,
+                    ...userMessageTokens,
+                  ])
+                : { benefits: [] as string[], residual: [] as string[] };
+            const userBenefitSet = new Set(userBenefitHints.benefits);
+
             const existingBenefitsRaw = Array.isArray(argsRecord.benefits)
               ? argsRecord.benefits.filter(
                   (entry): entry is string => typeof entry === "string"
@@ -1852,15 +1884,10 @@ export async function callGemini({
             let mergedBenefits = Array.from(benefitAccumulator);
             if (
               mergedBenefits.length === 0 &&
-              typeof latestUserMessageContent === "string" &&
+              userBenefitSet.size > 0 &&
               !searchNameLockedToExact
             ) {
-              const userTokens = tokenizeDescriptor(latestUserMessageContent);
-              const { benefits: userBenefits } = mapDescriptorsToBenefits([
-                latestUserMessageContent,
-                ...userTokens,
-              ]);
-              userBenefits.forEach((benefit) =>
+              userBenefitSet.forEach((benefit) =>
                 benefitAccumulator.add(benefit)
               );
               mergedBenefits = Array.from(benefitAccumulator);
@@ -1875,8 +1902,15 @@ export async function callGemini({
                 : mergedBenefits;
             }
 
+            const userMentionedSkinType = userSkinTypesMentioned.size > 0;
+            const userMentionedExplicitBenefit = userBenefitSet.size > 0;
+
             if (mergedBenefits.length) {
-              argsRecord.benefits = mergedBenefits;
+              if (!userMentionedExplicitBenefit && userMentionedSkinType) {
+                delete argsRecord.benefits;
+              } else {
+                argsRecord.benefits = mergedBenefits;
+              }
             } else {
               delete argsRecord.benefits;
             }
@@ -2730,8 +2764,6 @@ export async function callGemini({
         const selectionNote = refinementNotes.length
           ? refinementNotes[refinementNotes.length - 1]
           : undefined;
-
-        const productIcon = "🛍️";
         const {
           headline: summaryHeadline,
           usedAudience,
@@ -2762,6 +2794,19 @@ export async function callGemini({
           usedBenefits,
         });
 
+        const { intentHeadline, recommendedSource } = deriveIntentHeadlineHint({
+          prompt: latestUserMessageContent,
+          filterHeadline: summaryHeadline,
+          categoryHint: normalizedCategory ?? categoryLabel ?? null,
+          benefitHints: effectiveBenefitsRaw,
+        });
+
+        const productIcon = pickProductIcon({
+          categoryHint: normalizedCategory ?? categoryLabel,
+          benefits: effectiveBenefitsRaw,
+          intentHeadline,
+        });
+
         summaryContext = {
           type: "products",
           productCount: streamingProducts.length,
@@ -2784,6 +2829,8 @@ export async function callGemini({
           notes: selectionNote,
           iconSuggestion: productIcon,
           headlineHint: summaryHeadline,
+          intentHeadlineHint: intentHeadline,
+          headlineSourceRecommendation: recommendedSource,
           filterDescription: summarySubheading ?? selectionNote,
         };
 
@@ -2792,7 +2839,10 @@ export async function callGemini({
           icon: productIcon,
         };
         await streamSummaryIfNeeded();
-        await streamProductsIfNeeded(streamingProducts);
+        await streamProductsIfNeeded(
+          streamingProducts,
+          summaryContext?.type === "products" ? summaryContext : null
+        );
         lastProductSelection = streamingProducts;
 
         if (!streamingProducts.length) {
