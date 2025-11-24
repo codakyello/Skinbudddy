@@ -1403,7 +1403,8 @@ async function handleChatPost(req: NextRequest) {
               : typeof process.env.CHAT_MODEL_PROVIDER === "string"
                 ? process.env.CHAT_MODEL_PROVIDER.toLowerCase()
                 : "grok";
-          const heavyModel = process.env.OPENROUTER_MODEL_GROK ?? "x-ai/grok-4";
+          const heavyModel =
+            process.env.OPENROUTER_MODEL_GROK ?? "x-ai/grok-4-fast";
           const grokModelFingerprint = heavyModel.toLowerCase();
           const enforceGrokOnly = (candidate?: string) => {
             if (typeof candidate === "string") {

@@ -56,7 +56,7 @@ import {
 const DEFAULT_GROK_MODEL =
   process.env.OPENROUTER_MODEL_GROK ??
   process.env.OPENROUTER_DEFAULT_MODEL ??
-  "x-ai/grok-4";
+  "x-ai/grok-4-fast";
 export async function callOpenRouter({
   messages,
   systemPrompt,
