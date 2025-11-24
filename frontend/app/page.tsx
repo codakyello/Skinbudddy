@@ -532,6 +532,7 @@ export default function ChatPage() {
       let finalSummary: MessageSummary | null = null;
       let lockedHeadline: string | null = null;
       let lockedIcon: string | null = null;
+      let finalSuggestions: string[] = [];
 
       const processPayload = (line: string) => {
         const trimmed = line.trim();
@@ -551,6 +552,7 @@ export default function ChatPage() {
           intentHeadlineHint?: string;
           headlineSourceRecommendation?: HeadlineSource;
           iconSuggestion?: string;
+          suggestions?: string[];
         };
 
         if (payload.type === "delta" && typeof payload.token === "string") {
@@ -653,6 +655,12 @@ export default function ChatPage() {
           if (typeof payload.reply === "string") {
             finalReply = payload.reply.trim();
           }
+          if (Array.isArray(payload.suggestions)) {
+            finalSuggestions = payload.suggestions
+              .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+              .filter((entry) => entry.length > 0)
+              .slice(0, 3);
+          }
           if (payload.resultType === "routine" && payload.routine) {
             const normalizedRoutine = normalizeRoutinePayload(payload.routine);
             if (normalizedRoutine) {
@@ -723,6 +731,7 @@ export default function ChatPage() {
         resultType: routineResult ? "routine" : undefined,
         routine: routineResult ?? undefined,
         summary,
+        suggestions: finalSuggestions.length ? finalSuggestions : undefined,
       });
 
       if (finalSessionId) {
@@ -973,7 +982,7 @@ export default function ChatPage() {
                               <Box className="mt-6 flex flex-col mb-[24px]">
                                 {chatMsg.summary?.headline ? (
                                   <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
-                                    <h3 className="text-[2rem] leading-[2.4rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
+                                    <h3 className="text-[2rem] font-semibold text-[#1b1f26] flex gap-[0.6rem]">
                                       {chatMsg.summary?.icon ? (
                                         <span>{chatMsg.summary.icon}</span>
                                       ) : null}
@@ -1002,7 +1011,7 @@ export default function ChatPage() {
                               <Box>
                                 {chatMsg.summary?.headline ? (
                                   <Box className="mb-[0.8rem] flex flex-col gap-[1.6rem]">
-                                    <h3 className="text-[2rem] leading-[2.4rem] font-medium text-[#1b1f26] flex gap-[0.6rem]">
+                                    <h3 className="text-[2rem] font-medium text-[#1b1f26] flex gap-[0.6rem]">
                                       {chatMsg.summary?.icon ? (
                                         <span>{chatMsg.summary.icon}</span>
                                       ) : null}
@@ -1062,9 +1071,17 @@ export default function ChatPage() {
                                 );
                               }
 
-                              const { body, suggestions } =
-                                extractSuggestedActions(chatMsg.content);
-                              const markdownSource = body;
+                              const extracted = extractSuggestedActions(
+                                chatMsg.content
+                              );
+                              const suggestions = chatMsg.suggestions?.length
+                                ? chatMsg.suggestions
+                                : extracted.suggestions;
+                              const markdownSource =
+                                extracted.body?.length ||
+                                chatMsg.suggestions?.length
+                                  ? extracted.body || chatMsg.content
+                                  : chatMsg.content;
                               const isLastMessage =
                                 index + 1 === messages.length;
                               const showTypingIndicator =

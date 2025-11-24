@@ -877,8 +877,11 @@ export const buildProductHeadline = ({
   let usedBenefits = false;
 
   if (normalizedCategory) {
+    const looksLikeMoreCatchall = /\bmore\b/i.test(normalizedCategory);
     const categoryLabel =
-      normalizedCategory.endsWith("s") || normalizedCategory.endsWith("S")
+      normalizedCategory.endsWith("s") ||
+      normalizedCategory.endsWith("S") ||
+      looksLikeMoreCatchall
         ? normalizedCategory
         : `${normalizedCategory}s`;
     headline = `${descriptor} ${categoryLabel}`;

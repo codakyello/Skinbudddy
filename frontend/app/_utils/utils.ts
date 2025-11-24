@@ -187,7 +187,7 @@ export const getRandomSuggestions = (count: number, SUGGESTIONS: string[]) => {
 export const normalizeHeader = (line: string) =>
   line
     .toLowerCase()
-    .replace(/[\*`_~>#:\-]/g, "")
+    .replace(/[\*`_~>#:\-;]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -207,7 +207,11 @@ export const extractSuggestedActions = (
   const lines = content.split(/\r?\n/);
   const headerIndex = lines.findIndex((line) => {
     const normalized = normalizeHeader(line);
-    return normalized === "suggested actions";
+    return (
+      normalized === "suggested actions" ||
+      normalized === "suggested action" ||
+      normalized === "suggestions"
+    );
   });
 
   if (headerIndex === -1) {

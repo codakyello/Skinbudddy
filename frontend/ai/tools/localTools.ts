@@ -770,7 +770,6 @@ const localTools: ToolSpec[] = [
         "dry",
         "combination",
         "sensitive",
-        "mature",
         "acne-prone",
         "all",
       ]);

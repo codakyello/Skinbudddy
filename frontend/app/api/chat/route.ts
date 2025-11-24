@@ -27,37 +27,100 @@ type ParsedAssistantReply = {
   suggestedActions: string[];
 };
 
-const SUGGESTED_ACTIONS_HEADING_REGEX = /(?:^|\n)Suggested actions\s*:?\s*\n/i;
+const TOOL_NAME_REPLACEMENTS: Record<string, string> = {
+  searchProductsByQuery: "product search",
+  getProduct: "product lookup",
+  getAllProducts: "product lookup",
+  recommendRoutine: "routine builder",
+  getSkinProfile: "profile lookup",
+  saveUserProfile: "profile update",
+  startSkinTypeSurvey: "skin survey",
+  addToCart: "cart update",
+};
 
-function splitAssistantReply(message: string): ParsedAssistantReply {
-  if (typeof message !== "string" || !message.trim().length) {
-    return { main: message ?? "", suggestedActions: [] };
+function scrubToolLanguage(text: string): string {
+  if (typeof text !== "string" || !text.trim().length) return "";
+  let sanitized = text;
+  for (const [toolName, replacement] of Object.entries(
+    TOOL_NAME_REPLACEMENTS
+  )) {
+    const pattern = new RegExp(`\\b${toolName}\\b`, "gi");
+    sanitized = sanitized.replace(pattern, replacement);
+  }
+  sanitized = sanitized
+    .replace(/\btools?\b/gi, "")
+    // collapse repeated spaces/tabs but keep newlines intact
+    .replace(/[ \t]{2,}/g, " ");
+  sanitized = sanitized.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
+  return sanitized.trimEnd();
+}
+
+function normalizeListSpacing(text: string): string {
+  if (typeof text !== "string" || !text.length) return text ?? "";
+  const lines = text.split("\n");
+  const result: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const isListItem =
+      /^[-*+]\s+/.test(trimmed) || /^\d+[\).\s]+\s*/.test(trimmed);
+    const previous = result[result.length - 1];
+    const prevIsEmpty = !previous || previous.trim().length === 0;
+    const prevIsList =
+      previous &&
+      (/^[-*+]\s+/.test(previous.trim()) ||
+        /^\d+[\).\s]+\s*/.test(previous.trim()));
+
+    if (isListItem && !prevIsEmpty && !prevIsList) {
+      result.push("");
+    }
+    result.push(line);
   }
 
-  const normalized = message.replace(/\r\n/g, "\n");
-  const headingMatch = SUGGESTED_ACTIONS_HEADING_REGEX.exec(normalized);
+  return result.join("\n");
+}
 
-  if (!headingMatch) {
+function splitAssistantReply(message: string): ParsedAssistantReply {
+  if (typeof message !== "string") {
+    return { main: "", suggestedActions: [] };
+  }
+  const normalized = message.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const normalizeHeader = (line: string) =>
+    line
+      .toLowerCase()
+      .replace(/[\*`_~>#:\-;]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const headerIndex = lines.findIndex((line) => {
+    const normalizedHeader = normalizeHeader(line);
+    return (
+      normalizedHeader === "suggested actions" ||
+      normalizedHeader === "suggested action" ||
+      normalizedHeader === "suggestions"
+    );
+  });
+
+  if (headerIndex === -1) {
     return { main: normalized, suggestedActions: [] };
   }
 
-  const main = normalized.slice(0, headingMatch.index).trimEnd();
-
-  const remaining = normalized.slice(
-    headingMatch.index + headingMatch[0].length
-  );
+  const main = lines.slice(0, headerIndex).join("\n").trimEnd();
+  const suggestionLines = lines.slice(headerIndex + 1);
   const suggestions: string[] = [];
-
-  for (const line of remaining.split("\n")) {
+  for (const line of suggestionLines) {
     const trimmed = line.trim();
     if (!trimmed.length) continue;
-    const bulletMatch = trimmed.match(/^\d+\.\s*(.+)$/);
-    if (bulletMatch) {
-      suggestions.push(bulletMatch[1].trim());
-      continue;
-    }
-    // Stop once we hit content that no longer looks like a numbered suggestion.
-    break;
+    const cleaned = trimmed
+      .replace(/^[-*•●◦▪]+\s*/, "")
+      .replace(/^(\d+)[\).:\-]?\s*/, "")
+      .trim();
+    if (!cleaned.length) continue;
+    if (normalizeHeader(cleaned) === "suggested actions") continue;
+    suggestions.push(cleaned);
+    if (suggestions.length >= 3) break;
   }
 
   return {
@@ -1561,25 +1624,39 @@ async function handleChatPost(req: NextRequest) {
           });
 
           const assistantMessage = completion.reply ?? "";
-          const { main: assistantMain } = splitAssistantReply(assistantMessage);
-          const trimmedMain = assistantMain.trim();
+          const { main: assistantMain, suggestedActions } =
+            splitAssistantReply(assistantMessage);
+          const normalizedSuggestions = Array.from(
+            new Set(
+              (suggestedActions ?? [])
+                .map(scrubToolLanguage)
+                .map((entry) => entry.trim())
+                .filter((entry) => entry.length > 0)
+                .slice(0, 3)
+            )
+          );
+          const cleanedMain = normalizeListSpacing(
+            scrubToolLanguage(assistantMain)
+          );
+          const trimmedMain = cleanedMain.trimEnd();
           let storedAssistantMessage = trimmedMain;
-          let finalReply = assistantMessage;
+          let finalReply = trimmedMain;
 
           if (!trimmedMain.length) {
             const fallbackMain =
               "Got it — I'll take care of that now. If you'd like, I can keep helping with anything else.";
             storedAssistantMessage = fallbackMain;
-            const trimmedAssistant = assistantMessage.trim();
+            const trimmedAssistant = scrubToolLanguage(
+              assistantMessage.trim()
+            );
 
-            finalReply = trimmedAssistant.length
-              ? `${fallbackMain}\n\n${trimmedAssistant}`
-              : fallbackMain;
+            finalReply =
+              trimmedAssistant.length && trimmedAssistant !== fallbackMain
+                ? `${fallbackMain}\n\n${trimmedAssistant}`
+                : fallbackMain;
           } else {
             storedAssistantMessage = trimmedMain;
-            finalReply = assistantMessage.trim().length
-              ? assistantMessage
-              : trimmedMain;
+            finalReply = cleanedMain.trimEnd();
           }
 
           const startSkinTypeQuiz = completion.startSkinTypeQuiz ?? false;
@@ -1684,6 +1761,9 @@ async function handleChatPost(req: NextRequest) {
               resultType,
               routine,
               summary,
+              suggestions: normalizedSuggestions.length
+                ? normalizedSuggestions
+                : undefined,
             });
           }
         } catch (error: unknown) {
