@@ -48,7 +48,6 @@ export const SkinType = v.union(
   v.literal("dry"),
   v.literal("combination"),
   v.literal("sensitive"),
-  v.literal("mature"),
   v.literal("acne-prone"),
   v.literal("all")
 );

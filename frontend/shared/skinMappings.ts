@@ -14,7 +14,6 @@ export const SKIN_TYPE_CANONICALS = [
   "dry",
   "combination",
   "sensitive",
-  "mature",
   "acne-prone",
   "all",
 ] as const;
@@ -39,7 +38,6 @@ const SKIN_TYPE_ALIAS_MAP: Record<SkinTypeCanonical, readonly string[]> = {
     "reactive skin",
     "reactive",
   ],
-  mature: ["mature skin", "mature", "aging skin", "aged skin"],
   "acne-prone": [
     "acne prone",
     "acne-prone",

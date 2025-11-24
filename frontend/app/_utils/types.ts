@@ -183,6 +183,7 @@ export type ChatMessage = {
   routine?: Routine;
   summary?: MessageSummary;
   error?: string;
+  suggestions?: string[];
 };
 
 export type QuizMessage = {
