@@ -850,9 +850,11 @@ export default function ChatPage() {
                 <section className=" rounded-3xl border border-transparent bg-white/80 backdrop-blur-md ">
                   {displayedSuggestions.map(
                     (suggestion: string, index: number) => (
-                      <div className="border-b last:border-b-0 border-[rgba(219,219,219,0.4)] py-[.5rem]">
+                      <div
+                        key={index}
+                        className="border-b last:border-b-0 border-[rgba(219,219,219,0.4)] py-[.5rem]"
+                      >
                         <button
-                          key={index}
                           onClick={() => handleSuggestion(suggestion)}
                           className="flex w-full items-center justify-between rounded-[22px] px-[1.2rem] py-[.8rem] text-left transition hover:bg-[#f2f2f2]"
                         >
