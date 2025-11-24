@@ -136,6 +136,12 @@ export async function callOpenRouter({
       "Never mention internal function or tool names in user-facing replies. Describe actions in plain language instead of referencing addToCart, searchProductsByQuery, or other internal APIs.",
   });
 
+  chatMessages.push({
+    role: "developer",
+    content:
+      "Do not surface tool call status, schema errors, or 'tool returned no data' messages to the user—summarize outcomes in plain language only (e.g., 'I couldn't find matching products' or 'I don’t have your profile yet'). Keep all suggested follow-ups inside the 'Suggested actions' section and avoid repeating them elsewhere in the reply.",
+  });
+
   const inferCategoryFromText = (
     text: string | undefined
   ): string | undefined => {
