@@ -3,7 +3,7 @@ import { runChatCompletion as runOpenAIChatCompletion } from "@/convex/_utils/in
 import { runChatCompletion as runGeminiChatCompletion } from "@/convex/_utils/internalGemini";
 
 const MODEL_PROVIDER =
-  (process.env.CHAT_MODEL_PROVIDER ?? "gemini").toLowerCase();
+  (process.env.CHAT_MODEL_PROVIDER ?? "grok").toLowerCase();
 
 const runChatCompletion =
   MODEL_PROVIDER === "openai"

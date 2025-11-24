@@ -274,8 +274,8 @@ export const createOrder = mutation({
         err instanceof Error
           ? err.message
           : typeof err === "string"
-          ? err
-          : "Unable to create order.";
+            ? err
+            : "Unable to create order.";
       return { success: false, message };
     }
   },
@@ -979,7 +979,7 @@ export const _enqueueRefundItem = internalMutation({
   },
 });
 
-// this is a cron job
+// this is a cron job: what if our cron job fails and it retries, how do we handle that?
 export const processRefund = internalAction({
   args: {
     orderId: v.id("orders"),
@@ -1011,7 +1011,7 @@ export const processRefund = internalAction({
     const idempotencyKey = `refund-${reference}`;
 
     try {
-      // TODO: call PSP refund API here using `reference` and `eligible.amount`
+      // TODO: call PSP refund API here using `reference` and `eligible.amount` and `idempotencyKey`
       const providerRefundId = idempotencyKey;
       await ctx.runMutation(internal.order.updateRefundState, {
         orderId,
@@ -1051,9 +1051,16 @@ export const verifyPendingPaymentsSweep = internalAction({
     console.log(ids);
 
     for (const id of ids) {
-      await ctx.runAction(internal.order.verifyPaymentForReference, {
-        referenceId: id,
-      });
+      try {
+        await ctx.runAction(internal.order.verifyPaymentForReference, {
+          referenceId: id,
+        });
+      } catch (error) {
+        console.error("verifyPaymentForReference failed", {
+          referenceId: id,
+          error,
+        });
+      }
     }
     return { success: true, count: ids.length };
   },
@@ -1681,7 +1688,9 @@ export const postCompleteOrderSideEffects = internalAction({
       );
       const categoryMap = new Map<Id<"categories">, Doc<"categories">>(
         categoryDocsRaw
-          .filter((c: Doc<"categories"> | null): c is Doc<"categories"> => c !== null)
+          .filter(
+            (c: Doc<"categories"> | null): c is Doc<"categories"> => c !== null
+          )
           .map((c: Doc<"categories">) => [c._id as Id<"categories">, c])
       );
 
@@ -1690,13 +1699,15 @@ export const postCompleteOrderSideEffects = internalAction({
         ...p,
         categories: (p.categories as Id<"categories">[])
           .map((cid) => categoryMap.get(cid) || null)
-          .filter((c: Doc<"categories"> | null): c is Doc<"categories"> => c !== null),
+          .filter(
+            (c: Doc<"categories"> | null): c is Doc<"categories"> => c !== null
+          ),
       }));
 
       // Checks
       const hasCategory = (slug: string) =>
         enriched.some(
-          (prod: typeof enriched[number]) =>
+          (prod: (typeof enriched)[number]) =>
             prod.categories.some(
               (c) => (c.slug || c.name)?.toLowerCase() === slug
             ) && prod.canBeInRoutine

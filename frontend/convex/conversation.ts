@@ -9,14 +9,15 @@ import { v } from "convex/values";
 import { DEFAULT_CONTEXT_CONFIG } from "../context/config";
 import { countTextTokens } from "./_utils/token";
 import type { Id } from "./_generated/dataModel";
-import OpenAI from "openai";
+import { getOpenRouterClient } from "../ai/openrouter/client";
 import { internal } from "./_generated/api";
 
 type ConversationRole = "user" | "assistant" | "system" | "tool";
 
 type ResolvedConfig = typeof DEFAULT_CONTEXT_CONFIG;
 
-const SUMMARISER_MODEL = "gpt-4o-mini";
+const SUMMARISER_MODEL =
+  process.env.OPENROUTER_MODEL_GROK ?? "x-ai/grok-4";
 
 function resolveConfig(raw?: any): ResolvedConfig {
   if (!raw) return { ...DEFAULT_CONTEXT_CONFIG };
@@ -116,31 +117,44 @@ async function generateSummaryText(
       ? "You summarise the latest portion of a skincare shopping assistant conversation. Capture actionable requests, clarifications, and unresolved questions in under 120 words."
       : "You maintain a rolling high-level summary of a skincare shopping assistant conversation. Capture enduring facts, preferences, and decisions in under 200 words.";
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     // Fallback: crude summary using simple truncation.
     return truncated.slice(-Math.min(truncated.length, maxTokens * 4));
   }
 
-  const client = new OpenAI({ apiKey });
+  const client = getOpenRouterClient();
   try {
-    const isGPT5 = /(^|\b)gpt-5(\b|\-)/i.test(SUMMARISER_MODEL);
-    const resp = await client.responses.create({
+    const response = await client.models.generateContent({
       model: SUMMARISER_MODEL,
-      store: false,
-      ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
-      input: [
-        { role: "system", type: "message", content: systemPrompt },
+      contents: [
         {
           role: "user",
-          type: "message",
-          content: `Summarise the following snippets:\n\n${truncated}`,
+          parts: [
+            { text: `Summarise the following snippets:\n\n${truncated}` },
+          ],
         },
       ],
-      ...(isGPT5 ? { temperature: 1 as const } : { temperature: 0.2 }),
-      max_output_tokens: Math.min(maxTokens, 600),
+      config: {
+        systemInstruction: {
+          role: "system",
+          parts: [{ text: systemPrompt }],
+        },
+        temperature: 0.2,
+        maxOutputTokens: Math.min(maxTokens, 600),
+      },
     });
-    const content = (resp as any).output_text?.trim?.();
+    const contentCandidate =
+      (response as any)?.text ??
+      (response as any)?.response?.text ??
+      ((response as any)?.candidates?.[0]?.content?.parts || [])
+        .filter((part: any) => typeof part?.text === "string")
+        .map((part: any) => part.text)
+        .join("");
+    const content =
+      typeof contentCandidate === "string" && contentCandidate.trim().length
+        ? contentCandidate.trim()
+        : undefined;
     return content || truncated.slice(0, maxTokens * 4);
   } catch (error) {
     console.warn("summary generation failed", error);

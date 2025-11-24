@@ -21,7 +21,7 @@ import {
 } from "../shared/skinMappings.js";
 
 const MODEL_PROVIDER = (
-  process.env.CHAT_MODEL_PROVIDER ?? "gemini"
+  process.env.CHAT_MODEL_PROVIDER ?? "grok"
 ).toLowerCase();
 
 const runChatCompletion =
@@ -175,16 +175,17 @@ export const recommend = action({
       "This is skinProfile"
     );
     try {
-      const envGeminiKey =
+      const envOpenRouterKey =
         typeof (ctx as any)?.env?.get === "function"
-          ? (ctx as any).env.get("GEMINI_API_KEY")
+          ? (ctx as any).env.get("OPENROUTER_API_KEY") ??
+            (ctx as any).env.get("GEMINI_API_KEY")
           : undefined;
       if (
-        typeof envGeminiKey === "string" &&
-        envGeminiKey.trim().length &&
-        process.env.GEMINI_API_KEY !== envGeminiKey
+        typeof envOpenRouterKey === "string" &&
+        envOpenRouterKey.trim().length &&
+        process.env.OPENROUTER_API_KEY !== envOpenRouterKey.trim()
       ) {
-        process.env.GEMINI_API_KEY = envGeminiKey.trim();
+        process.env.OPENROUTER_API_KEY = envOpenRouterKey.trim();
       }
 
       // Pull raw products via an internal query to avoid action ctx.db access
@@ -538,7 +539,7 @@ export const recommend = action({
       let notes = "";
 
       do {
-        const data = await runChatCompletion(prompt, "gpt-4o-mini", 0.1);
+        const data = await runChatCompletion(prompt, undefined, 0.1);
         let parsed: any;
         try {
           parsed = JSON.parse(data);

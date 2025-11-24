@@ -12,6 +12,7 @@
         "@emotion/styled": "^11.14.0",
         "@google/genai": "^1.27.0",
         "@modelcontextprotocol/sdk": "^1.19.1",
+        "@openrouter/sdk": "^0.1.6",
         "@sentry/nextjs": "^10.9.0",
         "@tanstack/react-query": "^5.77.2",
         "@tanstack/react-query-devtools": "^5.71.2",
@@ -357,6 +358,8 @@
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
     "@nolyfill/is-core-module": ["@nolyfill/is-core-module@1.0.39", "", {}, "sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA=="],
+
+    "@openrouter/sdk": ["@openrouter/sdk@0.1.6", "", { "dependencies": { "zod": "^3.25.0 || ^4.0.0" }, "peerDependencies": { "@tanstack/react-query": "^5", "react": "^18 || ^19", "react-dom": "^18 || ^19" }, "optionalPeers": ["@tanstack/react-query", "react", "react-dom"] }, "sha512-1hCjQWInwyLLfBuhSkCV/Ji2+YZ+o3jidoJKEKpi3zi4t+UJFdgoKlJiQLIAt7JBf5CBwfGj3ObfbtYkhv8XMw=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 

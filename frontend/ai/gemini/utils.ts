@@ -6,7 +6,7 @@ import {
   selectProductsResponseSchema,
   summarizeCandidates,
 } from "../utils";
-import { getGeminiClient } from "./client";
+import { getOpenRouterClient } from "../openrouter/client";
 
 const SUMMARY_RESPONSE_JSON_SCHEMA = {
   type: "object",
@@ -18,7 +18,7 @@ const SUMMARY_RESPONSE_JSON_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-export async function generateReplySummaryWithGemini({
+export async function generateReplySummaryWithOpenRouter({
   reply,
   userMessage,
   context,
@@ -93,7 +93,7 @@ export async function generateReplySummaryWithGemini({
   const iconInstruction = `Set the "icon" field in your JSON to "${icon}". Do not place any emoji inside the headline. Provide exactly one headline—no additional fields or sentences.`;
 
   try {
-    const client = getGeminiClient();
+    const client = getOpenRouterClient();
     const response = await client.models.generateContent({
       model,
       contents: [
@@ -134,7 +134,7 @@ export async function generateReplySummaryWithGemini({
     const parsed = JSON.parse(sanitized);
     const result = replySummarySchema.safeParse(parsed);
     if (!result.success) {
-      console.warn("Failed to parse Gemini summary JSON:", result.error);
+      console.warn("Failed to parse OpenRouter summary JSON:", result.error);
       return null;
     }
 
@@ -143,12 +143,12 @@ export async function generateReplySummaryWithGemini({
       icon: result.data.icon?.trim() || undefined,
     };
   } catch (error) {
-    console.error("Failed to generate reply summary with Gemini:", error);
+    console.error("Failed to generate reply summary with OpenRouter:", error);
     return null;
   }
 }
 
-export async function refineProductSelectionWithGemini({
+export async function refineProductSelectionWithOpenRouter({
   candidates,
   model,
   userRequest,
@@ -188,7 +188,7 @@ export async function refineProductSelectionWithGemini({
   )}\n\nCall the selectProducts function with your ranked picks and reasons.`;
 
   try {
-    const client = getGeminiClient();
+    const client = getOpenRouterClient();
     const response = await client.models.generateContent({
       model,
       contents: [
@@ -224,7 +224,7 @@ export async function refineProductSelectionWithGemini({
     try {
       parsedPayload = JSON.parse(sanitizedContent);
     } catch (error) {
-      console.error("Failed to parse Gemini product refinement JSON:", error);
+      console.error("Failed to parse OpenRouter product refinement JSON:", error);
       return { products: limitedCandidates };
     }
 

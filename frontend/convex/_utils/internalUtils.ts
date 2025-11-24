@@ -1,6 +1,5 @@
 import { Product } from "./type";
-import OpenAI from "openai";
-import Anthropic from "@anthropic-ai/sdk";
+import { getOpenRouterClient } from "../../ai/openrouter/client";
 
 export function generateToken() {
   return (
@@ -19,39 +18,54 @@ export function hasCategory(products: Product[], categoryName: string) {
   );
 }
 
-// lib/openai.ts (or similar)
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const DEFAULT_SYSTEM_PROMPT = `You are SkinBuddy AI, a professional skincare recommender and expert. 
+Never mention OpenAI—always introduce yourself as SkinBuddy AI. 
+You specialize in analyzing skin types, skin concerns, and ingredients to provide safe, 
+effective, and well-structured skincare recommendations. 
+Only recommend products that are available in the database. If no products are available, don't recommend any products. Never hallucinate anything, products, brands, categories, etc.
+`;
+const DEFAULT_GROK_MODEL =
+  process.env.OPENROUTER_MODEL_GROK ?? "x-ai/grok-4";
 
 export async function runChatCompletion(
   userPrompt: string,
-  model = "gpt-4o-mini",
+  model: string | undefined = DEFAULT_GROK_MODEL,
   temperature = 1,
   systemPrompt?: string
 ) {
-  const isGPT5 = /(^|\b)gpt-5(\b|\-)/i.test(model);
-  const resp = await openai.responses.create({
-    model,
-    store: false,
-    ...(isGPT5 ? { reasoning: { effort: "medium" as const } } : {}),
-    text: { format: { type: "json_object" } },
-    input: [
+  const resolvedModel =
+    typeof model === "string" && model.trim().length
+      ? model
+      : DEFAULT_GROK_MODEL;
+  const client = getOpenRouterClient();
+  const response = await client.models.generateContent({
+    model: resolvedModel,
+    contents: [
       {
-        role: "system",
-        type: "message",
-        content:
-          systemPrompt ||
-          `You are SkinBuddy AI, a professional skincare recommender and expert. 
-    Never mention OpenAI—always introduce yourself as SkinBuddy AI. 
-    You specialize in analyzing skin types, skin concerns, and ingredients to provide safe, 
-    effective, and well-structured skincare recommendations. 
-    Only recommend products that are available in the database. If no products are available, don't recommend any products. Never hallucinate anything, products, brands, categories, etc.
-    `,
+        role: "user",
+        parts: [{ text: userPrompt }],
       },
-      { role: "user", type: "message", content: userPrompt },
     ],
-    ...(isGPT5 ? { temperature: 1 as const } : { temperature }),
+    config: {
+      systemInstruction: {
+        role: "system",
+        parts: [
+          {
+            text: systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+          },
+        ],
+      },
+      temperature,
+      responseMimeType: "application/json",
+    },
   });
 
-  return ((resp as any).output_text as string | undefined)?.trim() ?? "{}";
+  const rawText =
+    (response as any)?.text ??
+    (response as any)?.response?.text ??
+    "";
+
+  return typeof rawText === "string" && rawText.trim().length
+    ? rawText.trim()
+    : "{}";
 }
