@@ -1,5 +1,5 @@
 import { Product } from "./type";
-import { getGeminiClient } from "../../ai/gemini/client";
+import { getOpenRouterClient } from "../../ai/openrouter/client";
 
 export function generateToken() {
   return (
@@ -18,18 +18,21 @@ export function hasCategory(products: Product[], categoryName: string) {
   );
 }
 
+const DEFAULT_GROK_MODEL =
+  process.env.OPENROUTER_MODEL_GROK ?? "x-ai/grok-4";
+
 type GeminiChatOptions = {
   apiKey?: string;
 };
 
 export async function runChatCompletion(
   userPrompt: string,
-  model = "gemini-2.5-flash-lite",
+  model = DEFAULT_GROK_MODEL,
   temperature = 1,
   systemPrompt?: string,
   options?: GeminiChatOptions
 ) {
-  const geminiClient = getGeminiClient(options?.apiKey);
+  const geminiClient = getOpenRouterClient(options?.apiKey);
   const response = await geminiClient.models.generateContent({
     model,
     contents: [

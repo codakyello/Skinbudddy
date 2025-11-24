@@ -8,7 +8,7 @@ import {
 import { runChatCompletion as runGeminiChatCompletion } from "./_utils/internalGemini";
 
 const MODEL_PROVIDER =
-  (process.env.CHAT_MODEL_PROVIDER ?? "gemini").toLowerCase();
+  (process.env.CHAT_MODEL_PROVIDER ?? "grok").toLowerCase();
 
 const runChatCompletion =
   MODEL_PROVIDER === "openai"
@@ -58,16 +58,17 @@ export const createRoutine = action({
           message: "User is not logged in",
         } as const;
 
-      const envGeminiKey =
+      const envOpenRouterKey =
         typeof (ctx as any)?.env?.get === "function"
-          ? (ctx as any).env.get("GEMINI_API_KEY")
+          ? (ctx as any).env.get("OPENROUTER_API_KEY") ??
+            (ctx as any).env.get("GEMINI_API_KEY")
           : undefined;
       if (
-        typeof envGeminiKey === "string" &&
-        envGeminiKey.trim().length &&
-        process.env.GEMINI_API_KEY !== envGeminiKey
+        typeof envOpenRouterKey === "string" &&
+        envOpenRouterKey.trim().length &&
+        process.env.OPENROUTER_API_KEY !== envOpenRouterKey.trim()
       ) {
-        process.env.GEMINI_API_KEY = envGeminiKey.trim();
+        process.env.OPENROUTER_API_KEY = envOpenRouterKey.trim();
       }
 
       const internalAny = internal as any;
@@ -313,7 +314,7 @@ export const createRoutine = action({
 
       Generate the optimized routine now:`;
 
-      const data = await runChatCompletion(prompt, "gpt-4o");
+      const data = await runChatCompletion(prompt);
 
       let parsed: any;
       try {

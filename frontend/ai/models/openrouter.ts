@@ -34,32 +34,33 @@ import {
   ToolOutput,
   UnknownRecord,
 } from "../types";
-import { getGeminiClient } from "../gemini/client";
+import { getOpenRouterClient } from "../openrouter/client";
 import {
-  generateReplySummaryWithGemini,
-  refineProductSelectionWithGemini,
+  generateReplySummaryWithOpenRouter,
+  refineProductSelectionWithOpenRouter,
 } from "../gemini/utils";
+import {
+  SearchProductsArgs,
+  ToolOutcomeSummary,
+  CATEGORY_KEYWORD_MAP,
+  ROUTINE_KEYWORDS,
+  SWAP_KEYWORDS,
+  applyParagraphStructure,
+  userAllowsAnySize,
+  userMentionsSize,
+  toStringList,
+  collectStringArray,
+  extractString,
+} from "./openrouter/shared";
 
-type SearchProductsArgs = {
-  categoryQuery?: string;
-  nameQuery?: string;
-  brandQuery?: string;
-  skinTypes?: string[];
-  skinConcerns?: string[];
-  ingredientQueries?: string[];
-  ingredientsToAvoid?: string[];
-  hasAlcohol?: boolean;
-  hasFragrance?: boolean;
-  benefits?: string[];
-  minPrice?: number;
-  maxPrice?: number;
-  priceLabel?: string;
-};
-console.log("lets check if we are updating");
-export async function callGemini({
+const DEFAULT_GROK_MODEL =
+  process.env.OPENROUTER_MODEL_GROK ??
+  process.env.OPENROUTER_DEFAULT_MODEL ??
+  "x-ai/grok-4";
+export async function callOpenRouter({
   messages,
   systemPrompt,
-  model = "gemini-2.5-flash",
+  model = DEFAULT_GROK_MODEL,
   temperature = 0.3,
   useTools = true,
   maxToolRounds = 4, // prevent runaway loops
@@ -93,14 +94,12 @@ export async function callGemini({
   updatedContext?: object;
   startSkinTypeQuiz?: boolean;
 }> {
-  const geminiTools = toolSpecs.map((tool) => ({
+  const llmTools = toolSpecs.map((tool) => ({
     name: tool.function.name,
     description: tool.function.description ?? undefined,
     parametersJsonSchema: tool.function.parameters ?? undefined,
   }));
-  const geminiClient = getGeminiClient();
-
-  console.log("testing if bun reload works");
+  const llmClient = getOpenRouterClient();
 
   // Build a local message history we can augment
   const chatMessages: ChatMessage[] = [
@@ -136,189 +135,6 @@ export async function callGemini({
     content:
       "Never mention internal function or tool names in user-facing replies. Describe actions in plain language instead of referencing addToCart, searchProductsByQuery, or other internal APIs.",
   });
-
-  const CATEGORY_KEYWORD_MAP: Array<{ category: string; patterns: RegExp[] }> =
-    [
-      {
-        category: "serum",
-        patterns: buildKeywordPatterns([
-          "serum",
-          "serums",
-          "face serum",
-          "ampoule",
-          "ampoules",
-          "essence",
-          "treatment serum",
-          "face oil",
-          "glow oil",
-          "treatment oil",
-          "spot serum",
-        ]),
-      },
-      {
-        category: "cleanser",
-        patterns: buildKeywordPatterns([
-          "cleanser",
-          "cleansers",
-          "face wash",
-          "facewash",
-          "facial wash",
-          "cleansing gel",
-          "cleansing foam",
-          "foam cleanser",
-          "gel cleanser",
-          "micellar cleanser",
-          "washing gel",
-        ]),
-      },
-      {
-        category: "moisturizer",
-        patterns: buildKeywordPatterns([
-          "moisturizer",
-          "moisturiser",
-          "moisturisers",
-          "moisturizers",
-          "face cream",
-          "hydrating cream",
-          "cream",
-          "creams",
-          "creme",
-          "cremes",
-          "lotion",
-          "lotions",
-          "body lotion",
-          "ltions",
-          "moisturizing lotion",
-          "moisturizing gel",
-          "gel cream",
-          "water cream",
-          "hydrating lotion",
-          "body cream",
-          "skin food",
-          "toning cream",
-        ]),
-      },
-      {
-        category: "toner",
-        patterns: buildKeywordPatterns([
-          "toner",
-          "toners",
-          "skin toner",
-          "facial toner",
-          "facial mist",
-          "face mist",
-          "essence toner",
-        ]),
-      },
-      {
-        category: "sunscreen",
-        patterns: buildKeywordPatterns([
-          "sunscreen",
-          "sun screen",
-          "sunblock",
-          "spf",
-          "sun cream",
-          "suncream",
-          "uv protector",
-          "uv shield",
-          "sun guard",
-          "sun gel",
-        ]),
-      },
-      {
-        category: "mask",
-        patterns: buildKeywordPatterns([
-          "mask",
-          "masks",
-          "sheet mask",
-          "sheet masks",
-          "mud mask",
-          "clay mask",
-          "overnight mask",
-          "sleeping mask",
-          "peel off mask",
-        ]),
-      },
-      {
-        category: "exfoliant",
-        patterns: buildKeywordPatterns([
-          "exfoliant",
-          "exfoliator",
-          "chemical peel",
-          "peel",
-          "resurfacer",
-          "scrub",
-          "facial scrub",
-          "polish",
-          "brightening scrub",
-        ]),
-      },
-    ];
-
-  function buildKeywordPatterns(keywords: string[]): RegExp[] {
-    return keywords
-      .map((keyword) => keyword.trim())
-      .filter((keyword) => keyword.length > 0)
-      .map((keyword) => {
-        const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const boundaryPattern = escaped.replace(/\s+/g, "\\s+");
-        return new RegExp(
-          `(?:^|[^a-z0-9])${boundaryPattern}(?:[^a-z0-9]|$)`,
-          "i"
-        );
-      });
-  }
-
-  const normalizeHeaderValue = (line: string): string =>
-    line
-      .toLowerCase()
-      .replace(/[\*`_~>#:\-]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  /*
-  // Original paragraph-formatting logic (temporarily disabled):
-  const formatBodyWithParagraphs = (body: string): string => {
-    ...
-  };
-
-  const applyParagraphStructure = (input: string): string => {
-    ...
-  };
-  */
-
-  const formatBodyWithParagraphs = (body: string): string => body;
-  const applyParagraphStructure = (input: string): string => input.trim();
-
-  const ROUTINE_KEYWORDS = [
-    "routine",
-    "regimen",
-    "lineup",
-    "ritual",
-    "step-by-step",
-    "steps",
-    "morning routine",
-    "evening routine",
-    "am routine",
-    "pm routine",
-    "night routine",
-    "daytime routine",
-    "nighttime routine",
-    "full routine",
-    "entire routine",
-    "complete routine",
-    "skin routine",
-  ];
-
-  const SWAP_KEYWORDS = [
-    "swap",
-    "replace",
-    "switch",
-    "substitute",
-    "update",
-    "alternate",
-    "alternative",
-  ];
 
   const inferCategoryFromText = (
     text: string | undefined
@@ -604,64 +420,6 @@ export async function callGemini({
     products.forEach((product) => registerProductCandidate(product));
   };
 
-  const ANY_SIZE_PATTERNS = [
-    /\b(any|either|whatever|whichever)\s+size\b/i,
-    /\bno\s+preference\b/i,
-    /\bchoose\s+(?:any|either)\b/i,
-    /\byou\s+pick\s+(?:the\s+)?size\b/i,
-    /\bsurprise\s+me\b/i,
-  ];
-
-  const userAllowsAnySize = (text: string | undefined): boolean => {
-    if (!text) return false;
-    return ANY_SIZE_PATTERNS.some((pattern) => pattern.test(text));
-  };
-
-  const userMentionsSize = (
-    userText: string | undefined,
-    sizeDetail:
-      | {
-          sizeId: string;
-          label?: string;
-          sizeText?: string;
-          unit?: string;
-          sizeValue?: number;
-        }
-      | undefined
-  ): boolean => {
-    if (!userText || !sizeDetail) return false;
-    const normalized = userText.toLowerCase();
-    const candidates: string[] = [];
-    if (sizeDetail.label) candidates.push(sizeDetail.label.toLowerCase());
-    if (sizeDetail.sizeText) candidates.push(sizeDetail.sizeText.toLowerCase());
-    if (sizeDetail.unit && sizeDetail.sizeValue) {
-      const numeric = sizeDetail.sizeValue;
-      const unit = sizeDetail.unit.toLowerCase();
-      const compact = `${numeric}${unit}`;
-      const spaced = `${numeric} ${unit}`;
-      candidates.push(compact);
-      candidates.push(spaced);
-    }
-    if (sizeDetail.sizeValue && !Number.isNaN(sizeDetail.sizeValue)) {
-      candidates.push(String(sizeDetail.sizeValue));
-    }
-    return candidates.some((candidate) => {
-      if (!candidate) return false;
-      return normalized.includes(candidate);
-    });
-  };
-
-  const toStringList = (input: unknown): string[] => {
-    if (Array.isArray(input)) {
-      return input
-        .map((entry) => (typeof entry === "string" ? entry.trim() : null))
-        .filter((entry): entry is string => Boolean(entry));
-    }
-    if (typeof input === "string" && input.trim().length) {
-      return [input.trim()];
-    }
-    return [];
-  };
 
   const humanizeFilterValue = (value: string): string => {
     const spaced = value.replace(/[_-]/g, " ").replace(/\s+/g, " ").trim();
@@ -1210,10 +968,10 @@ export async function callGemini({
     if (systemInstruction) {
       requestConfig.systemInstruction = systemInstruction;
     }
-    if (useTools && geminiTools.length) {
+    if (useTools && llmTools.length) {
       requestConfig.tools = [
         {
-          functionDeclarations: geminiTools,
+          functionDeclarations: llmTools,
         },
       ];
       requestConfig.toolConfig = {
@@ -1290,7 +1048,7 @@ export async function callGemini({
       }
     };
 
-    const streamResult = await geminiClient.models.generateContentStream(
+    const streamResult = await llmClient.models.generateContentStream(
       requestPayload as any
     );
     const streamIterable = (() => {
@@ -1347,7 +1105,7 @@ export async function callGemini({
         }
         recordFunctionCalls(chunk);
       } catch (error) {
-        console.error("Gemini stream chunk processing failed:", error);
+        console.error("OpenRouter stream chunk processing failed:", error);
       }
     };
 
@@ -1366,7 +1124,7 @@ export async function callGemini({
           try {
             return await maybePromise;
           } catch (error) {
-            console.error("Gemini final response retrieval failed:", error);
+            console.error("OpenRouter final response retrieval failed:", error);
             return null;
           }
         }
@@ -1388,7 +1146,7 @@ export async function callGemini({
       promptFeedback?.blockReason
     ) {
       throw new Error(
-        `Gemini blocked the response: ${promptFeedback.blockReason}`
+        `OpenRouter blocked the response: ${promptFeedback.blockReason}`
       );
     }
 
@@ -1499,12 +1257,9 @@ export async function callGemini({
     }
   };
 
-  console.log("calling Gemini");
-
   // main
   let pendingExtraInputItems: any[] = [];
   while (true) {
-    console.log("This is how many times we have called Gemini " + (rounds + 1));
     const { content, toolCalls } = await streamCompletion(
       rounds >= maxToolRounds,
       pendingExtraInputItems
@@ -1519,7 +1274,7 @@ export async function callGemini({
     if (!contentHasText && (!toolCalls || toolCalls.length === 0)) {
       silentResponseAttempts += 1;
       if (silentResponseAttempts >= MAX_SILENT_RESPONSES) {
-        throw new Error("Gemini returned an empty response multiple times.");
+        throw new Error("OpenRouter returned an empty response multiple times.");
       }
       chatMessages.push({
         role: "developer",
@@ -2177,7 +1932,7 @@ export async function callGemini({
               }
               let refinedProducts = rawProducts;
               try {
-                const refinement = await refineProductSelectionWithGemini({
+                const refinement = await refineProductSelectionWithOpenRouter({
                   candidates: rawProducts,
                   model,
                   userRequest: latestUserMessageContent?.trim() ?? "",
@@ -2484,13 +2239,6 @@ export async function callGemini({
 
       // Make sure next round includes function_call and function_call_output items
       pendingExtraInputItems = [];
-
-      type ToolOutcomeSummary = {
-        name: string;
-        status: "success" | "error";
-        message?: string;
-        quantity?: number;
-      };
 
       const actionOutcomes: ToolOutcomeSummary[] = [];
       for (const output of toolOutputs) {
@@ -2989,7 +2737,7 @@ export async function callGemini({
 
   let generatedSummary: ReplySummary | null = combinedSummary;
   if (!generatedSummary && replyText.trim().length) {
-    generatedSummary = await generateReplySummaryWithGemini({
+    generatedSummary = await generateReplySummaryWithOpenRouter({
       reply: replyText,
       userMessage: latestUserMessageContent,
       context: summaryContext,

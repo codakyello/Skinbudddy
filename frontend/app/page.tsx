@@ -843,24 +843,22 @@ export default function ChatPage() {
                   />
                 )} */}
 
-                <header className="text-center">
-                  <h1 className="text-[3.8rem] mb-[20px] font-semibold tracking-[-0.02em] text-[#331d62] md:text-[4.6rem]">
-                    How can I help you?
-                  </h1>
-                </header>
+                <h1 className="text-[3rem] text-[#363636] mb-[16px] font-semibold tracking-[-0.02em]">
+                  How can I help you?
+                </h1>
 
-                <section className="space-y-3 rounded-3xl border border-transparent bg-white/80 backdrop-blur-md ">
+                <section className=" rounded-3xl border border-transparent bg-white/80 backdrop-blur-md ">
                   {displayedSuggestions.map((suggestion: string) => (
-                    <button
-                      key={suggestion}
-                      onClick={() => handleSuggestion(suggestion)}
-                      className="flex w-full items-center justify-between rounded-[22px] px-5 py-4 text-left transition hover:bg-[#f2f2f2]"
-                    >
-                      <span className="font-medium tracking-[-0.01em]">
-                        {suggestion}
-                      </span>
-                      <ArrowUpRight className="h-7 w-7 text-[#aaa]" />
-                    </button>
+                    <div className="border-b last:border-b-0 border-[rgba(219,219,219,0.4)] py-[.5rem]">
+                      <button
+                        key={suggestion}
+                        onClick={() => handleSuggestion(suggestion)}
+                        className="flex w-full items-center justify-between rounded-[22px] px-[1.2rem] py-[.8rem] text-left transition hover:bg-[#f2f2f2]"
+                      >
+                        <span className="text-[#585858]">{suggestion}</span>
+                        <ArrowUpRight className="h-7 w-7 text-[#aaa]" />
+                      </button>
+                    </div>
                   ))}
                 </section>
               </Box>

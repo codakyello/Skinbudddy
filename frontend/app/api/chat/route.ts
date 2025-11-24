@@ -6,8 +6,7 @@ import {
   fetchQuery,
   runWithConvexAuthToken,
 } from "@/ai/convex/client";
-import { callGemini } from "@/ai/models/gemini";
-import { callOpenAI } from "@/ai/models/openai";
+import { callOpenRouter } from "@/ai/models/openrouter";
 import { api } from "@/convex/_generated/api";
 import { DEFAULT_SYSTEM_PROMPT } from "@/ai/utils";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -268,12 +267,107 @@ function augmentMessagesWithAffirmationNote(
   return normalized;
 }
 
+const TOOL_INTENT_PATTERNS: RegExp[] = [
+  /\b(find|show|search|pull|fetch|look\s+up|recommend|suggest|curate|help\s+me\s+find)\b/i,
+  /\b(add|put)\s+(?:it|this|that|one)?\s*(?:to|into)\s+(?:my\s+)?cart\b/i,
+  /\bcompare\b/i,
+  /\bswap\b/i,
+  /\breplace\b/i,
+  /\bstart\s+(?:the\s+)?(?:skin\s+)?(?:quiz|survey)\b/i,
+  /\bbuild\b.+\broutine\b/i,
+  /\b(round|step-by-step)\s+routine\b/i,
+];
+
+const PAGINATION_PATTERNS: RegExp[] = [
+  /\bmore\s+options?\b/i,
+  /\bshow\s+me\s+more\b/i,
+  /\bnext\s+(?:set|ones?)\b/i,
+  /\banother\s+(?:one|option)\b/i,
+  /\bmore\s+please\b/i,
+  /\bsomething\s+else\b/i,
+];
+
+const PRODUCT_TERM_PATTERN =
+  /\b(cleanser|serum|toner|moisturizer|moisturiser|spf|sunscreen|sunblock|mask|exfoliator|lotion|cream|product|routine|treatment)\b/i;
+
+const FILTER_HINT_PATTERN =
+  /\b(oily|dry|combo|combination|acne|acne-prone|hyperpig|hyperpigmentation|sensitive|hydrating|brightening|oil\s*control|matte|retinol|niacinamide|aha|bha|vitamin\s*c|fragrance[-\s]?free|budget|price|under\s+\$?\d+|under\s+₦?\d+|less\s+than\s+\$?\d+|less\s+than\s+₦?\d+)\b|[₦$€£¥]/i;
+
+const ASSISTANT_TOOL_OFFER_PATTERN =
+  /(want\s+me\s+to|should\s+i|i\s+can|let\s+me)\s+(?:find|show|search|pull|add|start|compare|look\s+up)/i;
+
+type MessageWithIndex = { message: ChatMessage | null; index: number };
+
+function findLastMessageByRole(
+  messages: ChatMessage[],
+  role: ChatMessage["role"],
+  beforeIndex?: number
+): MessageWithIndex {
+  if (!Array.isArray(messages) || !messages.length) {
+    return { message: null, index: -1 };
+  }
+  const start =
+    typeof beforeIndex === "number" ? beforeIndex : messages.length - 1;
+  for (let idx = start; idx >= 0; idx--) {
+    if (messages[idx]?.role === role) {
+      return { message: messages[idx], index: idx };
+    }
+  }
+  return { message: null, index: -1 };
+}
+
+const normalizeRoutingText = (value?: string): string =>
+  typeof value === "string" ? value.toLowerCase().trim() : "";
+
+function shouldRouteToToolModel(
+  latestUserMessage?: ChatMessage | null,
+  previousAssistantMessage?: ChatMessage | null
+): { needsTooling: boolean; reason?: string } {
+  const latestContent = latestUserMessage?.content ?? "";
+  const normalizedUser = normalizeRoutingText(latestContent);
+
+  if (!normalizedUser.length) {
+    return { needsTooling: false };
+  }
+
+  if (TOOL_INTENT_PATTERNS.some((pattern) => pattern.test(normalizedUser))) {
+    return { needsTooling: true, reason: "user_intent_keyword" };
+  }
+
+  if (
+    PRODUCT_TERM_PATTERN.test(normalizedUser) &&
+    FILTER_HINT_PATTERN.test(normalizedUser)
+  ) {
+    return { needsTooling: true, reason: "product_filter" };
+  }
+
+  if (normalizedUser.includes("cart") || normalizedUser.includes("size ")) {
+    return { needsTooling: true, reason: "cart_or_size" };
+  }
+
+  if (PAGINATION_PATTERNS.some((pattern) => pattern.test(normalizedUser))) {
+    return { needsTooling: true, reason: "pagination" };
+  }
+
+  if (
+    isAffirmativeAcknowledgement(latestContent) &&
+    previousAssistantMessage &&
+    ASSISTANT_TOOL_OFFER_PATTERN.test(
+      normalizeRoutingText(previousAssistantMessage.content)
+    )
+  ) {
+    return { needsTooling: true, reason: "affirmative_followup" };
+  }
+
+  return { needsTooling: false };
+}
+
 // async function classifySkinProfileIntent(
 //   input: string
 // ): Promise<SkinProfileClassification | null> {
 //   if (typeof input !== "string" || !input.trim().length) return null;
 //   try {
-//     const client = getGeminiClient();
+//     const client = getOpenRouterClient();
 //     const response = await client.models.generateContent({
 //       model: SKIN_PROFILE_CLASSIFIER_MODEL,
 //       contents: [
@@ -1281,7 +1375,7 @@ async function handleChatPost(req: NextRequest) {
           //     role: "system",
           //     content: comparisonInstruction,
           //   });
-          // }
+          // }ƒ
 
           context.messages.unshift({
             role: "system",
@@ -1303,21 +1397,79 @@ async function handleChatPost(req: NextRequest) {
 
           console.log(context, "This is conversation history");
 
-          body.provider = "gemini";
-
           const providerPreference =
             typeof body?.provider === "string"
               ? body.provider.toLowerCase()
               : typeof process.env.CHAT_MODEL_PROVIDER === "string"
                 ? process.env.CHAT_MODEL_PROVIDER.toLowerCase()
-                : "openai";
-          const useOpenAI = providerPreference === "openai";
-          const requestedModel =
-            typeof body?.model === "string" && body.model.trim().length
-              ? body.model.trim()
-              : useOpenAI
-                ? "gpt-4o-mini"
-                : "gemini-2.5-flash";
+                : "grok";
+          const heavyModel = process.env.OPENROUTER_MODEL_GROK ?? "x-ai/grok-4";
+          const grokModelFingerprint = heavyModel.toLowerCase();
+          const enforceGrokOnly = (candidate?: string) => {
+            if (typeof candidate === "string") {
+              const trimmed = candidate.trim();
+              if (!trimmed.length) return heavyModel;
+              const lowered = trimmed.toLowerCase();
+              if (
+                lowered === grokModelFingerprint ||
+                lowered.includes("grok-4")
+              ) {
+                return heavyModel;
+              }
+            }
+            return heavyModel;
+          };
+          const modelPresets: Record<string, string> = {
+            gemini: heavyModel,
+            openai: heavyModel,
+            anthropic: heavyModel,
+            grok: heavyModel,
+          };
+
+          const latestUserInfo = findLastMessageByRole(
+            conversationMessages,
+            "user"
+          );
+          const previousAssistantInfo = latestUserInfo.message
+            ? findLastMessageByRole(
+                conversationMessages,
+                "assistant",
+                latestUserInfo.index - 1
+              )
+            : { message: null, index: -1 };
+
+          const toolingDecision = shouldRouteToToolModel(
+            latestUserInfo.message,
+            previousAssistantInfo.message
+          );
+
+          const lightModel = heavyModel;
+
+          let requestedModel: string;
+          let modelReason = "default";
+          if (typeof body?.model === "string" && body.model.trim().length) {
+            requestedModel = body.model.trim();
+            modelReason = "request.override";
+          } else if (toolingDecision.needsTooling) {
+            requestedModel = heavyModel;
+            modelReason = `heuristic.${toolingDecision.reason ?? "tool"}`;
+          } else if (modelPresets[providerPreference]) {
+            requestedModel = modelPresets[providerPreference];
+            modelReason = `provider.${providerPreference}`;
+          } else {
+            requestedModel = lightModel;
+            modelReason = "default.light";
+          }
+
+          const enforcedModel = enforceGrokOnly(requestedModel);
+          if (enforcedModel !== requestedModel) {
+            requestedModel = enforcedModel;
+            modelReason = `${modelReason}.forced.grok`;
+          }
+
+          console.log(
+            `[LLM] Selected model: ${requestedModel} (${modelReason})`
+          );
           const resolvedTemperature =
             typeof body?.temperature === "number" ? body.temperature : 0.5;
           const maxToolRounds =
@@ -1326,8 +1478,7 @@ async function handleChatPost(req: NextRequest) {
               : 4;
           const useTools = body?.useTools === false ? false : true;
 
-          const llmCall = useOpenAI ? callOpenAI : callGemini;
-          const completion = await llmCall({
+          const completion = await callOpenRouter({
             messages: conversationMessages,
             systemPrompt: DEFAULT_SYSTEM_PROMPT,
             model: requestedModel,

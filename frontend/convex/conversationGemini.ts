@@ -9,14 +9,15 @@ import { v } from "convex/values";
 import { DEFAULT_CONTEXT_CONFIG } from "../context/config";
 import { countTextTokens } from "./_utils/token";
 import type { Id } from "./_generated/dataModel";
-import { getGeminiClient } from "../ai/gemini/client";
+import { getOpenRouterClient } from "../ai/openrouter/client";
 import { internal } from "./_generated/api";
 
 type ConversationRole = "user" | "assistant" | "system" | "tool";
 
 type ResolvedConfig = typeof DEFAULT_CONTEXT_CONFIG;
 
-const SUMMARISER_MODEL = "gemini-2.5-flash-lite";
+const SUMMARISER_MODEL =
+  process.env.OPENROUTER_MODEL_GROK ?? "x-ai/grok-4";
 
 function resolveConfig(raw?: any): ResolvedConfig {
   if (!raw) return { ...DEFAULT_CONTEXT_CONFIG };
@@ -116,13 +117,13 @@ async function generateSummaryText(
       ? "You summarise the latest portion of a skincare shopping assistant conversation. Capture actionable requests, clarifications, and unresolved questions in under 120 words."
       : "You maintain a rolling high-level summary of a skincare shopping assistant conversation. Capture enduring facts, preferences, and decisions in under 200 words.";
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     // Fallback: crude summary using simple truncation.
     return truncated.slice(-Math.min(truncated.length, maxTokens * 4));
   }
 
-  const client = getGeminiClient();
+  const client = getOpenRouterClient();
   try {
     const response = await client.models.generateContent({
       model: SUMMARISER_MODEL,
@@ -264,17 +265,18 @@ export const recomputeSummaries = action({
     sessionId: v.id("conversationSessions"),
   },
   handler: async (ctx, { sessionId }) => {
-    const envGeminiKey =
-      typeof (ctx as any)?.env?.get === "function"
-        ? (ctx as any).env.get("GEMINI_API_KEY")
-        : undefined;
-    if (
-      typeof envGeminiKey === "string" &&
-      envGeminiKey.trim().length &&
-      process.env.GEMINI_API_KEY !== envGeminiKey
-    ) {
-      process.env.GEMINI_API_KEY = envGeminiKey.trim();
-    }
+      const envOpenRouterKey =
+        typeof (ctx as any)?.env?.get === "function"
+          ? (ctx as any).env.get("OPENROUTER_API_KEY") ??
+            (ctx as any).env.get("GEMINI_API_KEY")
+          : undefined;
+      if (
+        typeof envOpenRouterKey === "string" &&
+        envOpenRouterKey.trim().length &&
+        process.env.OPENROUTER_API_KEY !== envOpenRouterKey.trim()
+      ) {
+        process.env.OPENROUTER_API_KEY = envOpenRouterKey.trim();
+      }
 
     const source = await ctx.runQuery(internal.conversation.getSummarySource, {
       sessionId,
