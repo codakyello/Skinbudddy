@@ -848,18 +848,20 @@ export default function ChatPage() {
                 </h1>
 
                 <section className=" rounded-3xl border border-transparent bg-white/80 backdrop-blur-md ">
-                  {displayedSuggestions.map((suggestion: string) => (
-                    <div className="border-b last:border-b-0 border-[rgba(219,219,219,0.4)] py-[.5rem]">
-                      <button
-                        key={suggestion}
-                        onClick={() => handleSuggestion(suggestion)}
-                        className="flex w-full items-center justify-between rounded-[22px] px-[1.2rem] py-[.8rem] text-left transition hover:bg-[#f2f2f2]"
-                      >
-                        <span className="text-[#585858]">{suggestion}</span>
-                        <ArrowUpRight className="h-7 w-7 text-[#aaa]" />
-                      </button>
-                    </div>
-                  ))}
+                  {displayedSuggestions.map(
+                    (suggestion: string, index: number) => (
+                      <div className="border-b last:border-b-0 border-[rgba(219,219,219,0.4)] py-[.5rem]">
+                        <button
+                          key={index}
+                          onClick={() => handleSuggestion(suggestion)}
+                          className="flex w-full items-center justify-between rounded-[22px] px-[1.2rem] py-[.8rem] text-left transition hover:bg-[#f2f2f2]"
+                        >
+                          <span className="text-[#585858]">{suggestion}</span>
+                          <ArrowUpRight className="h-7 w-7 text-[#aaa]" />
+                        </button>
+                      </div>
+                    )
+                  )}
                 </section>
               </Box>
             )}
