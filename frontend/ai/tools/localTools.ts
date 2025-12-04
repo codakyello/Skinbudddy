@@ -387,6 +387,31 @@ const recommendRoutineSchema = z
           )
       )
       .optional(),
+    budget: z
+      .number()
+      .positive()
+      .optional()
+      .describe(
+        "Maximum total budget for the entire routine in the store's currency (e.g. 20000 for ₦20,000)."
+      ),
+    excludeBrands: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "List of brand names to strictly exclude (e.g. ['CeraVe', 'The Ordinary'])."
+      ),
+    excludeKeywords: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "List of keywords to exclude from product names or descriptions (e.g. ['snail', 'whitening'])."
+      ),
+    preferenceInstructions: z
+      .string()
+      .optional()
+      .describe(
+        "Free-text instructions for soft preferences or specific user requests (e.g. 'User hates sticky textures', 'Prefer glass skin finish')."
+      ),
   })
   .strict();
 
@@ -425,6 +450,26 @@ const recommendRoutineParameters = {
       items: { type: "string" },
       description:
         "IDs or slugs for products that should be omitted from the result set (e.g. user rejected them).",
+    },
+    budget: {
+      type: "number",
+      description:
+        "Maximum total budget for the entire routine in the store's currency.",
+    },
+    excludeBrands: {
+      type: "array",
+      items: { type: "string" },
+      description: "Brand names to strictly exclude.",
+    },
+    excludeKeywords: {
+      type: "array",
+      items: { type: "string" },
+      description: "Keywords to exclude from product names/descriptions.",
+    },
+    preferenceInstructions: {
+      type: "string",
+      description:
+        "Soft preferences or specific requests (e.g. texture, finish).",
     },
   },
   required: [],
@@ -912,6 +957,10 @@ const localTools: ToolSpec[] = [
         createRoutine: input.createRoutine ?? false,
         excludeProductIds:
           excludeProductIds.length > 0 ? excludeProductIds : undefined,
+        budget: input.budget,
+        excludeBrands: input.excludeBrands,
+        excludeKeywords: input.excludeKeywords,
+        preferenceInstructions: input.preferenceInstructions,
       };
 
       const stepOrder: Record<string, number> = {
@@ -1807,7 +1856,7 @@ const localTools: ToolSpec[] = [
   {
     name: "saveUserProfile",
     description:
-      "Persist the user's skin profile details (skin type, concerns, ingredient sensitivities) for use in future recommendations.",
+      "IMMEDIATELY call this tool whenever the user mentions or updates their skin type, skin concerns (e.g. 'I have acne'), or ingredient sensitivities. Do NOT just acknowledge the change in text; you MUST persist it using this tool. This is critical for personalizing future recommendations.",
     parameters: saveUserProfileParameters,
     schema: saveUserProfileSchema,
     handler: async (rawInput) => {

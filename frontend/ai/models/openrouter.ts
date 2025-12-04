@@ -53,10 +53,7 @@ import {
   extractString,
 } from "./openrouter/shared";
 
-const DEFAULT_GROK_MODEL =
-  process.env.OPENROUTER_MODEL_GROK ??
-  process.env.OPENROUTER_DEFAULT_MODEL ??
-  "x-ai/grok-4-fast";
+const DEFAULT_GROK_MODEL = process.env.OPENROUTER_MODEL ?? "x-ai/grok-4-fast";
 export async function callOpenRouter({
   messages,
   systemPrompt,
@@ -425,7 +422,6 @@ export async function callOpenRouter({
   ): void => {
     products.forEach((product) => registerProductCandidate(product));
   };
-
 
   const humanizeFilterValue = (value: string): string => {
     const spaced = value.replace(/[_-]/g, " ").replace(/\s+/g, " ").trim();
@@ -1280,7 +1276,9 @@ export async function callOpenRouter({
     if (!contentHasText && (!toolCalls || toolCalls.length === 0)) {
       silentResponseAttempts += 1;
       if (silentResponseAttempts >= MAX_SILENT_RESPONSES) {
-        throw new Error("OpenRouter returned an empty response multiple times.");
+        throw new Error(
+          "OpenRouter returned an empty response multiple times."
+        );
       }
       chatMessages.push({
         role: "developer",
@@ -2223,6 +2221,7 @@ export async function callOpenRouter({
             headline: routineHeadline,
             icon: routineIcon,
           };
+          productSummaryParts = null; // Clear product summary to prevent merging
           await streamSummaryIfNeeded();
           await streamRoutineIfNeeded(lastRoutine);
 

@@ -18,22 +18,21 @@ export function hasCategory(products: Product[], categoryName: string) {
   );
 }
 
-const DEFAULT_GROK_MODEL =
-  process.env.OPENROUTER_MODEL_GROK ?? "x-ai/grok-4";
+const DEFAULT_MODEL = process.env.OPENROUTER_MODEL ?? "x-ai/grok-4-fast";
 
-type GeminiChatOptions = {
+type ChatOptions = {
   apiKey?: string;
 };
 
 export async function runChatCompletion(
   userPrompt: string,
-  model = DEFAULT_GROK_MODEL,
+  model = DEFAULT_MODEL,
   temperature = 1,
   systemPrompt?: string,
-  options?: GeminiChatOptions
+  options?: ChatOptions
 ) {
-  const geminiClient = getOpenRouterClient(options?.apiKey);
-  const response = await geminiClient.models.generateContent({
+  const openRouterClient = getOpenRouterClient(options?.apiKey);
+  const response = await openRouterClient.models.generateContent({
     model,
     contents: [
       {
@@ -62,9 +61,7 @@ Only recommend products that are available in the database. If no products are a
   });
 
   const rawText =
-    (response as any)?.text ??
-    (response as any)?.response?.text ??
-    "";
+    (response as any)?.text ?? (response as any)?.response?.text ?? "";
 
   return typeof rawText === "string" && rawText.trim().length
     ? rawText.trim()
