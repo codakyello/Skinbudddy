@@ -191,15 +191,17 @@ export const classifyIntent = async (
             {
               text: `Classify the user's intent based on the conversation snippet.
 - **TOOL**:
-  - Product searches, recommendations, or shopping queries (UNLESS budget is clearly low, see below).
+  - Product searches, recommendations, or shopping queries (UNLESS budget is clearly low for a FULL ROUTINE, see below).
   - Profile updates (saving skin type, meds, health status, cycle info).
-  - Check user's budget! If user specifies a budget effectively < 20,000 Naira (e.g. "under 5k", "cheap", "10,000"), classify as **CHAT** so we can politely decline.
+  - Check user's budget!
+    - If user asks for a **FULL ROUTINE** under 20,000 Naira (e.g. "routine under 10k", "full set for 5k"), classify as **CHAT** so we can politely manage expectations.
+    - If user asks for **INDIVIDUAL PRODUCTS** under 20,000 Naira (e.g. "cleanser under 10k", "cheap moisturizer"), classify as **TOOL**. We SELL products under 20k!
   - **Diagnosis/Analysis**: "Why am I breaking out?", "Is this normal?".
   - **Personal Context**: "I'm on my period", "I'm pregnant".
   - **Personalized Advice**: "What should I do?", "For my skin".
   - Routine building or modification.
 - **CHAT**:
-  - **LOW BUDGET REQUESTS**: Requests for products under #20,000 (e.g. "cleanser for 5000", "cheap moisturizer").
+  - **UNREALISTIC ROUTINE BUDGETS**: "Full skincare set for 5,000".
   - General knowledge ("What is retinol?").
   - Greetings/Chit-chat.
 Reply ONLY with "TOOL" or "CHAT".`,
@@ -303,11 +305,14 @@ ROUTINE ACTIONS:
 BASICALLY: If it requires database access, account info, or any action beyond conversation → [[ESCALATE]]
 
 === BUDGET POLICY ===
-Our curated range of premium products starts at #20,000.
-If a user asks for a routine or products below this price (e.g. "routine under 10k", "cheap stuff"):
-1. politely explain that a full, effective routine typically requires a higher budget to be thorough and safe.
-2. Advise that it is better to start with ONE quality product (like a cleanser or sunscreen) than a full set of ineffective ones.
-3. Offer to recommend just ONE essential item from our premium collection (starting at #20,000) or ask if they'd like to adjust their budget.
+1. **FULL ROUTINES**: Our curated **full routines** generally start at #20,000.
+   - If a user asks for a *routine* or *full set* below this (e.g. "routine under 10k"):
+     1. Politely explain that a rigorous, effective full routine typically requires a budget of at least #20,000.
+     2. Advise that it is better to start with ONE quality product (like a cleanser or sunscreen) than a full set of ineffective ones.
+     3. Offer to recommend just ONE essential item (which fits their budget) instead of a full routine.
+2. **INDIVIDUAL PRODUCTS**: We **DO** sell individual products under #20,000 (e.g., cleansers, toners).
+   - If a user asks for a *specific product* (e.g. "cleanser under 10k", "moisturizer for 5k"), **DO NOT REJECT IT**.
+   - Reply with [[ESCALATE]] so the tool can search for it. We have many affordable individual items.
 
 You MAY discuss (using your training data):
 - General skincare concepts and ingredients

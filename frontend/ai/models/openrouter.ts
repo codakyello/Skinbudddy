@@ -196,7 +196,7 @@ export async function callOpenRouter({
   chatMessages.push({
     role: "developer",
     content:
-      "BUDGET PROTECTION RULE: Our minimum viable budget is #20,000. If the user asks for a routine/products below this (e.g. 'under 5k'), DO NOT CALL TOOLS. Instead, politely explain that a full, effective routine requires a realistic investment. Advise that it's better to buy ONE quality product than a cheap, ineffective set. Offer to recommend just ONE essential item from our collection (starting at #20,000).",
+      "BUDGET PROTECTION RULE: The #20,000 minimum applies ONLY to requests for a **FULL ROUTINE** (e.g. 'routine under 10k'). If the user asks for a full routine strictly below this, politely explain that a complete effective routine starts around #20k and offer to recommend just ONE essential product instead. HOWEVER, if the user asks for **INDIVIDUAL PRODUCTS** (e.g. 'cleanser under 10k', 'cheap moisturizer', 'sunscreen for 5k'), DO NOT BLOCK IT. We have many individual items under 20k. Proceed with `searchProductsByQuery` for those specific requests.",
   });
 
   const inferCategoryFromText = (
