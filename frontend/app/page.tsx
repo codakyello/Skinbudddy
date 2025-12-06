@@ -1201,7 +1201,7 @@ export default function ChatPage() {
             </section>
           </Box>
         </Box>
-        <footer className="sticky bottom-0 z-[999] w-full px-4 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0,rgba(255,255,255,1)_1rem,rgba(255,255,255,1))] pb-[env(safe-area-inset-bottom)]">
+        <footer className="fixed bottom-0 left-0 z-[999] w-full px-4 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0,rgba(255,255,255,1)_1rem,rgba(255,255,255,1))] pb-[env(safe-area-inset-bottom)]">
           <Box className="w-full max-w-[80rem] mx-auto rounded-t-[10px] bg-white/95 px-6 shadow-[0_32px_70px_-38px_rgba(70,47,128,0.55)] backdrop-blur">
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <Box className="relative gap-4">
