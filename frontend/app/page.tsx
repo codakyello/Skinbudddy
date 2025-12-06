@@ -800,7 +800,7 @@ export default function ChatPage() {
 
   return (
     <Modal>
-      <main className="flex h-[calc(100vh-45px)] overflow-hidden  flex-col font-['Inter'] text-[#2f1f53]">
+      <main className="flex h-[calc(100vh-75px)] md:h-[calc(100vh-75px)] overflow-hidden flex-col font-['Inter'] text-[#2f1f53]">
         <Box
           className={`flex relative flex-1 min-h-0 w-full flex-col items-center ${!hasMessages && "justify-center"} px-8 `}
         >
@@ -1092,7 +1092,7 @@ export default function ChatPage() {
                                     <ReactMarkdown
                                       remarkPlugins={[remarkGfm]}
                                       components={markdownComponents}
-                                      className="markdown space-y-[16px] text-[1.4rem] leading-relaxed tracking-[-0.008em]"
+                                      className="markdown space-y-[10px] text-[1.4rem] leading-relaxed tracking-[-0.008em]"
                                     >
                                       {markdownSource}
                                     </ReactMarkdown>
@@ -1201,8 +1201,8 @@ export default function ChatPage() {
             </section>
           </Box>
         </Box>
-        <footer className="sticky bottom-0 z-[999] flex w-full justify-center px-4 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0,rgba(255,255,255,1)_1rem,rgba(255,255,255,1))]">
-          <Box className="w-full max-w-[80rem] rounded-t-[10px]  bg-white/95 px-6 shadow-[0_32px_70px_-38px_rgba(70,47,128,0.55)] backdrop-blur">
+        <footer className="sticky bottom-0 z-[999] w-full px-4 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0,rgba(255,255,255,1)_1rem,rgba(255,255,255,1))] pb-[env(safe-area-inset-bottom)]">
+          <Box className="w-full max-w-[80rem] mx-auto rounded-t-[10px] bg-white/95 px-6 shadow-[0_32px_70px_-38px_rgba(70,47,128,0.55)] backdrop-blur">
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <Box className="relative gap-4">
                 <Box className="flex-1 ">

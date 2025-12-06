@@ -39,6 +39,7 @@ import {
   generateReplySummaryWithOpenRouter,
   refineProductSelectionWithOpenRouter,
 } from "../gemini/utils";
+import { classifyIntent, streamGeminiFlashLite } from "../gemini/flashLite";
 import {
   SearchProductsArgs,
   ToolOutcomeSummary,
@@ -53,10 +54,7 @@ import {
   extractString,
 } from "./openrouter/shared";
 
-const DEFAULT_GROK_MODEL =
-  process.env.OPENROUTER_MODEL_GROK ??
-  process.env.OPENROUTER_DEFAULT_MODEL ??
-  "x-ai/grok-4-fast";
+const DEFAULT_GROK_MODEL = process.env.OPENROUTER_MODEL ?? "x-ai/grok-4-fast";
 export async function callOpenRouter({
   messages,
   systemPrompt,
@@ -99,6 +97,36 @@ export async function callOpenRouter({
     description: tool.function.description ?? undefined,
     parametersJsonSchema: tool.function.parameters ?? undefined,
   }));
+
+  // --- SMART ROUTING START ---
+  // 1. Classify Intent (Grok-4-fast)
+  // 2. If CHAT -> Gemini Flash Lite (Google SDK)
+  // 3. If TOOL or ESCALATE -> Grok-4-fast (OpenRouter)
+  
+  const intent = await classifyIntent(messages);
+  console.log(`[Router] Intent: ${intent}`);
+  
+  if (intent === "CHAT") {
+    console.log("[Router] Using: Gemini Flash Lite (Google API)");
+    const geminiReply = await streamGeminiFlashLite({
+      messages,
+      systemPrompt: systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+      onToken,
+    });
+
+    // If Gemini didn't panic, return its response
+    if (!geminiReply.includes("[[ESCALATE]]")) {
+      return {
+        reply: geminiReply,
+      };
+    }
+    // If it did panic (returned [[ESCALATE]]), fall through to Grok
+    console.log("[Router] Gemini escalated, switching to Grok");
+  }
+  
+  console.log("[Router] Using: Grok-4-fast (OpenRouter)");
+  // --- SMART ROUTING END ---
+
   const llmClient = getOpenRouterClient();
 
   // Build a local message history we can augment
@@ -113,21 +141,26 @@ export async function callOpenRouter({
   chatMessages.push({
     role: "developer",
     content: [
-      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). Phrase each suggestion as a first-person request the user could send to SkinBuddy—start with verbs like 'Recommend', 'Show me', 'Help me', or 'Explain'. Avoid asking the user questions, keep suggestions 12 words or fewer, vary the angle (ingredients, usage tips, alternatives, price points), and only reference a specific product name if it already appeared in this turn.",
+      "For every final reply, append a heading 'Suggested actions' followed by exactly three numbered follow-up prompts (plain text, no emojis). These suggestions must be phrased as if the USER is typing them—use 'my' not 'your', 'I' not 'you'. Example: 'Explain how to layer in my routine' NOT 'Explain how to layer in your routine'. Start with verbs like 'Recommend', 'Show me', 'Help me', or 'Explain'. Keep suggestions 12 words or fewer, vary the angle (ingredients, usage tips, alternatives, price points), and only reference a specific product name if it already appeared in this turn.",
       "Even for short acknowledgements, include at least one conversational sentence before the 'Suggested actions' block that keeps the dialogue moving (offer complementary products, dig deeper, compare options, etc.).",
+      "Adopt a warm, knowledgeable consultant persona. Avoid robotic phrases like 'I pulled your profile', 'confirms', 'database', or 'according to my records'. Instead, say 'I see you're dealing with...', 'Based on your skin type...', or 'Since you have...'.",
+      "When products are out of stock or not found, soften the blow. Instead of 'I couldn't find any results', say 'Unfortunately, we don't have any [product] in stock right now' or 'It looks like we're fresh out of [product] at the moment'. Always immediately pivot to a helpful alternative or offer to check for similar items.",
       "Use a calm, confident tone at the start of each reply—skip hypey intros like 'Great news!' or 'Awesome!'; open with a straightforward statement of what you found instead.",
       "Before calling `searchProductsByQuery` or `getProduct`, reuse existing tool data whenever possible; if the latest results were empty, run a fresh lookup instead of reusing the empty set.",
       "Never fabricate identifiers for tools. If you lack a valid productId/sizeId/etc., ask for clarification or run another lookup instead of guessing.",
       "Product recommendation readiness: when the user wants product suggestions but hasn’t given skin type/concerns this turn, call `getSkinProfile` first (unless you already have a fresh result). If the stored profile lacks both fields, ask for those details or offer the SkinBuddy quiz before recommending products.",
-      "Skin-type survey rules: if the user explicitly commands 'start skin survey/quiz', immediately call `startSkinTypeSurvey` with empty args and send no prose. If they’re only curious or hesitant, describe the survey and ask if they want to begin. Never infer skin type from context—only use tool data.",
+      "Skin-type survey rules: if the user explicitly commands 'start skin survey/quiz', immediately call `startSkinTypeSurvey` with empty args and send no prose. If the survey just completed (you see 'Skin-type survey completed' in history), DO NOT call `startSkinTypeSurvey` again. Instead, analyze the answers provided in the system message and output the 'Skin Analysis Summary' markdown immediately.",
       "When preparing tool arguments, keep each field precise: outcome adjectives (hydrating, brightening) go in `benefits`, true ingredients in `ingredientQueries`, exact product names in `nameQuery`, and canonical nouns (cleanser, serum, sunscreen, toner, moisturizer) in `categoryQuery`.",
+      "CRITICAL: When calling `searchProductsByQuery`, ALWAYS extract the product category from the user's request. If they say 'serums', 'cleansers', 'moisturizers', 'sunscreens', etc., you MUST include it in `categoryQuery`. For example: 'Show me oil-based serums' -> categoryQuery: 'serum'. Never omit the category when it's mentioned.",
+      "IMPORTANT: For tool calls, only include parameters that the user EXPLICITLY mentioned. Do NOT invent default values for optional parameters like minPrice, maxPrice, minDiscount, maxDiscount, ingredientsToAvoid, or excludeProductIds. If the user didn't mention a price range, omit those fields entirely. Only set isBestseller, isTrending, or isNew if the user specifically asks for bestsellers, trending, or new products.",
     ].join(" "),
   });
 
   chatMessages.push({
     role: "developer",
     content:
-      "When the user shares new skin type, concerns, or ingredient sensitivities, call `getSkinProfile` (unless already done this turn) to compare with stored data. Mention what’s currently saved, ask if they want to update or run the survey before editing, and only call `saveUserProfile` after explicit confirmation. Use the stored profile when crafting routines or suggestions; if a field is missing, say so instead of guessing, and summarize the profile if they ask for it.",
+
+      "When the user shares new skin type, concerns, ingredient sensitivities, or important context (medications like Accutane, lifestyle factors, skincare goals), call `getSkinProfile` (unless already done this turn) to compare with stored data. Mention what's currently saved, ask if they want to update or run the survey before editing, and only call `saveUserProfile` after explicit confirmation. For medications or special context, save it in the `history` field (intelligently merge with existing content). IMPORTANT: Do NOT save cycle/period dates in `history` as that is tracked separately in the `cycle` object (use `lastPeriodDate` and `avgCycleLength` parameters instead). Only use `history` for medications, lifestyle factors, and skincare goals. Use the stored profile when crafting routines or suggestions; if a field is missing, say so instead of guessing, and summarize the profile if they ask for it. CRITICAL: If the user says 'Yes' to saving their profile after a survey analysis, you MUST call `saveUserProfile` with the inferred values. Do NOT claim to have saved it without calling the tool.",
   });
 
   chatMessages.push({
@@ -140,6 +173,30 @@ export async function callOpenRouter({
     role: "developer",
     content:
       "Do not surface tool call status, schema errors, or 'tool returned no data' messages to the user—summarize outcomes in plain language only (e.g., 'I couldn't find matching products' or 'I don’t have your profile yet'). Keep all suggested follow-ups inside the 'Suggested actions' section and avoid repeating them elsewhere in the reply.",
+  });
+
+  chatMessages.push({
+    role: "developer",
+    content:
+      "CRITICAL FORMATTING RULE: ALWAYS place your primary Call to Action (CTA) or question at the very end of your main response text (immediately before the 'Suggested actions' lists). For example: '...benefits for your skin type. Would you like me to search for some options?' or '...saved that for you. Do you want to start a routine build now?'. WE RELY ON THE LAST SENTENCE TO ROUTE THE CONVERSATION.",
+  });
+
+  chatMessages.push({
+    role: "developer",
+    content:
+      "NATURAL LANGUAGE RULE: NEVER recite the user's raw profile data, JSON fields, or internal state back to them. Do not say 'Your current profile notes dry skin and these concerns...' or 'I will merge this into your history like...'. Instead, simply demonstrate that you know it by acting on it. Say 'Given your dry skin...' or 'Since you're using spironolactone...'. internalize the context, don't regurgitate it.",
+  });
+
+  chatMessages.push({
+    role: "developer",
+    content:
+      "IMMERSION RULE: Never refer to 'the UI', 'the interface', 'the screen', 'the widget', or 'the buttons'. Don't say 'The UI will show...' or 'Click the button below'. Instead, treat the visual elements as part of your own presentation. Say 'I've listed the routine below...' or 'I've found these options for you...'. Maintain the illusion of a human consultant.",
+  });
+
+  chatMessages.push({
+    role: "developer",
+    content:
+      "BUDGET PROTECTION RULE: Our minimum viable budget is #20,000. If the user asks for a routine/products below this (e.g. 'under 5k'), DO NOT CALL TOOLS. Instead, politely explain that a full, effective routine requires a realistic investment. Advise that it's better to buy ONE quality product than a cheap, ineffective set. Offer to recommend just ONE essential item from our collection (starting at #20,000).",
   });
 
   const inferCategoryFromText = (
@@ -425,7 +482,6 @@ export async function callOpenRouter({
   ): void => {
     products.forEach((product) => registerProductCandidate(product));
   };
-
 
   const humanizeFilterValue = (value: string): string => {
     const spaced = value.replace(/[_-]/g, " ").replace(/\s+/g, " ").trim();
@@ -974,10 +1030,24 @@ export async function callOpenRouter({
     if (systemInstruction) {
       requestConfig.systemInstruction = systemInstruction;
     }
-    if (useTools && llmTools.length) {
+    // Dynamic Tool Filtering
+    // If the survey was just completed, remove the survey tool to prevent loops
+    let activeTools = llmTools;
+    const surveyCompleted = chatMessages.some(
+      (m) =>
+        m.role === "system" &&
+        typeof m.content === "string" &&
+        m.content.includes("Skin-type survey completed")
+    );
+
+    if (surveyCompleted) {
+      activeTools = llmTools.filter((t) => t.name !== "startSkinTypeSurvey");
+    }
+
+    if (useTools && activeTools.length) {
       requestConfig.tools = [
         {
-          functionDeclarations: llmTools,
+          functionDeclarations: activeTools,
         },
       ];
       requestConfig.toolConfig = {
@@ -1280,7 +1350,9 @@ export async function callOpenRouter({
     if (!contentHasText && (!toolCalls || toolCalls.length === 0)) {
       silentResponseAttempts += 1;
       if (silentResponseAttempts >= MAX_SILENT_RESPONSES) {
-        throw new Error("OpenRouter returned an empty response multiple times.");
+        throw new Error(
+          "OpenRouter returned an empty response multiple times."
+        );
       }
       chatMessages.push({
         role: "developer",
@@ -1382,6 +1454,7 @@ export async function callOpenRouter({
               ? JSON.parse(toolCall.arguments || "{}")
               : (toolCall.arguments ?? {});
           originalArgsObject = rawArgs;
+          console.log(`[Tool] Raw args for ${toolCall.name}:`, rawArgs);
           const validatedArgs = toolDef.schema.parse(rawArgs);
           let searchNameLockedToExact = false;
           if (toolCall.name === "addToCart") {
@@ -1476,6 +1549,48 @@ export async function callOpenRouter({
               adjustedArgs && typeof adjustedArgs === "object"
                 ? { ...(adjustedArgs as Record<string, unknown>) }
                 : {};
+
+            // SAFETY: Grok often hallucinates numeric defaults (e.g. maxPrice: 10000).
+            // We strip any numeric argument that does NOT appear in the user's text.
+            const userText = (latestUserMessageContent || "").toLowerCase();
+            
+            const numericFields = ["minPrice", "maxPrice", "minDiscount", "maxDiscount"];
+            numericFields.forEach(field => {
+              const val = argsRecord[field];
+              if (typeof val === "number") {
+                // Check if the number (as a string) appears in the user text
+                // We use a simple includes check, which is safe enough for this purpose
+                // (e.g. "10000" in "under 10000")
+                if (!userText.includes(val.toString())) {
+                  console.log(`[Sanitizer] Removing hallucinated ${field}: ${val} (not found in user text)`);
+                  delete argsRecord[field];
+                }
+              }
+            });
+
+            // SAFETY: Grok also hallucinates boolean "false" values for flags the user didn't mention.
+            // We strip these if the user didn't mention the related keywords.
+            const booleanFlagKeywords: Record<string, string[]> = {
+              isTrending: ["trending", "trend", "hot", "viral"],
+              isNew: ["new", "newest", "arrival", "latest", "recent"],
+              isBestseller: ["bestseller", "best seller", "best-seller", "popular", "top"],
+            };
+            
+            Object.entries(booleanFlagKeywords).forEach(([field, keywords]) => {
+              const val = argsRecord[field];
+              if (val === false) {
+                // If false and user didn't mention any related keyword, it's hallucinated
+                const userMentioned = keywords.some(kw => userText.includes(kw));
+                if (!userMentioned) {
+                  console.log(`[Sanitizer] Removing hallucinated ${field}: false (not mentioned by user)`);
+                  delete argsRecord[field];
+                }
+              }
+            });
+
+            // Also clean up empty arrays which Grok loves to send
+            if (Array.isArray(argsRecord.ingredientsToAvoid) && argsRecord.ingredientsToAvoid.length === 0) delete argsRecord.ingredientsToAvoid;
+            if (Array.isArray(argsRecord.excludeProductIds) && argsRecord.excludeProductIds.length === 0) delete argsRecord.excludeProductIds;
 
             const prefilledCategory =
               typeof argsRecord.categoryQuery === "string"
@@ -1709,14 +1824,16 @@ export async function callOpenRouter({
               nameQueryForSearch
             );
 
-            if (
-              finalCategoryCandidate &&
-              !categoryMentionedByUser &&
-              !categoryMentionedInName
-            ) {
-              delete argsRecord.categoryQuery;
-              finalCategoryCandidate = undefined;
-            }
+            // REMOVED: This logic was deleting valid categories inferred from context.
+            // If Grok explicitly provides categoryQuery, trust it.
+            // if (
+            //   finalCategoryCandidate &&
+            //   !categoryMentionedByUser &&
+            //   !categoryMentionedInName
+            // ) {
+            //   delete argsRecord.categoryQuery;
+            //   finalCategoryCandidate = undefined;
+            // }
 
             argsRecord.ingredientQueries = ingredientResidual.length
               ? Array.from(new Set(ingredientResidual))
@@ -2223,6 +2340,7 @@ export async function callOpenRouter({
             headline: routineHeadline,
             icon: routineIcon,
           };
+          productSummaryParts = null; // Clear product summary to prevent merging
           await streamSummaryIfNeeded();
           await streamRoutineIfNeeded(lastRoutine);
 

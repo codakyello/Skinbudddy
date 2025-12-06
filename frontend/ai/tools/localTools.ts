@@ -170,26 +170,26 @@ const searchProductsSchema = z
       .min(0)
       .max(100)
       .optional()
-      .describe("Minimum discount percentage (inclusive)."),
+      .describe("Minimum discount percentage (inclusive). Only set if user specifies a min discount."),
     maxDiscount: z
       .number()
       .min(0)
       .max(100)
       .optional()
-      .describe("Maximum discount percentage (inclusive)."),
+      .describe("Maximum discount percentage (inclusive). Only set if user specifies a max discount."),
     minPrice: z
       .number()
-      .positive()
+      .nonnegative()
       .optional()
       .describe(
-        "Minimum price (inclusive) for qualifying product sizes, using the store currency."
+        "Minimum price (inclusive). OMIT unless user explicitly specifies a minimum price. Do NOT set a default like 0."
       ),
     maxPrice: z
       .number()
-      .positive()
+      .nonnegative()
       .optional()
       .describe(
-        "Maximum price (inclusive) for qualifying product sizes, using the store currency."
+        "Maximum price (inclusive). OMIT unless user explicitly specifies a maximum price. Do NOT set a default like 1000 or 10000."
       ),
     ingredientsToAvoid: z
       .array(z.string())
@@ -387,6 +387,31 @@ const recommendRoutineSchema = z
           )
       )
       .optional(),
+    budget: z
+      .number()
+      .positive()
+      .optional()
+      .describe(
+        "Maximum total budget for the entire routine in the store's currency (e.g. 20000 for ₦20,000)."
+      ),
+    excludeBrands: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "List of brand names to strictly exclude (e.g. ['CeraVe', 'The Ordinary'])."
+      ),
+    excludeKeywords: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "List of keywords to exclude from product names or descriptions (e.g. ['snail', 'whitening'])."
+      ),
+    preferenceInstructions: z
+      .string()
+      .optional()
+      .describe(
+        "Free-text instructions for soft preferences or specific user requests (e.g. 'User hates sticky textures', 'Prefer glass skin finish')."
+      ),
   })
   .strict();
 
@@ -426,6 +451,26 @@ const recommendRoutineParameters = {
       description:
         "IDs or slugs for products that should be omitted from the result set (e.g. user rejected them).",
     },
+    budget: {
+      type: "number",
+      description:
+        "Maximum total budget for the entire routine in the store's currency.",
+    },
+    excludeBrands: {
+      type: "array",
+      items: { type: "string" },
+      description: "Brand names to strictly exclude.",
+    },
+    excludeKeywords: {
+      type: "array",
+      items: { type: "string" },
+      description: "Keywords to exclude from product names/descriptions.",
+    },
+    preferenceInstructions: {
+      type: "string",
+      description:
+        "Soft preferences or specific requests (e.g. texture, finish).",
+    },
   },
   required: [],
   additionalProperties: false,
@@ -446,6 +491,10 @@ const saveUserProfileSchema = z
     skinConcern: z.string().optional(),
     ingredientSensitivities: z.array(z.string()).optional(),
     ingredientSensitivity: z.string().optional(),
+    history: z.string().optional(),
+    // Cycle tracking
+    lastPeriodDate: z.string().optional(), // ISO date string or "2 weeks ago" (LLM can parse, but ISO preferred)
+    avgCycleLength: z.number().optional(),
   })
   .strict();
 
@@ -478,6 +527,20 @@ const saveUserProfileParameters = {
       type: "string",
       description:
         "Singular ingredient sensitivity value; converts into the ingredientSensitivities list automatically.",
+    },
+    history: {
+      type: "string",
+      description:
+        "Free-form context about the user's situation. When updating, INTELLIGENTLY MERGE with existing history: append new non-conflicting info, update conflicting info (e.g., 'sunny' → 'rainy'), remove outdated info (e.g., 'finished Accutane'). Examples: medications ('on 80mg Accutane'), environment ('high sun exposure'), goals ('preparing for wedding'), lifestyle ('outdoor athlete'). Fetch current history via getSkinProfile first to merge properly.",
+    },
+    lastPeriodDate: {
+      type: "string",
+      description:
+        "The start date of the user's last period (ISO 8601 format YYYY-MM-DD preferred). If user says '2 weeks ago', calculate the approximate date.",
+    },
+    avgCycleLength: {
+      type: "number",
+      description: "Average length of menstrual cycle in days (default 28 if unknown).",
     },
   },
   additionalProperties: false,
@@ -912,6 +975,10 @@ const localTools: ToolSpec[] = [
         createRoutine: input.createRoutine ?? false,
         excludeProductIds:
           excludeProductIds.length > 0 ? excludeProductIds : undefined,
+        budget: input.budget,
+        excludeBrands: input.excludeBrands,
+        excludeKeywords: input.excludeKeywords,
+        preferenceInstructions: input.preferenceInstructions,
       };
 
       const stepOrder: Record<string, number> = {
@@ -1186,50 +1253,11 @@ const localTools: ToolSpec[] = [
         return { canonical: Array.from(canonical), unresolved };
       };
 
-      // Fallback to saved profile if explicit filters are missing
-      let finalSkinTypes = input.skinTypes;
-      let finalSkinConcerns = input.skinConcerns;
-      let finalIngredientsToAvoid = input.ingredientsToAvoid;
-
-      const shouldFetchProfile = !input.skinTypes && !input.skinConcerns;
-
-      if (shouldFetchProfile) {
-        try {
-          const userResult = await fetchQuery(apiModule.users.getUser, {});
-          if (userResult?.success && userResult.user?.skinProfile) {
-            const profile = userResult.user.skinProfile as {
-              skinType?: string;
-              skinConcerns?: string[];
-              ingredientSensitivities?: string[];
-            };
-            if (profile.skinType) {
-              finalSkinTypes = [profile.skinType];
-            }
-            if (
-              Array.isArray(profile.skinConcerns) &&
-              profile.skinConcerns.length > 0
-            ) {
-              finalSkinConcerns = profile.skinConcerns;
-            }
-            if (
-              Array.isArray(profile.ingredientSensitivities) &&
-              profile.ingredientSensitivities.length > 0
-            ) {
-              // Merge with explicit ingredientsToAvoid
-              const mergedAvoid = new Set([
-                ...(input.ingredientsToAvoid || []),
-                ...profile.ingredientSensitivities,
-              ]);
-              finalIngredientsToAvoid = Array.from(mergedAvoid);
-            }
-          }
-        } catch (error) {
-          console.warn(
-            "Failed to fetch saved skin profile for fallback:",
-            error
-          );
-        }
-      }
+      // Use exactly what Grok provides - trust the LLM to decide when personalization is needed
+      // If user wants personalized results, Grok will include skinTypes/skinConcerns or call getSkinProfile first
+      const finalSkinTypes = input.skinTypes;
+      const finalSkinConcerns = input.skinConcerns;
+      const finalIngredientsToAvoid = input.ingredientsToAvoid;
 
       const {
         canonical: canonicalSkinTypes,
@@ -1702,8 +1730,55 @@ const localTools: ToolSpec[] = [
                     ? entry.trim().toLowerCase()
                     : null
                 )
-                .filter((entry): entry is string => Boolean(entry))
+                .filter((entry): entry is string => entry !== null)
             : undefined;
+
+        // Smart Cycle Analysis
+        let cycleAnalysis: string | undefined;
+        if (skinProfile.cycle && typeof skinProfile.cycle === "object") {
+          const cycle = skinProfile.cycle as { lastPeriodStart: number; avgCycleLength?: number };
+          const lastStart = cycle.lastPeriodStart;
+          if (lastStart) {
+            const now = Date.now();
+            const daysSince = Math.floor((now - lastStart) / (1000 * 60 * 60 * 24));
+            const cycleLength = cycle.avgCycleLength ?? 28;
+            const isEstimated = !cycle.avgCycleLength;
+            
+            let phase = "";
+            let risk = "";
+            
+            if (daysSince < 0) {
+              phase = "Future date (invalid)";
+            } else if (daysSince <= 5) {
+              phase = "Menstrual Phase (Days 1-5)";
+              risk = "Skin likely sensitive/dry. Hydration is key.";
+            } else if (daysSince <= 14) {
+              phase = "Follicular Phase (Days 6-14)";
+              risk = "Estrogen rising; skin usually at its best.";
+            } else if (daysSince <= cycleLength) {
+              phase = "Luteal Phase (Pre-menstrual)";
+              risk = "Progesterone rising. HIGH RISK of hormonal breakouts (chin/jawline). Oil production increases.";
+            } else {
+              phase = "Late / Irregular / Data Stale";
+              risk = "Cycle is overdue or data is old. Please update last period date.";
+            }
+
+            // Only predict next period if data is recent (< 60 days)
+            let nextPeriodInfo = "";
+            if (daysSince < 60) {
+              const nextPeriodDate = new Date(lastStart + (cycleLength * 24 * 60 * 60 * 1000));
+              const nextPeriodStr = nextPeriodDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+              nextPeriodInfo = `\n            Next Period Estimate: ~${nextPeriodStr}.`;
+            } else {
+               nextPeriodInfo = "\n            Next Period Estimate: Unknown (please update last period date).";
+            }
+            
+            cycleAnalysis = `Cycle Day ${daysSince + 1} of ${cycleLength}${isEstimated ? " (estimated)" : ""}. 
+            Current Phase: ${phase}. 
+            Skin Insight: ${risk}${nextPeriodInfo}
+            (Note: Predictions are estimates based on ${cycleLength}-day cycle.)`;
+          }
+        }
 
         const normalizedProfile = {
           skinType:
@@ -1714,6 +1789,8 @@ const localTools: ToolSpec[] = [
           ingredientSensitivities: toStringArray(
             skinProfile.ingredientSensitivities
           ),
+          history: typeof skinProfile.history === "string" ? skinProfile.history : undefined,
+          cycleAnalysis, // Injected analysis for the LLM
           updatedAt:
             typeof skinProfile.updatedAt === "number"
               ? skinProfile.updatedAt
@@ -1807,7 +1884,7 @@ const localTools: ToolSpec[] = [
   {
     name: "saveUserProfile",
     description:
-      "Persist the user's skin profile details (skin type, concerns, ingredient sensitivities) for use in future recommendations.",
+      "IMMEDIATELY call this tool whenever the user mentions or updates their skin type, skin concerns (e.g. 'I have acne'), or ingredient sensitivities. Do NOT just acknowledge the change in text; you MUST persist it using this tool. This is critical for personalizing future recommendations.",
     parameters: saveUserProfileParameters,
     schema: saveUserProfileSchema,
     handler: async (rawInput) => {
@@ -1863,11 +1940,27 @@ const localTools: ToolSpec[] = [
         ? ingredientSensitivitiesRaw
         : undefined;
 
+      const history = normalizeString(input.history) || undefined;
+
+      // Process cycle data
+      let cycle: { lastPeriodStart: number; avgCycleLength?: number } | undefined;
+      if (input.lastPeriodDate) {
+        const date = new Date(input.lastPeriodDate);
+        if (!isNaN(date.getTime())) {
+          cycle = {
+            lastPeriodStart: date.getTime(),
+            avgCycleLength: input.avgCycleLength,
+          };
+        }
+      }
+
       const apiModule = await ensureApi();
       return fetchMutation(apiModule.users.saveSkinProfile, {
         ...(typeof skinType === "string" ? { skinType } : {}),
         ...(skinConcerns ? { skinConcerns } : {}),
         ...(ingredientSensitivities ? { ingredientSensitivities } : {}),
+        ...(history ? { history } : {}),
+        ...(cycle ? { cycle } : {}),
       });
     },
   },

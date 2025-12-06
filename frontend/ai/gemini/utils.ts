@@ -214,17 +214,65 @@ export async function refineProductSelectionWithOpenRouter({
       typeof rawText === "string" && rawText.trim().length
         ? rawText.trim()
         : "";
-    const sanitizedContent = content.replace(/```(?:json)?|```/gi, "").trim();
+    const sanitizedContent = content.replace(/```[\w-]*|```/gi, "").trim();
 
     if (!sanitizedContent.length) {
       return { products: limitedCandidates };
     }
 
+    // Handle function call syntax or extra text: extract the first valid JSON object
+    let jsonContent = sanitizedContent;
+    const firstBrace = sanitizedContent.indexOf('{');
+
+    if (firstBrace !== -1) {
+      let balance = 0;
+      let inString = false;
+      let escape = false;
+      let endBrace = -1;
+
+      for (let i = firstBrace; i < sanitizedContent.length; i++) {
+        const char = sanitizedContent[i];
+
+        if (escape) {
+          escape = false;
+          continue;
+        }
+
+        if (char === '\\') {
+          escape = true;
+          continue;
+        }
+
+        if (char === '"') {
+          inString = !inString;
+          continue;
+        }
+
+        if (!inString) {
+          if (char === '{') {
+            balance++;
+          } else if (char === '}') {
+            balance--;
+            if (balance === 0) {
+              endBrace = i;
+              break;
+            }
+          }
+        }
+      }
+
+      if (endBrace !== -1) {
+        jsonContent = sanitizedContent.slice(firstBrace, endBrace + 1);
+      }
+    }
+
     let parsedPayload: unknown;
     try {
-      parsedPayload = JSON.parse(sanitizedContent);
+      parsedPayload = JSON.parse(jsonContent);
     } catch (error) {
       console.error("Failed to parse OpenRouter product refinement JSON:", error);
+      console.error("Raw content received:", sanitizedContent.slice(0, 500));
+      console.error("Extracted JSON content:", jsonContent.slice(0, 500));
       return { products: limitedCandidates };
     }
 
@@ -270,5 +318,122 @@ export async function refineProductSelectionWithOpenRouter({
   } catch (error) {
     console.error("Product selection refinement with Gemini failed:", error);
     return { products: candidates.slice(0, 12) };
+  }
+}
+import { getGeminiModel } from "./client";
+
+export async function refineProductSelectionWithGemini({
+  candidates,
+  userRequest,
+  filterSummary,
+}: {
+  candidates: ProductCandidate[];
+  userRequest: string;
+  filterSummary?: string;
+}): Promise<{
+  products: ProductCandidate[];
+  notes?: string;
+}> {
+  if (!candidates.length) {
+    return { products: [] };
+  }
+
+  const limitedCandidates = candidates.slice(0, 12);
+  const { summaries, keyMap } = summarizeCandidates(limitedCandidates);
+
+  const systemPrompt =
+    "You are a meticulous skincare merchandiser. You will select the best matches from the provided candidate list. Only choose from the candidates and never invent new products. Your response must call the selectProducts function.";
+
+  const contextBlocks = [
+    `User request:\n${userRequest && userRequest.trim().length ? userRequest.trim() : "(not provided)"}`,
+  ];
+  if (filterSummary && filterSummary.trim().length) {
+    contextBlocks.push(`Filters applied:\n${filterSummary.trim()}`);
+  }
+
+  const userPrompt = `${contextBlocks.join(
+    "\n\n"
+  )}\n\nCandidates (JSON):\n${JSON.stringify(
+    summaries,
+    null,
+    2
+  )}\n\nCall the selectProducts function with your ranked picks and reasons.`;
+
+  const geminiSchema = {
+    type: "object",
+    properties: {
+      picks: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            productId: { type: "string", description: "ID or slug from the candidate list (exactly as provided)." },
+            reason: { type: "string", description: "1–2 sentence rationale tailored to the user request." },
+            rank: { type: "integer", description: "1-based position; lowest number = highest priority." },
+            confidence: { type: "number", description: "How confident the model is in this pick (optional)." },
+          },
+          required: ["productId", "reason"],
+        },
+      },
+    },
+    required: ["picks"],
+  } as const;
+
+  try {
+    const model = getGeminiModel("gemini-2.0-flash-lite-preview-02-05");
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      systemInstruction: systemPrompt,
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: geminiSchema as any,
+        temperature: 0,
+      },
+    });
+
+    const responseText = result.response.text();
+    let parsedPayload: any;
+    try {
+      parsedPayload = JSON.parse(responseText);
+    } catch (e) {
+      console.error("Failed to parse Gemini product refinement JSON:", e);
+      return { products: limitedCandidates };
+    }
+
+    const parsed = selectProductsResponseSchema.safeParse(parsedPayload);
+
+    if (!parsed.success) {
+      console.warn(
+        "Gemini product refinement returned invalid schema:",
+        parsed.error
+      );
+      return { products: limitedCandidates };
+    }
+
+    const { picks } = parsed.data;
+    const reordered: ProductCandidate[] = [];
+
+    // Sort picks by rank
+    picks.sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
+
+    for (const pick of picks) {
+      const original = keyMap.get(pick.productId);
+      if (original) {
+        // Attach the reason to the product object (if mutable) or clone it
+        // We'll assume we can't easily mutate the candidate type, but we can return the ordered list
+        // If we need to attach the reason, we might need to extend the type or just rely on ordering
+        reordered.push(original);
+      }
+    }
+
+    // If no valid picks, fallback
+    if (!reordered.length) {
+      return { products: limitedCandidates };
+    }
+
+    return { products: reordered };
+  } catch (error) {
+    console.error("Gemini product refinement failed:", error);
+    return { products: limitedCandidates };
   }
 }

@@ -9,25 +9,18 @@ import products from "../products.json";
 import { SkinConcern, SkinType } from "./schema";
 import { AHA_BHA_SET, DRYING_ALCOHOLS } from "../convex/_utils/products";
 import { Product, Brand } from "./_utils/type";
-import { runChatCompletion as runOpenAIChatCompletion } from "./_utils/internalUtils";
-import { runChatCompletion as runGeminiChatCompletion } from "./_utils/internalGemini";
+import { runChatCompletion } from "./_utils/internalUtils";
 import {
   resolveSkinConcern,
   resolveSkinType,
   resolveBenefit,
   type SkinConcernCanonical,
   type SkinTypeCanonical,
-  type BenefitCanonical,
 } from "../shared/skinMappings.js";
 
 const MODEL_PROVIDER = (
   process.env.CHAT_MODEL_PROVIDER ?? "grok"
 ).toLowerCase();
-
-const runChatCompletion =
-  MODEL_PROVIDER === "openai"
-    ? runOpenAIChatCompletion
-    : runGeminiChatCompletion;
 
 export const IngredientSensitivity = v.union(
   v.literal("alcohol"),
@@ -163,9 +156,14 @@ export const recommend = action({
     ingredientsToAvoid: v.optional(v.array(IngredientSensitivity)),
     fragranceFree: v.optional(v.boolean()),
     createRoutine: v.optional(v.boolean()),
+    userMessage: v.optional(v.string()),
     excludeProductIds: v.optional(
       v.array(v.union(v.id("products"), v.string()))
     ),
+    budget: v.optional(v.number()),
+    excludeBrands: v.optional(v.array(v.string())),
+    excludeKeywords: v.optional(v.array(v.string())),
+    preferenceInstructions: v.optional(v.string()),
   },
 
   handler: async (ctx, skinProfile) => {
@@ -177,8 +175,8 @@ export const recommend = action({
     try {
       const envOpenRouterKey =
         typeof (ctx as any)?.env?.get === "function"
-          ? (ctx as any).env.get("OPENROUTER_API_KEY") ??
-            (ctx as any).env.get("GEMINI_API_KEY")
+          ? ((ctx as any).env.get("OPENROUTER_API_KEY") ??
+            (ctx as any).env.get("GEMINI_API_KEY"))
           : undefined;
       if (
         typeof envOpenRouterKey === "string" &&
@@ -279,6 +277,38 @@ export const recommend = action({
             if (!matchesSkinType) return false;
           }
 
+          // Brand Exclusion
+          if (
+            skinProfile.excludeBrands &&
+            skinProfile.excludeBrands.length > 0
+          ) {
+            const brandName = p.brand?.name?.toLowerCase() ?? "";
+            const brandSlug = p.brand?.slug?.toLowerCase() ?? "";
+            const isExcluded = skinProfile.excludeBrands.some((b) => {
+              const target = b.toLowerCase().trim();
+              return (
+                brandName.includes(target) ||
+                brandSlug.includes(target) ||
+                target.includes(brandName) // Handle partial matches both ways
+              );
+            });
+            if (isExcluded) return false;
+          }
+
+          // Keyword Exclusion
+          if (
+            skinProfile.excludeKeywords &&
+            skinProfile.excludeKeywords.length > 0
+          ) {
+            const name = (p.name ?? "").toLowerCase();
+            const desc = (p.description ?? "").toLowerCase();
+            const isExcluded = skinProfile.excludeKeywords.some((k) => {
+              const target = k.toLowerCase().trim();
+              return name.includes(target) || desc.includes(target);
+            });
+            if (isExcluded) return false;
+          }
+
           return true; // keep if all specified constraints passed
         })
         .map((product: any) => ({
@@ -289,6 +319,10 @@ export const recommend = action({
           concerns: product.concerns,
           skinType: product.skinType,
           ingredients: product.ingredients,
+          price:
+            typeof product.sizes?.[0]?.price === "number"
+              ? product.sizes[0].price
+              : 0,
           description:
             typeof product.shortDescription === "string"
               ? product.shortDescription
@@ -437,6 +471,20 @@ export const recommend = action({
       - Always try to include 1 toner if any suitable option exists
       - Include 1–2 serums when available, ensuring they complement concerns without ingredient conflicts
       - Aim for a complete 5-step routine when possible
+      ${
+        skinProfile.budget
+          ? `- **BUDGET CONSTRAINT**: The total price of the PRIMARY products (Cleanser + Toner + Serums + Moisturizer + Sunscreen) MUST be under ${skinProfile.budget}. 
+             - Check the "price" field of each product. 
+             - If you cannot build a full routine under budget, omit the Toner or Serums first. 
+             - Do NOT sacrifice the mandatory Cleanser, Moisturizer, or Sunscreen.`
+          : ""
+      }
+      ${
+        skinProfile.preferenceInstructions
+          ? `- **USER PREFERENCES**: ${skinProfile.preferenceInstructions}
+             - Prioritize products that align with these preferences (e.g. texture, finish, specific ingredients).`
+          : ""
+      }
       
       Select from: ${JSON.stringify(availableProducts)}
       For profile: ${JSON.stringify(skinProfile)}
@@ -462,7 +510,7 @@ export const recommend = action({
 }
       
       HARD RULES FOR ALTERNATES:
-      - Max 2 alternates per step.
+      - Provide 3-5 alternates per step where possible.
       - Only include alternates that are fully compatible with EVERY other selected product (respect active/conflict guidance above).
       - Skip alternates entirely if no safe option exists.
       - Alternates must be the same category as the primary and use IDs from availableProducts.
@@ -539,6 +587,7 @@ export const recommend = action({
       let notes = "";
 
       do {
+
         const data = await runChatCompletion(prompt, undefined, 0.1);
         let parsed: any;
         try {
@@ -667,7 +716,7 @@ export const recommend = action({
               productId: altId,
               description: altDescription,
             });
-            if (alternates.length >= 2) break;
+            if (alternates.length >= 5) break;
           }
 
           return {
@@ -1599,12 +1648,22 @@ async function searchProductsByQueryImpl(
     !normalizedIngredientQueries.length &&
     !requestedBenefits.length
   ) {
-    return {
-      success: false,
-      reason: "ambiguous_or_not_found",
-      categoryOptions: categoryResolution.options ?? [],
-      brandOptions: brandResolution.options ?? [],
-    };
+    // Only return ambiguous if we truly have no filters at all
+    // (including flags like isBestseller, isTrending, isNew, price, discount)
+    const hasNoFlags = typeof isBestseller !== "boolean" && 
+                       typeof isTrending !== "boolean" && 
+                       typeof isNew !== "boolean" &&
+                       !hasPriceFilter &&
+                       !hasDiscountFilter;
+    
+    if (hasNoFlags) {
+      return {
+        success: false,
+        reason: "ambiguous_or_not_found",
+        categoryOptions: categoryResolution.options ?? [],
+        brandOptions: brandResolution.options ?? [],
+      };
+    }
   }
 
   // console.log(categorySlugs, brandSlugs, "slugs");

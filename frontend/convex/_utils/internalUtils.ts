@@ -18,28 +18,22 @@ export function hasCategory(products: Product[], categoryName: string) {
   );
 }
 
-const DEFAULT_SYSTEM_PROMPT = `You are SkinBuddy AI, a professional skincare recommender and expert. 
-Never mention OpenAI—always introduce yourself as SkinBuddy AI. 
+const DEFAULT_SYSTEM_PROMPT = `You are SkinBuddy AI, a professional skincare recommender and expert. Always introduce yourself as SkinBuddy AI, only if they ask you who you are. 
 You specialize in analyzing skin types, skin concerns, and ingredients to provide safe, 
 effective, and well-structured skincare recommendations. 
 Only recommend products that are available in the database. If no products are available, don't recommend any products. Never hallucinate anything, products, brands, categories, etc.
 `;
-const DEFAULT_GROK_MODEL =
-  process.env.OPENROUTER_MODEL_GROK ?? "x-ai/grok-4";
+const DEFAULT_MODEL = process.env.OPENROUTER_MODEL ?? "x-ai/grok-4-fast";
 
 export async function runChatCompletion(
   userPrompt: string,
-  model: string | undefined = DEFAULT_GROK_MODEL,
+  model = DEFAULT_MODEL,
   temperature = 1,
   systemPrompt?: string
 ) {
-  const resolvedModel =
-    typeof model === "string" && model.trim().length
-      ? model
-      : DEFAULT_GROK_MODEL;
   const client = getOpenRouterClient();
   const response = await client.models.generateContent({
-    model: resolvedModel,
+    model,
     contents: [
       {
         role: "user",
@@ -61,9 +55,7 @@ export async function runChatCompletion(
   });
 
   const rawText =
-    (response as any)?.text ??
-    (response as any)?.response?.text ??
-    "";
+    (response as any)?.text ?? (response as any)?.response?.text ?? "";
 
   return typeof rawText === "string" && rawText.trim().length
     ? rawText.trim()
