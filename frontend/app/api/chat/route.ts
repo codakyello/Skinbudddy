@@ -1260,7 +1260,7 @@ async function handleChatPost(req: NextRequest) {
                   "Skin-type survey completed. Use these answers only to infer the user's most likely skin type and primary skin concerns. Do not restart the survey or suggest routines or next steps unless explicitly requested. Never quote, summarize, or reference the individual survey questions or answers in your response.",
                   hiddenAnswersBlock,
                   "Craft a response using the following Markdown template. Replace the bracketed guidance with your conclusions and keep the structure:",
-                  "# 🧪 Skin Analysis Summary\n\n## Skin Type\nYour skin is classified as **{skin type in plain language with a brief explanation of what that means for the user}**.\n\n## Main Concern\nYou are primarily concerned with **{main concern in plain language with one short sentence elaborating on the implication}**.\n\n💡 You have a {skin type phrase} and your main concern is {main concern phrase}.\n\nWould you like me to provide personalized skincare recommendations based on this information?",
+                  "# 🧪 Skin Analysis Summary\n\n## Skin Type\nYour skin is classified as **{skin type in plain language with a brief explanation of what that means for the user}**.\n\n## Main Concern\nYou are primarily concerned with **{main concern in plain language with one short sentence elaborating on the implication}**.\n\n💡 You have a {skin type phrase} and your main concern is {main concern phrase}.\n\nWould you like me to save this to your profile so I can personalize your future recommendations?",
                 ]
                   .filter(Boolean)
                   .join("\n\n");
@@ -1507,44 +1507,76 @@ async function handleChatPost(req: NextRequest) {
             previousAssistantInfo.message
           );
 
-          const lightModel = heavyModel;
+          let requestedModel = enforceGrokOnly(body?.model);
 
-          let requestedModel: string;
-          let modelReason = "default";
-          if (typeof body?.model === "string" && body.model.trim().length) {
-            requestedModel = body.model.trim();
-            modelReason = "request.override";
-          } else if (toolingDecision.needsTooling) {
+          // If the user is on the free plan (or logic dictates), force light model for non-complex queries
+          // But for now, we respect the router's decision or default to heavy
+          if (!requestedModel) {
             requestedModel = heavyModel;
-            modelReason = `heuristic.${toolingDecision.reason ?? "tool"}`;
-          } else if (modelPresets[providerPreference]) {
-            requestedModel = modelPresets[providerPreference];
-            modelReason = `provider.${providerPreference}`;
-          } else {
-            requestedModel = lightModel;
-            modelReason = "default.light";
           }
 
-          const enforcedModel = enforceGrokOnly(requestedModel);
-          if (enforcedModel !== requestedModel) {
-            requestedModel = enforcedModel;
-            modelReason = `${modelReason}.forced.grok`;
-          }
+          // Force temperature to 0 for consistency
+          const resolvedTemperature = 0;
 
-          console.log(
-            `[LLM] Selected model: ${requestedModel} (${modelReason})`
-          );
-          const resolvedTemperature =
-            typeof body?.temperature === "number" ? body.temperature : 0.5;
+          // 4. Prepare tools
           const maxToolRounds =
-            typeof body?.maxToolRounds === "number" && body.maxToolRounds >= 0
-              ? body.maxToolRounds
+            typeof body?.maxToolRounds === "number"
+              ? Math.max(1, Math.min(body.maxToolRounds, 10))
               : 4;
           const useTools = body?.useTools === false ? false : true;
 
+          const currentDate = new Date().toLocaleDateString("en-US", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          });
+
+          let skinProfileInjection = "";
+          try {
+            const userResult = await fetchQuery(api.users.getUser, {});
+            if (userResult.success && userResult.user?.skinProfile) {
+              const profile = userResult.user.skinProfile as {
+                skinType?: string;
+                skinConcerns?: string[];
+                ingredientSensitivities?: string[];
+                history?: string;
+                cycle?: { lastPeriodStart: number; avgCycleLength?: number };
+                updatedAt?: number;
+              };
+
+              const parts: string[] = [];
+              if (profile.skinType) parts.push(`Skin Type: ${profile.skinType}`);
+              if (profile.skinConcerns?.length) parts.push(`Concerns: ${profile.skinConcerns.join(", ")}`);
+              if (profile.ingredientSensitivities?.length) parts.push(`Sensitivities: ${profile.ingredientSensitivities.join(", ")}`);
+              if (profile.history) parts.push(`History/Medications: ${profile.history}`);
+              if (profile.cycle) {
+                const lastPeriod = new Date(profile.cycle.lastPeriodStart).toLocaleDateString();
+                parts.push(`Cycle: Last period ${lastPeriod}, Length ${profile.cycle.avgCycleLength ?? 28} days`);
+              }
+
+              if (parts.length) {
+                skinProfileInjection = `
+\n=== CURRENT USER PROFILE (AUTO-INJECTED) ===
+${parts.join("\n")}
+===========================================
+NOTE: This profile is already loaded. Do NOT call 'getSkinProfile' to view it.
+Only call 'getSkinProfile' if you suspect the data is stale or if the user explicitly asks to check what is saved.
+To UPDATE this profile, use 'saveUserProfile'.
+`;
+              }
+            }
+          } catch (error) {
+            console.warn("Failed to inject skin profile:", error);
+          }
+
+          const systemPromptWithDate = `${DEFAULT_SYSTEM_PROMPT}\n\nCURRENT DATE: ${currentDate}${skinProfileInjection}`;
+
+
+
           const completion = await callOpenRouter({
             messages: conversationMessages,
-            systemPrompt: DEFAULT_SYSTEM_PROMPT,
+            systemPrompt: systemPromptWithDate,
             model: requestedModel,
             temperature: resolvedTemperature,
             useTools,

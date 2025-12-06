@@ -1092,7 +1092,7 @@ export default function ChatPage() {
                                     <ReactMarkdown
                                       remarkPlugins={[remarkGfm]}
                                       components={markdownComponents}
-                                      className="markdown space-y-[16px] text-[1.4rem] leading-relaxed tracking-[-0.008em]"
+                                      className="markdown space-y-[10px] text-[1.4rem] leading-relaxed tracking-[-0.008em]"
                                     >
                                       {markdownSource}
                                     </ReactMarkdown>

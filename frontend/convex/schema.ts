@@ -146,6 +146,14 @@ export default defineSchema({
         skinType: v.optional(v.string()),
         skinConcerns: v.optional(v.array(v.string())),
         ingredientSensitivities: v.optional(v.array(v.string())),
+        history: v.optional(v.string()), // Free-form context: medications, lifestyle, goals (e.g., "on 80mg Accutane")
+        cycle: v.optional(
+          v.object({
+            lastPeriodStart: v.number(), // Timestamp of last flow start
+            avgCycleLength: v.optional(v.number()), // Default 28 days
+            regular: v.optional(v.boolean()),
+          })
+        ),
         updatedAt: v.optional(v.number()),
       })
     ),

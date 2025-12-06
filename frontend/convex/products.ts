@@ -587,7 +587,7 @@ export const recommend = action({
       let notes = "";
 
       do {
-        console.log("calling chat completion");
+
         const data = await runChatCompletion(prompt, undefined, 0.1);
         let parsed: any;
         try {
@@ -1648,12 +1648,22 @@ async function searchProductsByQueryImpl(
     !normalizedIngredientQueries.length &&
     !requestedBenefits.length
   ) {
-    return {
-      success: false,
-      reason: "ambiguous_or_not_found",
-      categoryOptions: categoryResolution.options ?? [],
-      brandOptions: brandResolution.options ?? [],
-    };
+    // Only return ambiguous if we truly have no filters at all
+    // (including flags like isBestseller, isTrending, isNew, price, discount)
+    const hasNoFlags = typeof isBestseller !== "boolean" && 
+                       typeof isTrending !== "boolean" && 
+                       typeof isNew !== "boolean" &&
+                       !hasPriceFilter &&
+                       !hasDiscountFilter;
+    
+    if (hasNoFlags) {
+      return {
+        success: false,
+        reason: "ambiguous_or_not_found",
+        categoryOptions: categoryResolution.options ?? [],
+        brandOptions: brandResolution.options ?? [],
+      };
+    }
   }
 
   // console.log(categorySlugs, brandSlugs, "slugs");

@@ -235,6 +235,13 @@ export const saveSkinProfile = mutation({
     skinType: v.optional(v.string()),
     skinConcerns: v.optional(v.array(v.string())),
     ingredientSensitivities: v.optional(v.array(v.string())),
+    history: v.optional(v.string()),
+    cycle: v.optional(
+      v.object({
+        lastPeriodStart: v.number(),
+        avgCycleLength: v.optional(v.number()),
+      })
+    ),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -323,6 +330,28 @@ export const saveSkinProfile = mutation({
         nextSkinProfile.ingredientSensitivities = normalizedSensitivities;
       } else {
         delete nextSkinProfile.ingredientSensitivities;
+      }
+      didChange = true;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(args, "history")) {
+      const raw = args.history;
+      if (typeof raw === "string" && raw.trim().length) {
+        nextSkinProfile.history = raw.trim();
+      } else {
+        delete nextSkinProfile.history;
+      }
+      didChange = true;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(args, "cycle")) {
+      if (args.cycle) {
+        nextSkinProfile.cycle = {
+          lastPeriodStart: args.cycle.lastPeriodStart,
+          avgCycleLength: args.cycle.avgCycleLength ?? 28,
+        };
+      } else {
+        delete nextSkinProfile.cycle;
       }
       didChange = true;
     }
