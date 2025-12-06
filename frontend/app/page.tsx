@@ -800,7 +800,7 @@ export default function ChatPage() {
 
   return (
     <Modal>
-      <main className="flex h-[calc(100vh-75px)] md:h-[calc(100vh-75px)] overflow-hidden flex-col font-['Inter'] text-[#2f1f53]">
+      <main className="flex h-[100dvh] md:h-[calc(100vh-75px)] overflow-hidden flex-col font-['Inter'] text-[#2f1f53]">
         <Box
           className={`flex relative flex-1 min-h-0 w-full flex-col items-center ${!hasMessages && "justify-center"} px-8 `}
         >
