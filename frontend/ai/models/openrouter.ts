@@ -193,6 +193,12 @@ export async function callOpenRouter({
       "IMMERSION RULE: Never refer to 'the UI', 'the interface', 'the screen', 'the widget', or 'the buttons'. Don't say 'The UI will show...' or 'Click the button below'. Instead, treat the visual elements as part of your own presentation. Say 'I've listed the routine below...' or 'I've found these options for you...'. Maintain the illusion of a human consultant.",
   });
 
+  chatMessages.push({
+    role: "developer",
+    content:
+      "BUDGET PROTECTION RULE: Our minimum viable budget is #20,000. If the user asks for a routine/products below this (e.g. 'under 5k'), DO NOT CALL TOOLS. Instead, politely explain that a full, effective routine requires a realistic investment. Advise that it's better to buy ONE quality product than a cheap, ineffective set. Offer to recommend just ONE essential item from our collection (starting at #20,000).",
+  });
+
   const inferCategoryFromText = (
     text: string | undefined
   ): string | undefined => {

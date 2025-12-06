@@ -60,6 +60,7 @@ body {
   font-size: 1.6rem;
   font-family: "Inter", sans-serif !important;
   font-weight: 400;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 input,
