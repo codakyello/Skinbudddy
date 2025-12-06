@@ -330,100 +330,100 @@ function augmentMessagesWithAffirmationNote(
   return normalized;
 }
 
-const TOOL_INTENT_PATTERNS: RegExp[] = [
-  /\b(find|show|search|pull|fetch|look\s+up|recommend|suggest|curate|help\s+me\s+find)\b/i,
-  /\b(add|put)\s+(?:it|this|that|one)?\s*(?:to|into)\s+(?:my\s+)?cart\b/i,
-  /\bcompare\b/i,
-  /\bswap\b/i,
-  /\breplace\b/i,
-  /\bstart\s+(?:the\s+)?(?:skin\s+)?(?:quiz|survey)\b/i,
-  /\bbuild\b.+\broutine\b/i,
-  /\b(round|step-by-step)\s+routine\b/i,
-];
+// const TOOL_INTENT_PATTERNS: RegExp[] = [
+//   /\b(find|show|search|pull|fetch|look\s+up|recommend|suggest|curate|help\s+me\s+find)\b/i,
+//   /\b(add|put)\s+(?:it|this|that|one)?\s*(?:to|into)\s+(?:my\s+)?cart\b/i,
+//   /\bcompare\b/i,
+//   /\bswap\b/i,
+//   /\breplace\b/i,
+//   /\bstart\s+(?:the\s+)?(?:skin\s+)?(?:quiz|survey)\b/i,
+//   /\bbuild\b.+\broutine\b/i,
+//   /\b(round|step-by-step)\s+routine\b/i,
+// ];
 
-const PAGINATION_PATTERNS: RegExp[] = [
-  /\bmore\s+options?\b/i,
-  /\bshow\s+me\s+more\b/i,
-  /\bnext\s+(?:set|ones?)\b/i,
-  /\banother\s+(?:one|option)\b/i,
-  /\bmore\s+please\b/i,
-  /\bsomething\s+else\b/i,
-];
+// const PAGINATION_PATTERNS: RegExp[] = [
+//   /\bmore\s+options?\b/i,
+//   /\bshow\s+me\s+more\b/i,
+//   /\bnext\s+(?:set|ones?)\b/i,
+//   /\banother\s+(?:one|option)\b/i,
+//   /\bmore\s+please\b/i,
+//   /\bsomething\s+else\b/i,
+// ];
 
-const PRODUCT_TERM_PATTERN =
-  /\b(cleanser|serum|toner|moisturizer|moisturiser|spf|sunscreen|sunblock|mask|exfoliator|lotion|cream|product|routine|treatment)\b/i;
+// const PRODUCT_TERM_PATTERN =
+//   /\b(cleanser|serum|toner|moisturizer|moisturiser|spf|sunscreen|sunblock|mask|exfoliator|lotion|cream|product|routine|treatment)\b/i;
 
-const FILTER_HINT_PATTERN =
-  /\b(oily|dry|combo|combination|acne|acne-prone|hyperpig|hyperpigmentation|sensitive|hydrating|brightening|oil\s*control|matte|retinol|niacinamide|aha|bha|vitamin\s*c|fragrance[-\s]?free|budget|price|under\s+\$?\d+|under\s+₦?\d+|less\s+than\s+\$?\d+|less\s+than\s+₦?\d+)\b|[₦$€£¥]/i;
+// const FILTER_HINT_PATTERN =
+//   /\b(oily|dry|combo|combination|acne|acne-prone|hyperpig|hyperpigmentation|sensitive|hydrating|brightening|oil\s*control|matte|retinol|niacinamide|aha|bha|vitamin\s*c|fragrance[-\s]?free|budget|price|under\s+\$?\d+|under\s+₦?\d+|less\s+than\s+\$?\d+|less\s+than\s+₦?\d+)\b|[₦$€£¥]/i;
 
-const ASSISTANT_TOOL_OFFER_PATTERN =
-  /(want\s+me\s+to|should\s+i|i\s+can|let\s+me)\s+(?:find|show|search|pull|add|start|compare|look\s+up)/i;
+// const ASSISTANT_TOOL_OFFER_PATTERN =
+//   /(want\s+me\s+to|should\s+i|i\s+can|let\s+me)\s+(?:find|show|search|pull|add|start|compare|look\s+up)/i;
 
-type MessageWithIndex = { message: ChatMessage | null; index: number };
+// type MessageWithIndex = { message: ChatMessage | null; index: number };
 
-function findLastMessageByRole(
-  messages: ChatMessage[],
-  role: ChatMessage["role"],
-  beforeIndex?: number
-): MessageWithIndex {
-  if (!Array.isArray(messages) || !messages.length) {
-    return { message: null, index: -1 };
-  }
-  const start =
-    typeof beforeIndex === "number" ? beforeIndex : messages.length - 1;
-  for (let idx = start; idx >= 0; idx--) {
-    if (messages[idx]?.role === role) {
-      return { message: messages[idx], index: idx };
-    }
-  }
-  return { message: null, index: -1 };
-}
+// function findLastMessageByRole(
+//   messages: ChatMessage[],
+//   role: ChatMessage["role"],
+//   beforeIndex?: number
+// ): MessageWithIndex {
+//   if (!Array.isArray(messages) || !messages.length) {
+//     return { message: null, index: -1 };
+//   }
+//   const start =
+//     typeof beforeIndex === "number" ? beforeIndex : messages.length - 1;
+//   for (let idx = start; idx >= 0; idx--) {
+//     if (messages[idx]?.role === role) {
+//       return { message: messages[idx], index: idx };
+//     }
+//   }
+//   return { message: null, index: -1 };
+// }
 
-const normalizeRoutingText = (value?: string): string =>
-  typeof value === "string" ? value.toLowerCase().trim() : "";
+// const normalizeRoutingText = (value?: string): string =>
+//   typeof value === "string" ? value.toLowerCase().trim() : "";
 
-function shouldRouteToToolModel(
-  latestUserMessage?: ChatMessage | null,
-  previousAssistantMessage?: ChatMessage | null
-): { needsTooling: boolean; reason?: string } {
-  const latestContent = latestUserMessage?.content ?? "";
-  const normalizedUser = normalizeRoutingText(latestContent);
+// function shouldRouteToToolModel(
+//   latestUserMessage?: ChatMessage | null,
+//   previousAssistantMessage?: ChatMessage | null
+// ): { needsTooling: boolean; reason?: string } {
+//   const latestContent = latestUserMessage?.content ?? "";
+//   const normalizedUser = normalizeRoutingText(latestContent);
 
-  if (!normalizedUser.length) {
-    return { needsTooling: false };
-  }
+//   if (!normalizedUser.length) {
+//     return { needsTooling: false };
+//   }
 
-  if (TOOL_INTENT_PATTERNS.some((pattern) => pattern.test(normalizedUser))) {
-    return { needsTooling: true, reason: "user_intent_keyword" };
-  }
+//   if (TOOL_INTENT_PATTERNS.some((pattern) => pattern.test(normalizedUser))) {
+//     return { needsTooling: true, reason: "user_intent_keyword" };
+//   }
 
-  if (
-    PRODUCT_TERM_PATTERN.test(normalizedUser) &&
-    FILTER_HINT_PATTERN.test(normalizedUser)
-  ) {
-    return { needsTooling: true, reason: "product_filter" };
-  }
+//   if (
+//     PRODUCT_TERM_PATTERN.test(normalizedUser) &&
+//     FILTER_HINT_PATTERN.test(normalizedUser)
+//   ) {
+//     return { needsTooling: true, reason: "product_filter" };
+//   }
 
-  if (normalizedUser.includes("cart") || normalizedUser.includes("size ")) {
-    return { needsTooling: true, reason: "cart_or_size" };
-  }
+//   if (normalizedUser.includes("cart") || normalizedUser.includes("size ")) {
+//     return { needsTooling: true, reason: "cart_or_size" };
+//   }
 
-  if (PAGINATION_PATTERNS.some((pattern) => pattern.test(normalizedUser))) {
-    return { needsTooling: true, reason: "pagination" };
-  }
+//   if (PAGINATION_PATTERNS.some((pattern) => pattern.test(normalizedUser))) {
+//     return { needsTooling: true, reason: "pagination" };
+//   }
 
-  if (
-    isAffirmativeAcknowledgement(latestContent) &&
-    previousAssistantMessage &&
-    ASSISTANT_TOOL_OFFER_PATTERN.test(
-      normalizeRoutingText(previousAssistantMessage.content)
-    )
-  ) {
-    return { needsTooling: true, reason: "affirmative_followup" };
-  }
+//   if (
+//     isAffirmativeAcknowledgement(latestContent) &&
+//     previousAssistantMessage &&
+//     ASSISTANT_TOOL_OFFER_PATTERN.test(
+//       normalizeRoutingText(previousAssistantMessage.content)
+//     )
+//   ) {
+//     return { needsTooling: true, reason: "affirmative_followup" };
+//   }
 
-  return { needsTooling: false };
-}
+//   return { needsTooling: false };
+// }
 
 // async function classifySkinProfileIntent(
 //   input: string
@@ -1490,21 +1490,21 @@ async function handleChatPost(req: NextRequest) {
           //   grok: heavyModel,
           // };
 
-          const latestUserInfo = findLastMessageByRole(
-            conversationMessages,
-            "user"
-          );
-          const previousAssistantInfo = latestUserInfo.message
-            ? findLastMessageByRole(
-                conversationMessages,
-                "assistant",
-                latestUserInfo.index - 1
-              )
-            : { message: null, index: -1 };
+          // const latestUserInfo = findLastMessageByRole(
+          //   conversationMessages,
+          //   "user"
+          // );
+          // const previousAssistantInfo = latestUserInfo.message
+          //   ? findLastMessageByRole(
+          //       conversationMessages,
+          //       "assistant",
+          //       latestUserInfo.index - 1
+          //     )
+          //   : { message: null, index: -1 };
 
           // const toolingDecision = shouldRouteToToolModel(
           //   latestUserInfo.message,
-          //   previousAssistantInfo.message
+          //   // previousAssistantInfo.message
           // );
 
           let requestedModel = enforceGrokOnly(body?.model);
