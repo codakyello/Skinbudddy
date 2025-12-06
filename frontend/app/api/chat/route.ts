@@ -1460,12 +1460,12 @@ async function handleChatPost(req: NextRequest) {
 
           console.log(context, "This is conversation history");
 
-          const providerPreference =
-            typeof body?.provider === "string"
-              ? body.provider.toLowerCase()
-              : typeof process.env.CHAT_MODEL_PROVIDER === "string"
-                ? process.env.CHAT_MODEL_PROVIDER.toLowerCase()
-                : "grok";
+          // const providerPreference =
+          //   typeof body?.provider === "string"
+          //     ? body.provider.toLowerCase()
+          //     : typeof process.env.CHAT_MODEL_PROVIDER === "string"
+          //       ? process.env.CHAT_MODEL_PROVIDER.toLowerCase()
+          //       : "grok";
           const heavyModel =
             process.env.OPENROUTER_MODEL_GROK ?? "x-ai/grok-4-fast";
           const grokModelFingerprint = heavyModel.toLowerCase();
@@ -1483,12 +1483,12 @@ async function handleChatPost(req: NextRequest) {
             }
             return heavyModel;
           };
-          const modelPresets: Record<string, string> = {
-            gemini: heavyModel,
-            openai: heavyModel,
-            anthropic: heavyModel,
-            grok: heavyModel,
-          };
+          // const modelPresets: Record<string, string> = {
+          //   gemini: heavyModel,
+          //   openai: heavyModel,
+          //   anthropic: heavyModel,
+          //   grok: heavyModel,
+          // };
 
           const latestUserInfo = findLastMessageByRole(
             conversationMessages,
@@ -1502,10 +1502,10 @@ async function handleChatPost(req: NextRequest) {
               )
             : { message: null, index: -1 };
 
-          const toolingDecision = shouldRouteToToolModel(
-            latestUserInfo.message,
-            previousAssistantInfo.message
-          );
+          // const toolingDecision = shouldRouteToToolModel(
+          //   latestUserInfo.message,
+          //   previousAssistantInfo.message
+          // );
 
           let requestedModel = enforceGrokOnly(body?.model);
 
