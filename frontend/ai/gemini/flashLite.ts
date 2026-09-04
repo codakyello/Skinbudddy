@@ -11,10 +11,14 @@ export const classifyIntent = async (
   // ============================================
   // STEP 1: EXCLUSIONS - Educational patterns that LOOK like shopping
   // Must check FIRST to prevent false TOOL matches
+  // Only trigger CHAT when no product category is present
   // ============================================
-  
+
+  const productCategories = /\b(cleansers?|moisturisers?|moisturizers?|serums?|sunscreens?|sun\s?blocks?|spfs?|toners?|exfoliants?|scrubs?|face\s?wash(es)?|facewash(es)?|masks?|creams?|lotions?|oils?|treatments?|products?|options?|picks?|eye\s?creams?|spot\s?treatments?|gels?|balms?)\b/i;
+
   // "Show me how to...", "Tell me how...", "Help me understand..."
-  if (/\b(show|tell|help|teach) me (how|about|why|what|more|the (difference|way|best way))/i.test(lower)) {
+  // But NOT if a product category is also mentioned (e.g. "help me find a cleanser")
+  if (/\b(show|tell|help|teach) me (how|about|why|what|more|the (difference|way|best way))/i.test(lower) && !productCategories.test(lower)) {
     console.log("[Classifier] Heuristic: CHAT (educational phrase)");
     return "CHAT";
   }
@@ -62,10 +66,9 @@ export const classifyIntent = async (
   }
   
   // Product search: action verb + product category
-  // Product search: action verb + product category
   // Expanded to include UK spellings, variations, and more verbs
-  const productCategories = /\b(cleansers?|moisturisers?|moisturizers?|serums?|sunscreens?|sun\s?blocks?|spfs?|toners?|exfoliants?|scrubs?|face\s?wash(es)?|facewash(es)?|masks?|creams?|lotions?|oils?|treatments?|products?|options?|picks?|eye\s?creams?|spot\s?treatments?|gels?|balms?)\b/i;
-  const searchVerbs = /\b(show( me)?|find( me)?|search( for)?|get( me)?|looking for|i need|i want|shop for|recommend|suggest|list|what about|do you have|any|give me)\b/i;
+  // NOTE: productCategories is now declared in STEP 1 above
+  const searchVerbs = /\b(show( me)?|find( me)?|search( for)?|get( me)?|looking for|i need|i want|shop for|recommend|suggest|list|what about|do you have|any|give me|help me (find|get|choose|pick|select))\b/i;
   
   if (searchVerbs.test(lower) && productCategories.test(lower)) {
     console.log("[Classifier] Heuristic: TOOL (product search)");
@@ -213,9 +216,9 @@ Reply ONLY with "TOOL" or "CHAT".`,
       },
     });
 
-    const text = (response as any)?.text ?? "";
-    const result = text.includes("TOOL") ? "TOOL" : "CHAT";
-    console.log(`[Classifier] LLM result: ${result}`);
+    const text = ((response as any)?.text ?? "").trim().toUpperCase();
+    const result = text.startsWith("TOOL") ? "TOOL" : text.startsWith("CHAT") ? "CHAT" : "TOOL";
+    console.log(`[Classifier] LLM result: ${result} (raw: "${text}")`);
     return result;
   } catch (error) {
     console.error("[Classifier] LLM failed, defaulting to TOOL:", error);
