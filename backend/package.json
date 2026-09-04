@@ -4,8 +4,8 @@
   "description": "Backend for the skin buddy app",
   "main": "index.js",
   "scripts": {
-    "start:prod": "NODE_ENV=production nodemon server.js",
-    "start:dev": "nodemon server.js NODE_ENV=development",
+    "start:prod": "node init && NODE_ENV=production nodemon server.js",
+    "start:dev": "node init && nodemon server.js NODE_ENV=development",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
