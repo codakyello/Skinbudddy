@@ -155,14 +155,18 @@ class ServerResponseAdapter extends EventEmitter {
 type NodeServerResponse = ServerResponse<IncomingMessage>;
 
 const createServer = (): McpServer => {
-  const server = new McpServer({
-    name: "skinbuddy-mcp",
-    version: "1.0.0",
-    capabilities: {
-      resources: {},
-      tools: {},
+  const server = new McpServer(
+    {
+      name: "skinbuddy-mcp",
+      version: "1.0.0",
     },
-  });
+    {
+      capabilities: {
+        resources: {},
+        tools: {},
+      },
+    }
+  );
   registerTools(server);
   return server;
 };
