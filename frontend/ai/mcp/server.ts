@@ -32,14 +32,18 @@ applyEnvFile(".env");
 applyEnvFile(".env.local");
 
 // Create server instance
-export const server = new McpServer({
-  name: "skinbuddy mcp",
-  version: "1.0.0",
-  capabilities: {
-    resources: {},
-    tools: {},
+export const server = new McpServer(
+  {
+    name: "skinbuddy mcp",
+    version: "1.0.0",
   },
-});
+  {
+    capabilities: {
+      resources: {},
+      tools: {},
+    },
+  }
+);
 
 registerTools(server);
 
