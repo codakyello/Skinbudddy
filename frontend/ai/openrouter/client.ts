@@ -45,7 +45,7 @@ const DEFAULT_MODEL =
   process.env.OPENROUTER_MODEL_GROK?.trim() ||
   process.env.OPENROUTER_DEFAULT_MODEL?.trim() ||
   process.env.OPENROUTER_GEMINI_MODEL?.trim() ||
-  "google/gemini-3.1-pro";
+  "google/gemini-3.5-flash-lite";
 
 const buildHeaders = () => {
   const referer =

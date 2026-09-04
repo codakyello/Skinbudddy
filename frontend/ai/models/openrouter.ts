@@ -54,7 +54,7 @@ import {
   extractString,
 } from "./openrouter/shared";
 
-const DEFAULT_GROK_MODEL = process.env.OPENROUTER_MODEL ?? "google/gemini-3.1-pro";
+const DEFAULT_GROK_MODEL = process.env.OPENROUTER_MODEL ?? "google/gemini-3.5-flash-lite";
 export async function callOpenRouter({
   messages,
   systemPrompt,

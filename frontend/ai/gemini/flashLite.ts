@@ -180,7 +180,7 @@ export const classifyIntent = async (
   try {
     const client = getOpenRouterClient();
     const response = await client.models.generateContent({
-      model: "google/gemini-3.1-pro",
+      model: "google/gemini-3.5-flash-lite",
       contents: truncatedHistory.map((m) => ({
         role: m.role === "user" ? "user" : "model",
         parts: [{ text: m.content }],

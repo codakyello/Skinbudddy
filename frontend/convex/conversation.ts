@@ -17,7 +17,7 @@ type ConversationRole = "user" | "assistant" | "system" | "tool";
 type ResolvedConfig = typeof DEFAULT_CONTEXT_CONFIG;
 
 const SUMMARISER_MODEL =
-  process.env.OPENROUTER_MODEL_GROK ?? "google/gemini-3.1-pro";
+  process.env.OPENROUTER_MODEL_GROK ?? "google/gemini-3.5-flash-lite";
 
 function resolveConfig(raw?: any): ResolvedConfig {
   if (!raw) return { ...DEFAULT_CONTEXT_CONFIG };

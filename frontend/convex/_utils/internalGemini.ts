@@ -18,7 +18,7 @@ export function hasCategory(products: Product[], categoryName: string) {
   );
 }
 
-const DEFAULT_MODEL = process.env.OPENROUTER_MODEL ?? "google/gemini-3.1-pro";
+const DEFAULT_MODEL = process.env.OPENROUTER_MODEL ?? "google/gemini-3.5-flash-lite";
 
 type ChatOptions = {
   apiKey?: string;
