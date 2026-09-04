@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run build:ts\" \"next dev\" \"convex dev\"",
+    "dev": "node init && concurrently \"npm run build:ts\" \"next dev\" \"convex dev\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build:ts": "tsc -p tsconfig.build.json",
-    "build": "next build",
-    "start": "next start",
+    "build:ts": "node init && tsc -p tsconfig.build.json",
+    "build": "node init && next build",
+    "start": "node init && next start",
     "lint": "next lint"
   },
   "dependencies": {
