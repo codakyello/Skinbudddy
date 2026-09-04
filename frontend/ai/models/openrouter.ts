@@ -54,7 +54,7 @@ import {
   extractString,
 } from "./openrouter/shared";
 
-const DEFAULT_GROK_MODEL = process.env.OPENROUTER_MODEL ?? "x-ai/grok-4.3";
+const DEFAULT_GROK_MODEL = process.env.OPENROUTER_MODEL ?? "google/gemini-3.1-pro";
 export async function callOpenRouter({
   messages,
   systemPrompt,
@@ -99,9 +99,9 @@ export async function callOpenRouter({
   }));
 
   // --- SMART ROUTING START ---
-  // 1. Classify Intent (Grok-4.3)
+  // 1. Classify Intent (Gemini 3.1 Pro)
   // 2. If CHAT -> Gemini Flash Lite (Google SDK)
-  // 3. If TOOL or ESCALATE -> Grok-4.3 (OpenRouter)
+  // 3. If TOOL or ESCALATE -> Gemini 3.1 Pro (OpenRouter)
   
   const intent = await classifyIntent(messages);
   console.log(`[Router] Intent: ${intent}`);
@@ -124,7 +124,7 @@ export async function callOpenRouter({
     console.log("[Router] Gemini escalated, switching to Grok");
   }
   
-  console.log("[Router] Using: Grok-4.3 (OpenRouter)");
+  console.log("[Router] Using: Gemini 3.1 Pro (OpenRouter)");
   // --- SMART ROUTING END ---
 
   const llmClient = getOpenRouterClient();

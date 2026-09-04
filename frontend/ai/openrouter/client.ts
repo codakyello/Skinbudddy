@@ -45,7 +45,7 @@ const DEFAULT_MODEL =
   process.env.OPENROUTER_MODEL_GROK?.trim() ||
   process.env.OPENROUTER_DEFAULT_MODEL?.trim() ||
   process.env.OPENROUTER_GEMINI_MODEL?.trim() ||
-  "x-ai/grok-4.3";
+  "google/gemini-3.1-pro";
 
 const buildHeaders = () => {
   const referer =

@@ -23,7 +23,7 @@ You specialize in analyzing skin types, skin concerns, and ingredients to provid
 effective, and well-structured skincare recommendations. 
 Only recommend products that are available in the database. If no products are available, don't recommend any products. Never hallucinate anything, products, brands, categories, etc.
 `;
-const DEFAULT_MODEL = process.env.OPENROUTER_MODEL ?? "x-ai/grok-4.3";
+const DEFAULT_MODEL = process.env.OPENROUTER_MODEL ?? "google/gemini-3.1-pro";
 
 export async function runChatCompletion(
   userPrompt: string,
