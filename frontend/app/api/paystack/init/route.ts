@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
           metadata: {
             orderId,
           },
-          callback_url: "https://skinbudddy-frontend.vercel.app", // <-- redirect here after payment
+          callback_url: "https://skinpal.vercel.app/", // <-- redirect here after payment
         }),
       }
     );

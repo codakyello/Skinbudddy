@@ -180,7 +180,7 @@ export const classifyIntent = async (
   try {
     const client = getOpenRouterClient();
     const response = await client.models.generateContent({
-      model: "x-ai/grok-4-fast",
+      model: "x-ai/grok-4.3",
       contents: truncatedHistory.map((m) => ({
         role: m.role === "user" ? "user" : "model",
         parts: [{ text: m.content }],

@@ -17,7 +17,7 @@ type ConversationRole = "user" | "assistant" | "system" | "tool";
 type ResolvedConfig = typeof DEFAULT_CONTEXT_CONFIG;
 
 const SUMMARISER_MODEL =
-  process.env.OPENROUTER_MODEL_GROK ?? "x-ai/grok-4";
+  process.env.OPENROUTER_MODEL_GROK ?? "x-ai/grok-4.3";
 
 function resolveConfig(raw?: any): ResolvedConfig {
   if (!raw) return { ...DEFAULT_CONTEXT_CONFIG };
