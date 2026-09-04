@@ -240,11 +240,16 @@ export const streamGeminiFlashLite = async ({
     const model = getGeminiModel("gemini-2.0-flash-lite");
     
     // Convert messages to Gemini format
-    // Gemini requires: 1) First message must be 'user', 2) Messages must alternate user/model
-    let rawHistory = messages.slice(0, -1).map(m => ({
-      role: m.role === "user" ? "user" : "model",
-      parts: [{ text: m.content }]
-    }));
+    // Only include user/assistant turns — skip tool, system, developer messages
+    // Gemini requires: 1) non-empty parts, 2) starts with user, 3) alternating roles
+    let rawHistory = messages.slice(0, -1)
+      .filter(m => m.role === "user" || m.role === "assistant")
+      .map(m => ({
+        role: m.role === "user" ? "user" : "model",
+        parts: [{ text: typeof m.content === "string" ? m.content : "" }]
+      }))
+      // Drop empty model turns (e.g. assistant placeholder pushed during tool calls)
+      .filter(m => m.parts[0].text.trim().length > 0);
 
     // Ensure history starts with 'user'
     while (rawHistory.length > 0 && rawHistory[0].role !== "user") {
