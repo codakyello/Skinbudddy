@@ -37,11 +37,21 @@ type ChoiceState = {
 
 type OpenRouterMessage = {
   role: string;
-  content: string;
+  content: string | null;
   toolCallId?: string;
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
 };
 
 const DEFAULT_MODEL =
+  process.env.OPENROUTER_MODEL?.trim() ||
   process.env.OPENROUTER_MODEL_GROK?.trim() ||
   process.env.OPENROUTER_DEFAULT_MODEL?.trim() ||
   process.env.OPENROUTER_GEMINI_MODEL?.trim() ||
@@ -135,7 +145,7 @@ class OpenRouterChatAdapter {
       candidates: Array<{ content: { parts: CandidatePart[] } }>;
     }> {
       for await (const chunk of stream) {
-        const candidates = chunk.choices.map((choice: any) => {
+        const candidates = (chunk?.choices ?? []).map((choice: any) => {
           const state = this.updateChoiceState(getState(choice.index), choice);
           return { content: { parts: this.buildPartsFromState(state) } };
         });
@@ -148,8 +158,8 @@ class OpenRouterChatAdapter {
   }
 
   private updateChoiceState(state: ChoiceState, choice: any): ChoiceState {
-    const delta: any = choice.delta ?? {};
-    const deltaContent = delta.content as unknown;
+    const delta: any = choice?.delta ?? {};
+    const deltaContent = delta?.content as unknown;
 
     if (typeof deltaContent === "string") {
       state.text += deltaContent;
@@ -159,20 +169,35 @@ class OpenRouterChatAdapter {
         .join("");
     }
 
-    if (Array.isArray(delta.toolCalls)) {
-      delta.toolCalls.forEach((toolCall: any, toolIndex: number) => {
-        const id =
-          toolCall.id ||
-          (typeof toolCall.index === "number"
-            ? `tool_${toolCall.index}`
-            : `tool_${toolIndex}`);
+    const toolCallsList = Array.isArray(delta?.tool_calls)
+      ? delta.tool_calls
+      : Array.isArray(delta?.toolCalls)
+        ? delta.toolCalls
+        : [];
+
+    if (toolCallsList.length) {
+      toolCallsList.forEach((toolCall: any, toolIndex: number) => {
+        const key =
+          typeof toolCall.index === "number"
+            ? `idx_${toolCall.index}`
+            : `idx_${toolIndex}`;
         const current =
-          state.toolCalls.get(id) ?? ({ id, arguments: "" } as ToolCallState);
-        current.name = toolCall.function?.name ?? current.name;
+          state.toolCalls.get(key) ??
+          ({ id: toolCall.id || key, arguments: "" } as ToolCallState);
+
+        if (toolCall.id && typeof toolCall.id === "string") {
+          current.id = toolCall.id;
+        }
+        if (
+          toolCall.function?.name &&
+          typeof toolCall.function.name === "string"
+        ) {
+          current.name = toolCall.function.name;
+        }
         if (typeof toolCall.function?.arguments === "string") {
           current.arguments += toolCall.function.arguments;
         }
-        state.toolCalls.set(id, current);
+        state.toolCalls.set(key, current);
       });
     }
 
@@ -201,9 +226,9 @@ class OpenRouterChatAdapter {
   }
 
   private convertChatResponse(response: any): OpenRouterResponsePayload {
-    const candidates = response.choices.map((choice: any) => {
+    const candidates = (response?.choices ?? []).map((choice: any) => {
       const parts: CandidatePart[] = [];
-      const message = choice.message;
+      const message = choice.message ?? {};
 
       const content = message.content;
       if (typeof content === "string" && content.length) {
@@ -223,8 +248,14 @@ class OpenRouterChatAdapter {
         }
       }
 
-      if (Array.isArray(message.toolCalls)) {
-        message.toolCalls.forEach((toolCall: any) => {
+      const toolCallsList = Array.isArray(message.tool_calls)
+        ? message.tool_calls
+        : Array.isArray(message.toolCalls)
+          ? message.toolCalls
+          : [];
+
+      if (toolCallsList.length) {
+        toolCallsList.forEach((toolCall: any) => {
           const parsed = safeJsonParse(toolCall.function?.arguments ?? "");
           if (!parsed) return;
           parts.push({
@@ -303,7 +334,7 @@ class OpenRouterChatAdapter {
           function: {
             name: declaration?.name,
             description: declaration?.description,
-            parameters: declaration?.parametersJsonSchema ?? {
+            parameters: declaration?.parameters ?? declaration?.parametersJsonSchema ?? {
               type: "object",
               properties: {},
             },
@@ -362,7 +393,32 @@ class OpenRouterChatAdapter {
       }
       if (role === "model") {
         const text = this.convertContentPartsToText(parts);
-        messages.push({ role: "assistant", content: text });
+        const functionCallParts = parts.filter(
+          (part) => part && typeof part === "object" && (part as any).functionCall
+        );
+        if (functionCallParts.length > 0) {
+          const toolCalls = functionCallParts.map((part: any, idx: number) => {
+            const fc = part.functionCall;
+            return {
+              id: fc.id || `call_${idx}_${Date.now()}`,
+              type: "function" as const,
+              function: {
+                name: fc.name || "function",
+                arguments:
+                  typeof fc.args === "string"
+                    ? fc.args
+                    : JSON.stringify(fc.args ?? {}),
+              },
+            };
+          });
+          messages.push({
+            role: "assistant",
+            content: text.length ? text : null,
+            tool_calls: toolCalls,
+          });
+        } else {
+          messages.push({ role: "assistant", content: text });
+        }
         return;
       }
       if (role === "function") {
@@ -422,10 +478,12 @@ class OpenRouterChatAdapter {
           typeof response.name === "string" && response.name.length
             ? response.name
             : "tool";
+        const toolId = id ?? name;
         return {
           role: "tool",
           content: JSON.stringify(payload ?? {}),
-          toolCallId: id ?? name,
+          toolCallId: toolId,
+          tool_call_id: toolId,
         };
       }
     }
